@@ -49,11 +49,22 @@ function Commit.new(data)
   self.header_line = nil   -- Main commit line for navigation
   self.lines = {}          -- Display lines for this commit
   
+  -- Graph structure (from parsing jj log output)
+  self.graph_prefix = data.graph_prefix or ""     -- Graph structure before commit symbol
+  self.symbol = data.symbol or "○"                -- Commit symbol (@, ○, ◆, ×)
+  self.additional_lines = data.additional_lines or {} -- Description/connector lines with graph info
+  
   return self
 end
 
 -- Get the display symbol for this commit (@ for current, ○ for others, ◆ for root)
 function Commit:get_symbol()
+  -- If we have a parsed symbol from jj log output, use that
+  if self.symbol and self.symbol ~= "" then
+    return self.symbol
+  end
+  
+  -- Fallback to computed symbol
   if self.root then
     return "◆"
   elseif self.current_working_copy then

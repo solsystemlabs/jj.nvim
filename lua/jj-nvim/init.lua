@@ -19,8 +19,8 @@ M.toggle = function()
 end
 
 M.show_log = function()
-  -- Use new commit-based system
-  local commits, err = parser.parse_all_commits()
+  -- Use separate graph + data parsing system
+  local commits, err = parser.parse_all_commits_with_separate_graph()
   if err then
     vim.notify("Failed to parse commits: " .. err, vim.log.levels.ERROR)
     return
@@ -31,7 +31,7 @@ M.show_log = function()
     return
   end
 
-  -- Create buffer with commit objects
+  -- Create buffer with commit objects (including graph structure)
   local buf_id = buffer.create_from_commits(commits)
   if buf_id then
     window.open_with_buffer(buf_id)

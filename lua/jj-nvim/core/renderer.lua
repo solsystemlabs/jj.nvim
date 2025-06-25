@@ -57,6 +57,11 @@ local function render_commit(commit, mode_config)
   -- Build the main commit line
   local line_parts = {}
   
+  -- Graph prefix (from parsed jj log output)
+  if commit.graph_prefix and commit.graph_prefix ~= "" then
+    table.insert(line_parts, commit.graph_prefix)
+  end
+  
   -- Symbol (@ or ○ or ◆)
   local symbol = commit:get_symbol()
   if is_current then
@@ -122,29 +127,37 @@ local function render_commit(commit, mode_config)
   -- Set the header line for navigation (always the first line)
   commit.header_line = 1
   
-  -- Add description if configured (but not for root commits)
-  if mode_config.show_description and not mode_config.single_line and not commit.root then
-    local description = commit:get_short_description()
-    if description and description ~= "" then
-      local desc_color
-      if commit:has_real_description() then
-        -- Real descriptions are white (bold for current commit)
-        desc_color = is_current and COLORS.description_real_current or COLORS.description_real_regular
-      else
-        -- "(no description set)" is yellow
-        desc_color = is_current and COLORS.description_current or COLORS.description_regular
-      end
-      local desc_line = COLORS.branch_symbol .. "  " .. desc_color .. description .. COLORS.reset_fg .. COLORS.reset
-      table.insert(lines, desc_line)
+  -- Add additional lines from parsed graph data (descriptions, connectors, bookmarks)
+  if commit.additional_lines and #commit.additional_lines > 0 then
+    for _, line_data in ipairs(commit.additional_lines) do
+      local full_line = line_data.graph_prefix .. line_data.content
+      table.insert(lines, full_line)
     end
-  end
-  
-  -- Add bookmarks if configured
-  if mode_config.show_bookmarks and #commit.bookmarks > 0 then
-    local bookmarks_str = commit:get_bookmarks_display()
-    if bookmarks_str ~= "" then
-      local bookmark_line = COLORS.branch_symbol .. "  bookmarks: " .. bookmarks_str
-      table.insert(lines, bookmark_line)
+  else
+    -- Fallback to traditional description rendering if no parsed data
+    if mode_config.show_description and not mode_config.single_line and not commit.root then
+      local description = commit:get_short_description()
+      if description and description ~= "" then
+        local desc_color
+        if commit:has_real_description() then
+          -- Real descriptions are white (bold for current commit)
+          desc_color = is_current and COLORS.description_real_current or COLORS.description_real_regular
+        else
+          -- "(no description set)" is yellow
+          desc_color = is_current and COLORS.description_current or COLORS.description_regular
+        end
+        local desc_line = COLORS.branch_symbol .. "  " .. desc_color .. description .. COLORS.reset_fg .. COLORS.reset
+        table.insert(lines, desc_line)
+      end
+    end
+    
+    -- Add bookmarks if configured
+    if mode_config.show_bookmarks and #commit.bookmarks > 0 then
+      local bookmarks_str = commit:get_bookmarks_display()
+      if bookmarks_str ~= "" then
+        local bookmark_line = COLORS.branch_symbol .. "  bookmarks: " .. bookmarks_str
+        table.insert(lines, bookmark_line)
+      end
     end
   end
   
