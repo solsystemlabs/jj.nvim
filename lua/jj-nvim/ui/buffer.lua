@@ -4,6 +4,23 @@ local ansi = require('jj-nvim.utils.ansi')
 local parser = require('jj-nvim.core.parser')
 local renderer = require('jj-nvim.core.renderer')
 
+-- Constants
+local BUFFER_CONFIG = {
+  modifiable = false,
+  readonly = true,
+  buftype = 'nofile',
+  bufhidden = 'wipe',
+  swapfile = false,
+  filetype = 'jj-log',
+}
+
+-- Helper function to configure buffer options
+local function configure_buffer(buf_id)
+  for option, value in pairs(BUFFER_CONFIG) do
+    vim.api.nvim_buf_set_option(buf_id, option, value)
+  end
+end
+
 -- Store commit data for the current buffer
 local buffer_state = {
   commits = {},           -- Array of commit objects
@@ -27,12 +44,7 @@ M.create_from_commits = function(commits, mode)
   -- Render commits and set buffer content
   M.update_from_commits(buf_id, commits, mode)
   
-  vim.api.nvim_buf_set_option(buf_id, 'modifiable', false)
-  vim.api.nvim_buf_set_option(buf_id, 'readonly', true)
-  vim.api.nvim_buf_set_option(buf_id, 'buftype', 'nofile')
-  vim.api.nvim_buf_set_option(buf_id, 'bufhidden', 'wipe')
-  vim.api.nvim_buf_set_option(buf_id, 'swapfile', false)
-  vim.api.nvim_buf_set_option(buf_id, 'filetype', 'jj-log')
+  configure_buffer(buf_id)
   
   return buf_id
 end
@@ -41,7 +53,7 @@ end
 M.create = function(content)
   -- If content is nil, parse commits and use new method
   if not content then
-    local commits, err = parser.parse_all_commits()
+    local commits, err = parser.parse_all_commits_with_separate_graph()
     if err then
       vim.notify("Failed to parse commits: " .. err, vim.log.levels.ERROR)
       commits = {}
@@ -59,12 +71,7 @@ M.create = function(content)
   local lines = vim.split(content, '\n', { plain = true })
   M.set_lines_with_highlights(buf_id, lines)
   
-  vim.api.nvim_buf_set_option(buf_id, 'modifiable', false)
-  vim.api.nvim_buf_set_option(buf_id, 'readonly', true)
-  vim.api.nvim_buf_set_option(buf_id, 'buftype', 'nofile')
-  vim.api.nvim_buf_set_option(buf_id, 'bufhidden', 'wipe')
-  vim.api.nvim_buf_set_option(buf_id, 'swapfile', false)
-  vim.api.nvim_buf_set_option(buf_id, 'filetype', 'jj-log')
+  configure_buffer(buf_id)
   
   return buf_id
 end
@@ -201,8 +208,8 @@ M.refresh = function(buf_id)
     return false
   end
   
-  -- Parse latest commits
-  local commits, err = parser.parse_all_commits()
+  -- Parse latest commits using separate graph approach
+  local commits, err = parser.parse_all_commits_with_separate_graph()
   if err then
     vim.notify("Failed to refresh commits: " .. err, vim.log.levels.ERROR)
     return false

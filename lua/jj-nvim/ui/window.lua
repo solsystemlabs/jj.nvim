@@ -4,10 +4,58 @@ local config = require('jj-nvim.config')
 local buffer = require('jj-nvim.ui.buffer')
 local navigation = require('jj-nvim.ui.navigation')
 
+-- Constants
+local WINDOW_CONSTRAINTS = {
+  MIN_WIDTH = 30,
+  MAX_WIDTH = 200,
+}
+
+local WIDTH_ADJUSTMENTS = {
+  SMALL = 1,
+  LARGE = 5,
+}
+
 local state = {
   win_id = nil,
   buf_id = nil,
 }
+
+-- Helper function to create window configuration
+local function create_window_config()
+  local width = config.get('window.width')
+  local position = config.get('window.position')
+  
+  local win_width = vim.api.nvim_get_option('columns')
+  local win_height = vim.api.nvim_get_option('lines')
+  
+  local col = position == 'left' and 0 or (win_width - width)
+  
+  return {
+    relative = 'editor',
+    width = width,
+    height = win_height - 2,
+    col = col,
+    row = 0,
+    style = 'minimal',
+    border = 'none',
+  }
+end
+
+-- Helper function to configure window and buffer display options
+local function setup_window_display()
+  vim.api.nvim_win_set_option(state.win_id, 'wrap', config.get('window.wrap'))
+  vim.api.nvim_win_set_option(state.win_id, 'cursorline', true)
+  vim.api.nvim_win_set_option(state.win_id, 'winhl', '')
+  
+  -- Ensure buffer supports colors
+  vim.api.nvim_buf_set_option(state.buf_id, 'syntax', 'off')
+  vim.api.nvim_set_option_value('termguicolors', true, {})
+  
+  -- Set up commit highlighting
+  M.setup_commit_highlighting()
+  
+  M.setup_keymaps()
+end
 
 M.is_open = function()
   return state.win_id ~= nil and vim.api.nvim_win_is_valid(state.win_id)
@@ -18,38 +66,10 @@ M.open = function(content)
     return
   end
 
-  local width = config.get('window.width')
-  local position = config.get('window.position')
-  
-  local win_width = vim.api.nvim_get_option('columns')
-  local win_height = vim.api.nvim_get_option('lines')
-  
-  local col = position == 'left' and 0 or (win_width - width)
-  
   state.buf_id = buffer.create(content)
+  state.win_id = vim.api.nvim_open_win(state.buf_id, true, create_window_config())
   
-  state.win_id = vim.api.nvim_open_win(state.buf_id, true, {
-    relative = 'editor',
-    width = width,
-    height = win_height - 2,
-    col = col,
-    row = 0,
-    style = 'minimal',
-    border = 'none',
-  })
-  
-  vim.api.nvim_win_set_option(state.win_id, 'wrap', config.get('window.wrap'))
-  vim.api.nvim_win_set_option(state.win_id, 'cursorline', true)
-  vim.api.nvim_win_set_option(state.win_id, 'winhl', '')
-  
-  -- Ensure buffer supports colors
-  vim.api.nvim_buf_set_option(state.buf_id, 'syntax', 'off')
-  vim.api.nvim_set_option_value('termguicolors', true, {})
-  
-  -- Set up commit highlighting
-  M.setup_commit_highlighting()
-  
-  M.setup_keymaps()
+  setup_window_display()
 end
 
 -- Open window with an existing buffer (for commit-based system)
@@ -58,38 +78,10 @@ M.open_with_buffer = function(buf_id)
     return
   end
 
-  local width = config.get('window.width')
-  local position = config.get('window.position')
-  
-  local win_width = vim.api.nvim_get_option('columns')
-  local win_height = vim.api.nvim_get_option('lines')
-  
-  local col = position == 'left' and 0 or (win_width - width)
-  
   state.buf_id = buf_id
+  state.win_id = vim.api.nvim_open_win(state.buf_id, true, create_window_config())
   
-  state.win_id = vim.api.nvim_open_win(state.buf_id, true, {
-    relative = 'editor',
-    width = width,
-    height = win_height - 2,
-    col = col,
-    row = 0,
-    style = 'minimal',
-    border = 'none',
-  })
-  
-  vim.api.nvim_win_set_option(state.win_id, 'wrap', config.get('window.wrap'))
-  vim.api.nvim_win_set_option(state.win_id, 'cursorline', true)
-  vim.api.nvim_win_set_option(state.win_id, 'winhl', '')
-  
-  -- Ensure buffer supports colors
-  vim.api.nvim_buf_set_option(state.buf_id, 'syntax', 'off')
-  vim.api.nvim_set_option_value('termguicolors', true, {})
-  
-  -- Set up commit highlighting
-  M.setup_commit_highlighting()
-  
-  M.setup_keymaps()
+  setup_window_display()
 end
 
 M.close = function()
@@ -161,17 +153,17 @@ M.setup_keymaps = function()
   end, opts)
   
   -- Window width adjustment keybinds
-  vim.keymap.set('n', '+', function() M.adjust_width(5) end, opts)
-  vim.keymap.set('n', '-', function() M.adjust_width(-5) end, opts)
-  vim.keymap.set('n', '=', function() M.adjust_width(1) end, opts)
-  vim.keymap.set('n', '_', function() M.adjust_width(-1) end, opts)
+  vim.keymap.set('n', '+', function() M.adjust_width(WIDTH_ADJUSTMENTS.LARGE) end, opts)
+  vim.keymap.set('n', '-', function() M.adjust_width(-WIDTH_ADJUSTMENTS.LARGE) end, opts)
+  vim.keymap.set('n', '=', function() M.adjust_width(WIDTH_ADJUSTMENTS.SMALL) end, opts)
+  vim.keymap.set('n', '_', function() M.adjust_width(-WIDTH_ADJUSTMENTS.SMALL) end, opts)
 end
 
 M.adjust_width = function(delta)
   if not M.is_open() then return end
   
   local current_width = vim.api.nvim_win_get_width(state.win_id)
-  local new_width = math.max(30, math.min(200, current_width + delta)) -- Clamp between 30-200
+  local new_width = math.max(WINDOW_CONSTRAINTS.MIN_WIDTH, math.min(WINDOW_CONSTRAINTS.MAX_WIDTH, current_width + delta))
   
   -- Update the window width
   vim.api.nvim_win_set_width(state.win_id, new_width)
