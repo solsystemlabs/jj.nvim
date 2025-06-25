@@ -5,13 +5,16 @@ local M = {}
 -- This maps 256-color numbers to their semantic meaning in jj log output
 M.create_256_map = function(colors)
   return {
-    [2] = colors.bright_green or colors.green,     -- @ symbol (working copy)
-    [13] = colors.bright_magenta or colors.magenta, -- change IDs
+    [2] = colors.green,                            -- @ symbol (working copy) - muted green
+    [3] = colors.yellow,                           -- author email
+    [4] = colors.blue,                             -- standard commit IDs
+    [5] = colors.magenta,                          -- bookmarks/other elements
+    [6] = colors.cyan,                             -- alternative timestamp color
     [8] = colors.bright_black,                     -- dim/gray text
-    [3] = colors.yellow,                           -- author
-    [14] = colors.bright_cyan or colors.cyan,     -- timestamp
-    [4] = colors.blue,                             -- commit IDs
-    [5] = colors.magenta,                          -- bookmarks
+    [10] = colors.green,                           -- (empty) text - match @ symbol
+    [12] = colors.bright_blue,                     -- latest commit ID (lighter blue)
+    [13] = colors.bright_magenta,                  -- change IDs
+    [14] = colors.bright_cyan,                     -- primary timestamp color
   }
 end
 
