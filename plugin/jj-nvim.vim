@@ -9,6 +9,6 @@ command! JJClose lua require('jj-nvim').close()
 
 nnoremap <silent> <Plug>(jj-nvim-toggle) :JJToggle<CR>
 
-if !hasmapto('<Plug>(jj-nvim-toggle)') && maparg('<leader>jl', 'n') ==# ''
-  nmap <leader>jl <Plug>(jj-nvim-toggle)
+if !hasmapto('<Plug>(jj-nvim-toggle)') && maparg('<leader>ji', 'n') ==# ''
+  nmap <leader>ji <Plug>(jj-nvim-toggle)
 endif

@@ -5,10 +5,10 @@ M.defaults = {
   window = {
     width = 70,
     position = 'right',
-    wrap = true,
+    wrap = true, -- Re-enabled until we fix smart wrapping
   },
   keymaps = {
-    toggle = '<leader>jl',
+    toggle = '<leader>jp',
     close = 'q',
     show_diff = '<CR>',
     edit_message = 'e',
@@ -32,7 +32,7 @@ M.persistent_settings = {}
 M.setup = function(opts)
   -- Load persistent settings from disk
   M.persistent_settings = persistence.load()
-  
+
   -- Merge: defaults < persistent settings < user opts
   M.options = vim.tbl_deep_extend('force', M.defaults, M.persistent_settings, opts or {})
 end
@@ -51,7 +51,7 @@ end
 
 M.set = function(key, value)
   local keys = vim.split(key, '.', { plain = true })
-  
+
   -- Update runtime options
   local current = M.options
   for i = 1, #keys - 1 do
@@ -62,7 +62,7 @@ M.set = function(key, value)
     current = current[k]
   end
   current[keys[#keys]] = value
-  
+
   -- Update persistent settings
   current = M.persistent_settings
   for i = 1, #keys - 1 do
@@ -73,9 +73,10 @@ M.set = function(key, value)
     current = current[k]
   end
   current[keys[#keys]] = value
-  
+
   -- Save to disk
   persistence.save(M.persistent_settings)
 end
 
 return M
+
