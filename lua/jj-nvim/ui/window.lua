@@ -232,10 +232,26 @@ M.setup_commit_highlighting = function()
     local commit = buffer.get_commit_at_line(line_number)
     if not commit then return end
     
-    -- Highlight all lines belonging to this commit
+    -- Highlight all lines belonging to this commit with full window width
     if commit.line_start and commit.line_end then
+      local window_width = vim.api.nvim_win_get_width(state.win_id)
+      
       for line_idx = commit.line_start, commit.line_end do
+        -- Get the actual line content to see its length
+        local line_content = vim.api.nvim_buf_get_lines(state.buf_id, line_idx - 1, line_idx, false)[1] or ""
+        local content_length = vim.fn.strdisplaywidth(line_content)
+        
+        -- Highlight the actual content
         vim.api.nvim_buf_add_highlight(state.buf_id, ns_id, 'JJCommitSelected', line_idx - 1, 0, -1)
+        
+        -- Extend highlighting to full window width if content is shorter
+        if content_length < window_width then
+          -- Add virtual text to fill the remaining space
+          vim.api.nvim_buf_set_extmark(state.buf_id, ns_id, line_idx - 1, #line_content, {
+            virt_text = {{string.rep(" ", window_width - content_length), 'JJCommitSelected'}},
+            virt_text_pos = 'inline'
+          })
+        end
       end
     end
   end
