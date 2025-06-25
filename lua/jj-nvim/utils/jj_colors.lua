@@ -57,4 +57,16 @@ M.map_256_to_jj_color = function(color_num)
   return semantic_mappings[color_num]
 end
 
+-- Get a color from the current theme
+M.get_current_theme_color = function(color_name)
+  local theme_name = config.get('colors.theme') or 'auto'
+  local theme = themes.get_theme(theme_name)
+  
+  if theme and theme.colors and theme.colors[color_name] then
+    return theme.colors[color_name]
+  end
+  
+  return nil
+end
+
 return M

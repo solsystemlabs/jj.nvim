@@ -37,7 +37,7 @@ M.open = function(content)
     border = 'none',
   })
   
-  vim.api.nvim_win_set_option(state.win_id, 'wrap', false)
+  vim.api.nvim_win_set_option(state.win_id, 'wrap', config.get('window.wrap'))
   vim.api.nvim_win_set_option(state.win_id, 'cursorline', true)
   vim.api.nvim_win_set_option(state.win_id, 'winhl', '')
   
@@ -68,6 +68,49 @@ M.setup_keymaps = function()
   vim.keymap.set('n', '<CR>', function()
     vim.notify("Show diff not implemented yet", vim.log.levels.INFO)
   end, opts)
+  
+  -- Window width adjustment keybinds
+  vim.keymap.set('n', '+', function() M.adjust_width(5) end, opts)
+  vim.keymap.set('n', '-', function() M.adjust_width(-5) end, opts)
+  vim.keymap.set('n', '=', function() M.adjust_width(1) end, opts)
+  vim.keymap.set('n', '_', function() M.adjust_width(-1) end, opts)
+end
+
+M.adjust_width = function(delta)
+  if not M.is_open() then return end
+  
+  local current_width = vim.api.nvim_win_get_width(state.win_id)
+  local new_width = math.max(30, math.min(200, current_width + delta)) -- Clamp between 30-200
+  
+  -- Update the window width
+  vim.api.nvim_win_set_width(state.win_id, new_width)
+  
+  -- Update the position if it's on the right side
+  local position = config.get('window.position')
+  if position == 'right' then
+    local win_width = vim.api.nvim_get_option('columns')
+    local new_col = win_width - new_width
+    vim.api.nvim_win_set_config(state.win_id, {
+      relative = 'editor',
+      width = new_width,
+      height = vim.api.nvim_win_get_height(state.win_id),
+      col = new_col,
+      row = 0,
+    })
+  else
+    vim.api.nvim_win_set_config(state.win_id, {
+      relative = 'editor',
+      width = new_width,
+      height = vim.api.nvim_win_get_height(state.win_id),
+      col = 0,
+      row = 0,
+    })
+  end
+  
+  -- Save the new width persistently
+  config.set('window.width', new_width)
+  
+  vim.notify(string.format("Window width: %d", new_width), vim.log.levels.INFO)
 end
 
 M.get_current_line = function()

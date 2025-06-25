@@ -1,9 +1,11 @@
 local M = {}
+local persistence = require('jj-nvim.utils.persistence')
 
 M.defaults = {
   window = {
-    width = 60,
+    width = 70,
     position = 'right',
+    wrap = true,
   },
   keymaps = {
     toggle = '<leader>jl',
@@ -25,9 +27,14 @@ M.defaults = {
 }
 
 M.options = {}
+M.persistent_settings = {}
 
 M.setup = function(opts)
-  M.options = vim.tbl_deep_extend('force', M.defaults, opts or {})
+  -- Load persistent settings from disk
+  M.persistent_settings = persistence.load()
+  
+  -- Merge: defaults < persistent settings < user opts
+  M.options = vim.tbl_deep_extend('force', M.defaults, M.persistent_settings, opts or {})
 end
 
 M.get = function(key)
@@ -40,6 +47,35 @@ M.get = function(key)
     end
   end
   return value
+end
+
+M.set = function(key, value)
+  local keys = vim.split(key, '.', { plain = true })
+  
+  -- Update runtime options
+  local current = M.options
+  for i = 1, #keys - 1 do
+    local k = keys[i]
+    if current[k] == nil then
+      current[k] = {}
+    end
+    current = current[k]
+  end
+  current[keys[#keys]] = value
+  
+  -- Update persistent settings
+  current = M.persistent_settings
+  for i = 1, #keys - 1 do
+    local k = keys[i]
+    if current[k] == nil then
+      current[k] = {}
+    end
+    current = current[k]
+  end
+  current[keys[#keys]] = value
+  
+  -- Save to disk
+  persistence.save(M.persistent_settings)
 end
 
 return M

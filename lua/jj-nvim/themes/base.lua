@@ -7,12 +7,12 @@ M.create_256_map = function(colors)
   return {
     [2] = colors.green,                            -- @ symbol (working copy) - muted green
     [3] = colors.yellow,                           -- author email
-    [4] = colors.blue,                             -- standard commit IDs
+    [4] = colors.bright_blue,                      -- commit IDs
     [5] = colors.magenta,                          -- bookmarks/other elements
     [6] = colors.cyan,                             -- alternative timestamp color
     [8] = colors.bright_black,                     -- dim/gray text
     [10] = colors.green,                           -- (empty) text - match @ symbol
-    [12] = colors.bright_blue,                     -- latest commit ID (lighter blue)
+    [12] = colors.bright_blue,                     -- commit IDs (same as 4)
     [13] = colors.bright_magenta,                  -- change IDs
     [14] = colors.bright_cyan,                     -- primary timestamp color
   }
