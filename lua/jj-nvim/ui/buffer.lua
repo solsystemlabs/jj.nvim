@@ -58,6 +58,8 @@ M.create = function(content)
       vim.notify("Failed to parse commits: " .. err, vim.log.levels.ERROR)
       commits = {}
     end
+    -- Ensure commits is not nil
+    commits = commits or {}
     return M.create_from_commits(commits)
   end
   
@@ -157,7 +159,7 @@ M.update_from_commits = function(buf_id, commits, mode)
   buffer_state.buf_id = buf_id
   buffer_state.current_mode = mode or buffer_state.current_mode or 'comfortable'
   
-  -- Render commits with highlights
+  -- Render commits with highlights (window width will be retrieved from config)
   local highlighted_lines, raw_lines = renderer.render_with_highlights(commits, buffer_state.current_mode)
   
   vim.api.nvim_buf_set_option(buf_id, 'modifiable', true)
@@ -214,6 +216,9 @@ M.refresh = function(buf_id)
     vim.notify("Failed to refresh commits: " .. err, vim.log.levels.ERROR)
     return false
   end
+  
+  -- Ensure commits is not nil
+  commits = commits or {}
   
   return M.update_from_commits(buf_id, commits, buffer_state.current_mode)
 end

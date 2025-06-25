@@ -52,6 +52,9 @@ function Commit.new(data)
   -- Graph structure (from parsing jj log output)
   self.graph_prefix = data.graph_prefix or ""     -- Graph structure before commit symbol
   self.symbol = data.symbol or "○"                -- Commit symbol (@, ○, ◆, ×)
+  self.graph_suffix = data.graph_suffix or ""     -- Graph structure after commit symbol
+  self.complete_graph = data.complete_graph or "" -- Complete graph structure from jj log
+  self.description_graph = data.description_graph or "" -- Graph structure for description line
   self.additional_lines = data.additional_lines or {} -- Description/connector lines with graph info
   
   return self
@@ -121,20 +124,22 @@ end
 
 -- Get short description (first line only)
 function Commit:get_short_description()
-  if not self.description or self.description == "" then
-    return "(no description set)"
+  local desc_text = ""
+  
+  -- Add "(empty)" indicator for empty commits
+  if self.empty then
+    desc_text = "(empty) "
   end
   
-  local first_line = self.description:match("([^\n]*)")
-  return first_line or self.description
-end
-
--- Get full description with proper line breaks
-function Commit:get_full_description()
+  -- Add the actual description
   if not self.description or self.description == "" then
-    return "(no description set)"
+    desc_text = desc_text .. "(no description set)"
+  else
+    local first_line = self.description:match("([^\n]*)")
+    desc_text = desc_text .. (first_line or self.description)
   end
-  return self.description
+  
+  return desc_text
 end
 
 -- Get bookmarks display string
@@ -150,72 +155,9 @@ function Commit:is_current()
   return self.current_working_copy
 end
 
--- Get a compact single-line representation
-function Commit:get_compact_line()
-  local parts = {}
-  
-  -- Symbol and change ID
-  table.insert(parts, self:get_symbol())
-  table.insert(parts, " ")
-  table.insert(parts, self.short_change_id or self.change_id:sub(1, 8))
-  
-  -- Author
-  local author = self:get_author_display()
-  if author ~= "" then
-    table.insert(parts, " ")
-    table.insert(parts, author)
-  end
-  
-  -- Timestamp
-  local timestamp = self:get_timestamp_display()
-  if timestamp ~= "" then
-    table.insert(parts, " ")
-    table.insert(parts, timestamp)
-  end
-  
-  -- Commit ID
-  if self.short_commit_id ~= "" then
-    table.insert(parts, " ")
-    table.insert(parts, self.short_commit_id)
-  end
-  
-  return table.concat(parts)
-end
-
--- Get multi-line representation for detailed view
-function Commit:get_detailed_lines()
-  local lines = {}
-  
-  -- Main commit line
-  table.insert(lines, self:get_compact_line())
-  
-  -- Description (indented)
-  local description = self:get_short_description()
-  if description ~= "" then
-    table.insert(lines, "│  " .. description)
-  end
-  
-  -- Bookmarks (if any)
-  local bookmarks = self:get_bookmarks_display()
-  if bookmarks ~= "" then
-    table.insert(lines, "│  bookmarks: " .. bookmarks)
-  end
-  
-  return lines
-end
-
 -- Factory function to create commits from template data
 M.from_template_data = function(template_data)
   return Commit.new(template_data)
-end
-
--- Create a list of commits from an array of template data
-M.from_template_array = function(template_array)
-  local commits = {}
-  for _, data in ipairs(template_array) do
-    table.insert(commits, M.from_template_data(data))
-  end
-  return commits
 end
 
 return M
