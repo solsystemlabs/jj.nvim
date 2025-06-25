@@ -158,48 +158,156 @@ local function render_commit(commit, mode_config)
   return lines
 end
 
--- Smart wrapping that inserts graph continuation at the right positions
-local function wrap_line_with_graph(line, window_width, is_header_line)
-  local clean_line = ansi.strip_ansi(line)
-  
-  -- If line fits within window, no modification needed
-  if #clean_line <= window_width then
-    return line
+-- Wrap clean text (no ANSI codes) into multiple lines
+local function wrap_clean_text(text, window_width)
+  if #text <= window_width then
+    return {text}
   end
   
-  -- Calculate where wrapping will occur and insert graph continuation
-  local result_line = ""
-  local clean_pos = 0
-  local line_pos = 1
+  local wrapped_lines = {}
+  local remaining = text
   
-  while line_pos <= #line do
-    local char = line:sub(line_pos, line_pos)
+  while #remaining > 0 do
+    local wrap_point = math.min(window_width, #remaining)
     
-    -- Handle ANSI escape sequences
-    if char == '\27' then
-      local esc_end = line:find('m', line_pos)
-      if esc_end then
-        result_line = result_line .. line:sub(line_pos, esc_end)
-        line_pos = esc_end + 1
-      else
-        result_line = result_line .. char
-        line_pos = line_pos + 1
+    -- If this isn't the last piece, try to break at word boundary
+    if wrap_point < #remaining then
+      local space_pos = remaining:sub(1, wrap_point):match("^.*() ")
+      if space_pos and space_pos > wrap_point * 0.7 then -- Only break at space if it's reasonably far
+        wrap_point = space_pos - 1
       end
+    end
+    
+    -- Extract the portion that fits
+    local line_text = remaining:sub(1, wrap_point)
+    table.insert(wrapped_lines, line_text)
+    
+    -- Move to next portion, trimming leading whitespace
+    remaining = remaining:sub(wrap_point + 1)
+    remaining = remaining:match("^%s*(.*)") or ""
+  end
+  
+  return wrapped_lines
+end
+
+-- Reconstruct text with colors from original segments
+local function reconstruct_with_colors(target_text, segments, text_offset)
+  if not target_text or target_text == "" then
+    return ""
+  end
+  
+  -- Build a mapping of character positions to highlights in the original text
+  local char_highlights = {}
+  local original_pos = 1
+  
+  for _, segment in ipairs(segments) do
+    local segment_text = segment.text
+    for i = 1, #segment_text do
+      char_highlights[original_pos + i - 1] = segment.highlight
+    end
+    original_pos = original_pos + #segment_text
+  end
+  
+  -- Now reconstruct the target text with highlights
+  local result_segments = {}
+  local current_highlight = nil
+  local current_text = ""
+  
+  for i = 1, #target_text do
+    local char = target_text:sub(i, i)
+    local highlight = char_highlights[text_offset + i] -- Map to original position
+    
+    if highlight == current_highlight then
+      -- Same highlight, accumulate text
+      current_text = current_text .. char
     else
-      -- Regular character
-      result_line = result_line .. char
-      clean_pos = clean_pos + 1
-      line_pos = line_pos + 1
-      
-      -- Check if we need to insert graph continuation
-      if clean_pos > 0 and clean_pos % window_width == 0 and line_pos <= #line then
-        -- Insert graph continuation at wrap point
-        result_line = result_line .. COLORS.branch_symbol .. "  "
+      -- Highlight changed, flush current segment
+      if current_text ~= "" then
+        table.insert(result_segments, {
+          text = current_text,
+          highlight = current_highlight
+        })
       end
+      
+      -- Start new segment
+      current_highlight = highlight
+      current_text = char
     end
   end
   
-  return result_line
+  -- Flush final segment
+  if current_text ~= "" then
+    table.insert(result_segments, {
+      text = current_text,
+      highlight = current_highlight
+    })
+  end
+  
+  -- Convert segments back to ANSI-colored text
+  local result = ""
+  for _, segment in ipairs(result_segments) do
+    result = result .. segment.text
+  end
+  
+  return result
+end
+
+-- Smart wrapping that preserves colors by keeping original line structure
+local function wrap_line_with_graph(line, window_width, is_header_line)
+  local clean_text = ansi.strip_ansi(line)
+  
+  -- If line fits, no wrapping needed
+  if #clean_text <= window_width then
+    return line
+  end
+  
+  -- Wrap the clean text to get break points
+  local wrapped_clean = wrap_clean_text(clean_text, window_width)
+  
+  -- For the first line, truncate the original line at the clean text break point
+  -- For continuation lines, use plain text (simpler and more reliable)
+  local result_lines = {}
+  local clean_chars_processed = 0
+  
+  for i, clean_portion in ipairs(wrapped_clean) do
+    if i == 1 then
+      -- First line: truncate original line to match the clean portion length
+      local target_clean_chars = #clean_portion
+      local original_pos = 1
+      local clean_chars_seen = 0
+      
+      -- Walk through original line, counting clean characters
+      while original_pos <= #line and clean_chars_seen < target_clean_chars do
+        local char = line:sub(original_pos, original_pos)
+        if char == string.char(27) then -- ESC character
+          -- Skip ANSI escape sequence
+          local esc_end = line:find("m", original_pos)
+          if esc_end then
+            original_pos = esc_end + 1
+          else
+            original_pos = original_pos + 1
+          end
+        else
+          clean_chars_seen = clean_chars_seen + 1
+          original_pos = original_pos + 1
+        end
+      end
+      
+      -- Include any trailing ANSI reset codes
+      local first_line = line:sub(1, original_pos - 1)
+      -- Ensure we end with a reset if we're in the middle of formatting
+      if not first_line:match("\27%[0m$") and first_line:match("\27%[") then
+        first_line = first_line .. COLORS.reset
+      end
+      
+      table.insert(result_lines, first_line)
+    else
+      -- Continuation lines: use plain text with graph prefix
+      table.insert(result_lines, COLORS.branch_symbol .. "  " .. clean_portion)
+    end
+  end
+  
+  return table.concat(result_lines, "\n")
 end
 
 -- Render a list of commits with line number tracking and smart wrapping
@@ -223,9 +331,19 @@ M.render_commits = function(commits, mode)
     -- Add lines to the overall display with smart wrapping
     for line_index, line in ipairs(commit_lines) do
       local is_header_line = line_index == 1
-      local wrapped_line = wrap_line_with_graph(line, window_width, is_header_line)
-      table.insert(all_lines, wrapped_line)
-      line_number = line_number + 1
+      local wrapped_result = wrap_line_with_graph(line, window_width, is_header_line)
+      
+      -- Handle multiple lines from wrapping
+      if wrapped_result:find('\n') then
+        local wrapped_lines = vim.split(wrapped_result, '\n', { plain = true })
+        for _, wrapped_line in ipairs(wrapped_lines) do
+          table.insert(all_lines, wrapped_line)
+          line_number = line_number + 1
+        end
+      else
+        table.insert(all_lines, wrapped_result)
+        line_number = line_number + 1
+      end
     end
     
     -- Set the ending line for this commit
