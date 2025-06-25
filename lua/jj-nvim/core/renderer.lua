@@ -28,6 +28,7 @@ local RENDER_MODES = {
 local COLORS = {
   current_symbol = '\27[1m\27[38;5;2m',      -- @ symbol (bold green)
   regular_symbol = '',                        -- ○ symbol (no color)
+  root_symbol = '\27[1m\27[38;5;14m',        -- ◆ symbol (bold bright cyan)
   change_id_current = '\27[1m\27[38;5;13m',  -- Current commit change ID (bold magenta)
   change_id_regular = '\27[1m\27[38;5;5m',   -- Regular commit change ID (bold purple)
   change_id_dim = '\27[38;5;8m',             -- Dim part of change ID
@@ -60,6 +61,8 @@ local function render_commit(commit, mode_config)
   local symbol = commit:get_symbol()
   if is_current then
     table.insert(line_parts, COLORS.current_symbol .. symbol .. COLORS.reset)
+  elseif commit.root then
+    table.insert(line_parts, COLORS.root_symbol .. symbol .. COLORS.reset)
   else
     table.insert(line_parts, symbol)
   end
