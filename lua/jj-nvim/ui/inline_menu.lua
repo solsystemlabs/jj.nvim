@@ -151,18 +151,20 @@ local function setup_menu_keymaps(buf_id, menu_config)
   -- Selection keymaps
   vim.keymap.set('n', '<CR>', function()
     local selected_item = menu_config.items[M.state.selected_index]
+    local callback = M.state.on_select
     M.close()
-    if M.state.on_select then
-      M.state.on_select(selected_item)
+    if callback and selected_item then
+      callback(selected_item)
     end
   end, opts)
   
   -- Direct key selection
   for i, item in ipairs(menu_config.items) do
     vim.keymap.set('n', item.key, function()
+      local callback = M.state.on_select
       M.close()
-      if M.state.on_select then
-        M.state.on_select(item)
+      if callback then
+        callback(item)
       end
     end, opts)
   end

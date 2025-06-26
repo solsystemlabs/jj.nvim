@@ -108,38 +108,73 @@ M.abandon_commit = function(commit)
 end
 
 -- Create a new child change from the specified parent commit
-M.new_child = function(parent_commit)
+M.new_child = function(parent_commit, options)
   if not parent_commit then
     vim.notify("No parent commit specified", vim.log.levels.WARN)
     return false
   end
 
-  -- Don't allow creating children from the root commit in most cases
-  if parent_commit.root then
-    vim.notify("Cannot create child of root commit", vim.log.levels.WARN)
-    return false
-  end
-
+  options = options or {}
+  
+  -- Validate parent commit data
   local change_id = parent_commit.change_id or parent_commit.short_change_id
   if not change_id or change_id == "" then
     vim.notify("Invalid parent commit: missing change ID", vim.log.levels.ERROR)
     return false
   end
 
+  -- Special handling for root commit - jj actually allows this but warn user
+  if parent_commit.root then
+    local confirm_msg = "Create child of root commit? This will create a new branch. (y/N)"
+    local choice = vim.fn.input(confirm_msg)
+    if choice:lower() ~= 'y' and choice:lower() ~= 'yes' then
+      vim.notify("New change cancelled", vim.log.levels.INFO)
+      return false
+    end
+  end
+
+  -- Build command arguments
+  local cmd_args = {'new'}
+  
+  -- Add parent specification
+  table.insert(cmd_args, change_id)
+  
+  -- Add message if provided
+  if options.message and options.message ~= "" then
+    table.insert(cmd_args, '-m')
+    table.insert(cmd_args, options.message)
+  end
+
   vim.notify(string.format("Creating new child of commit %s...", 
     parent_commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
 
-  -- Execute jj new command with parent specification
-  local result, err = commands.execute({'new', change_id})
+  -- Execute jj new command with enhanced error handling
+  local result, err = commands.execute(cmd_args)
   
   if not result then
-    vim.notify(string.format("Failed to create new change: %s", err or "Unknown error"), vim.log.levels.ERROR)
+    -- Enhanced error reporting
+    local error_msg = err or "Unknown error"
+    if error_msg:find("No such revision") then
+      error_msg = "Commit not found - it may have been abandoned or modified"
+    elseif error_msg:find("would create a cycle") then
+      error_msg = "Cannot create child - would create a cycle in commit graph"
+    elseif error_msg:find("not in workspace") then
+      error_msg = "Not in a jj workspace"
+    end
+    
+    vim.notify(string.format("Failed to create new change: %s", error_msg), vim.log.levels.ERROR)
     return false
   end
 
-  -- Success feedback
-  vim.notify(string.format("Created new child change of %s", 
-    parent_commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+  -- Parse output for additional information
+  local new_change_id = result:match("Working copy now at: (%w+)")
+  if new_change_id then
+    vim.notify(string.format("Created new change %s as child of %s", 
+      new_change_id:sub(1, 8), parent_commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+  else
+    vim.notify(string.format("Created new child change of %s", 
+      parent_commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+  end
   
   return true
 end
@@ -150,14 +185,19 @@ M.get_new_child_description = function(parent_commit)
     return "No parent commit selected"
   end
   
-  if parent_commit.root then
-    return "Cannot create child of root commit"
-  end
-  
   local change_id = parent_commit.short_change_id or parent_commit.change_id:sub(1, 8)
   local description = parent_commit:get_short_description()
   
+  if parent_commit.root then
+    return string.format("Create new branch from root %s: %s", change_id, description)
+  end
+  
   return string.format("Create new child of %s: %s", change_id, description)
+end
+
+-- Create a new child change with a custom message
+M.new_child_with_message = function(parent_commit, message)
+  return M.new_child(parent_commit, { message = message })
 end
 
 return M

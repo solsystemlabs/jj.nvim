@@ -378,16 +378,22 @@ end
 -- Show new change creation menu
 M.show_new_change_menu = function()
   if not M.is_open() then
+    vim.notify("JJ window is not open", vim.log.levels.WARN)
     return
   end
   
   -- Check if menu is already active
   if inline_menu.is_active() then
+    vim.notify("Menu is already active", vim.log.levels.INFO)
     return
   end
   
   -- Get current commit for context
   local current_commit = navigation.get_current_commit(state.win_id)
+  if not current_commit then
+    vim.notify("No commit found at cursor position", vim.log.levels.WARN)
+    return
+  end
   
   -- Define menu configuration
   local menu_config = {
@@ -398,6 +404,12 @@ M.show_new_change_menu = function()
         key = "c",
         description = "Create new child change",
         action = "new_child",
+        data = { parent = current_commit }
+      },
+      {
+        key = "d",
+        description = "Create new child with description",
+        action = "new_child_with_description",
         data = { parent = current_commit }
       },
       {
@@ -427,6 +439,8 @@ M.show_new_change_menu = function()
   
   if success then
     M.set_mode(MODES.NEW_MENU, { menu_config = menu_config })
+  else
+    vim.notify("Failed to show menu", vim.log.levels.ERROR)
   end
 end
 
@@ -439,6 +453,17 @@ M.handle_new_change_selection = function(selected_item)
     if actions.new_child(selected_item.data.parent) then
       buffer.refresh(state.buf_id)
     end
+  elseif selected_item.action == "new_child_with_description" then
+    -- New child creation with custom message
+    vim.ui.input({ prompt = "Commit description: " }, function(message)
+      if message and message ~= "" then
+        if actions.new_child_with_message(selected_item.data.parent, message) then
+          buffer.refresh(state.buf_id)
+        end
+      else
+        vim.notify("New change cancelled", vim.log.levels.INFO)
+      end
+    end)
   else
     -- Other actions will be implemented in later phases
     vim.notify("Feature not yet implemented: " .. selected_item.description, vim.log.levels.INFO)
