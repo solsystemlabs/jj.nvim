@@ -47,6 +47,7 @@ local COLORS = {
   description_real_regular = '', -- Regular commit real description (white)
   empty_indicator = '\27[38;5;2m', -- "(empty)" indicator (green)
   bookmarks = '\27[1m\27[38;5;5m', -- Bookmarks (bold purple)
+  conflict_indicator = '\27[38;5;1m', -- "conflict" indicator (red)
   branch_symbol = '│', -- Branch continuation symbol
   reset = '\27[0m', -- Reset all formatting
   reset_fg = '\27[39m', -- Reset foreground only
@@ -120,7 +121,7 @@ local function apply_symbol_colors(graph_text, commit)
 
   -- Apply symbol coloring in order of specificity
   -- Start with conflict symbols (×) - these should always be red regardless of commit type
-  result = result:gsub("×", "\27[31m×\27[0m")
+  result = result:gsub("×", COLORS.conflict_symbol .. "×" .. COLORS.reset)
 
   -- Then apply commit-specific symbol coloring
   if is_current then
@@ -236,6 +237,11 @@ local function render_commit(commit, mode_config, window_width)
     else
       table.insert(line_parts, commit_id_color .. commit_id .. COLORS.reset)
     end
+  end
+
+  -- Conflict indicator (last item on the line)
+  if commit.conflict then
+    table.insert(line_parts, " " .. COLORS.conflict_indicator .. "conflict" .. COLORS.reset)
   end
 
   -- Handle intelligent wrapping of main commit line

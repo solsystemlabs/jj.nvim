@@ -45,6 +45,7 @@ M.map_256_to_jj_color = function(color_num)
   -- Fallback to semantic mappings
   local jj_colors = M.get_jj_colors()
   local semantic_mappings = {
+    [1] = theme and theme.colors and theme.colors.red, -- Color 1 (red) for conflicts and symbols
     [2] = themes.map_jj_color(jj_colors and jj_colors['working_copy'], theme) or (theme and theme.colors and theme.colors.bright_green),
     [13] = themes.map_jj_color(jj_colors and jj_colors['change_id'], theme) or (theme and theme.colors and theme.colors.bright_magenta),
     [8] = theme and theme.colors and theme.colors.bright_black,
