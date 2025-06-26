@@ -64,50 +64,58 @@ local function get_display_width(text)
   return vim.fn.strdisplaywidth(clean_text)
 end
 
--- Helper function to inject graph characters at wrap points
-local function inject_graph_chars_for_wrapping(text, graph_prefix, window_width)
+-- Helper function to wrap text by words using intelligent wrapping logic
+local function wrap_text_by_words(text, graph_prefix, continuation_prefix, window_width)
   if not text or text == "" or not window_width then
-    return { text }
+    return { graph_prefix .. text }
   end
 
+  -- If the line doesn't exceed window width, no wrapping needed
+  local graph_width = get_display_width(graph_prefix)
   local text_width = get_display_width(text)
-  local graph_width = get_display_width(graph_prefix or "")
-
-  -- If the line doesn't exceed window width, no injection needed
-  if text_width <= window_width then
-    return { text }
+  if graph_width + text_width <= window_width then
+    return { graph_prefix .. text }
   end
 
-  -- Calculate where wraps will occur and split the text
-  local lines = {}
-  local remaining_text = text
-  local available_width = window_width - graph_width
-
-  while get_display_width(remaining_text) > available_width do
-    -- Find a good break point
-    local break_point = available_width
-
-    -- Try to break at word boundary (find last space within available width)
-    local clean_text = ansi.strip_ansi(remaining_text)
-    local last_space = clean_text:sub(1, available_width):find(" [^ ]*$")
-    if last_space and last_space > available_width * 0.7 then
-      break_point = last_space - 1
+  -- Simple word splitting approach - split on spaces from clean text, then reconstruct
+  local clean_text = ansi.strip_ansi(text)
+  local words = vim.split(clean_text, "%s+", { plain = false })
+  
+  -- Apply intelligent wrapping logic similar to main commit line
+  local wrapped_lines = {}
+  local current_line_words = {}
+  local current_width = graph_width
+  local continuation_width = get_display_width(continuation_prefix)
+  
+  for i, word in ipairs(words) do
+    if word ~= "" then -- Skip empty words from multiple spaces
+      local word_width = get_display_width(word)
+      local space_width = #current_line_words > 0 and 1 or 0
+      
+      -- Check if adding this word would exceed window width
+      if current_width + space_width + word_width > window_width and #current_line_words > 0 then
+        -- Start a new line with this word
+        local line_content = table.concat(current_line_words, " ")
+        table.insert(wrapped_lines, graph_prefix .. line_content)
+        
+        current_line_words = { word }
+        current_width = continuation_width + word_width
+        graph_prefix = continuation_prefix -- Use continuation prefix for subsequent lines
+      else
+        -- Add word to current line
+        table.insert(current_line_words, word)
+        current_width = current_width + space_width + word_width
+      end
     end
-
-    -- Extract the portion that fits
-    local line_portion = remaining_text:sub(1, break_point)
-    table.insert(lines, line_portion)
-
-    -- Remove the extracted portion and trim leading spaces
-    remaining_text = remaining_text:sub(break_point + 1):gsub("^%s+", "")
   end
-
-  -- Add the remaining text
-  if remaining_text ~= "" then
-    table.insert(lines, remaining_text)
+  
+  -- Add the final line
+  if #current_line_words > 0 then
+    local line_content = table.concat(current_line_words, " ")
+    table.insert(wrapped_lines, graph_prefix .. line_content)
   end
-
-  return lines
+  
+  return wrapped_lines
 end
 
 -- Helper function to apply symbol coloring to graph text
@@ -173,11 +181,9 @@ local function render_commit(commit, mode_config, window_width)
   local line_parts = {}
 
   -- Use complete graph structure from new parsing and apply proper colors
-  local graph = apply_symbol_colors(commit.complete_graph or "", commit)
+  local styled_graph = apply_symbol_colors(commit.complete_graph or "", commit)
 
-  table.insert(line_parts, graph)
-
-  -- table.insert(line_parts, "  ") -- Spacing after graph
+  table.insert(line_parts, styled_graph)
 
   -- Change ID with proper coloring based on shortest unique prefix
   local change_id = commit.short_change_id or commit.change_id:sub(1, 8)
@@ -245,8 +251,8 @@ local function render_commit(commit, mode_config, window_width)
   end
 
   -- Handle intelligent wrapping of main commit line
-  local graph_width = get_display_width(apply_symbol_colors(commit.complete_graph or "", commit))
-  local continuation_prefix = get_continuation_graph(apply_symbol_colors(commit.complete_graph or "", commit))
+  local graph_width = get_display_width(styled_graph)
+  local continuation_prefix = get_continuation_graph(styled_graph)
 
   -- Build the line with intelligent wrapping
   local current_line_parts = {}
@@ -311,22 +317,14 @@ local function render_commit(commit, mode_config, window_width)
       -- Use the captured description_graph with proper symbol coloring and wrapping
       local desc_graph = apply_symbol_colors(commit.description_graph or "", commit)
       local desc_content = formatted_desc .. COLORS.reset_fg .. COLORS.reset
+      local continuation_graph = get_continuation_graph(desc_graph)
 
-      -- Inject graph characters for proper wrapping
-      local wrapped_lines = inject_graph_chars_for_wrapping(desc_content, desc_graph, window_width)
+      -- Use word-based wrapping for descriptions
+      local wrapped_lines = wrap_text_by_words(desc_content, desc_graph, continuation_graph, window_width)
 
-      -- Add each wrapped line with appropriate graph prefix
-      for i, wrapped_text in ipairs(wrapped_lines) do
-        local line_graph
-        if i == 1 then
-          -- First line: use original graph structure
-          line_graph = desc_graph
-        else
-          -- Continuation lines: use simple │ continuation
-          line_graph = get_continuation_graph(desc_graph)
-        end
-        local desc_line = line_graph .. wrapped_text
-        table.insert(lines, desc_line)
+      -- Add each wrapped line
+      for _, wrapped_line in ipairs(wrapped_lines) do
+        table.insert(lines, wrapped_line)
       end
     end
   end
@@ -344,22 +342,14 @@ local function render_commit(commit, mode_config, window_width)
     local parents_str = table.concat(commit.parents, ", ")
     local parent_graph = apply_symbol_colors(commit.description_graph or "", commit)
     local parent_content = "parents: " .. parents_str
+    local continuation_graph = get_continuation_graph(parent_graph)
 
-    -- Inject graph characters for proper wrapping
-    local wrapped_lines = inject_graph_chars_for_wrapping(parent_content, parent_graph, window_width)
+    -- Use word-based wrapping for parent information
+    local wrapped_lines = wrap_text_by_words(parent_content, parent_graph, continuation_graph, window_width)
 
-    -- Add each wrapped line with appropriate graph prefix
-    for i, wrapped_text in ipairs(wrapped_lines) do
-      local line_graph
-      if i == 1 then
-        -- First line: use original graph structure
-        line_graph = parent_graph
-      else
-        -- Continuation lines: use simple │ continuation
-        line_graph = get_continuation_graph(parent_graph)
-      end
-      local parent_line = line_graph .. wrapped_text
-      table.insert(lines, parent_line)
+    -- Add each wrapped line
+    for _, wrapped_line in ipairs(wrapped_lines) do
+      table.insert(lines, wrapped_line)
     end
   end
 
