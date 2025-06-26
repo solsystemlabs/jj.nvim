@@ -20,6 +20,30 @@ local state = {
   buf_id = nil,
 }
 
+-- Helper function to get border configuration
+local function get_border_config()
+  local border_enabled = config.get('window.border.enabled')
+  local border_style = config.get('window.border.style')
+
+  if not border_enabled then
+    return 'none'
+  end
+
+  if border_style == 'single' then
+    return 'single'
+  elseif border_style == 'double' then
+    return 'double'
+  elseif border_style == 'rounded' then
+    return 'rounded'
+  elseif border_style == 'thick' then
+    return { '█', '█', '█', '█', '█', '█', '█', '█' }
+  elseif border_style == 'shadow' then
+    return { ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ' }
+  else
+    return border_style -- Allow custom border styles
+  end
+end
+
 -- Helper function to create window configuration
 local function create_window_config()
   local width = config.get('window.width')
@@ -37,7 +61,7 @@ local function create_window_config()
     col = col,
     row = 0,
     style = 'minimal',
-    border = 'none',
+    border = get_border_config(),
   }
 end
 
@@ -170,6 +194,8 @@ M.adjust_width = function(delta)
 
   -- Update the position if it's on the right side
   local position = config.get('window.position')
+  local border = get_border_config()
+  
   if position == 'right' then
     local win_width = vim.api.nvim_get_option('columns')
     local new_col = win_width - new_width
@@ -179,6 +205,7 @@ M.adjust_width = function(delta)
       height = vim.api.nvim_win_get_height(state.win_id),
       col = new_col,
       row = 0,
+      border = border,
     })
   else
     vim.api.nvim_win_set_config(state.win_id, {
@@ -187,6 +214,7 @@ M.adjust_width = function(delta)
       height = vim.api.nvim_win_get_height(state.win_id),
       col = 0,
       row = 0,
+      border = border,
     })
   end
 

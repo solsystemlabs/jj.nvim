@@ -6,6 +6,10 @@ M.defaults = {
     width = 70,
     position = 'right',
     wrap = true, -- Re-enabled until we fix smart wrapping
+    border = {
+      enabled = true,
+      style = 'single', -- 'none', 'single', 'double', 'rounded', 'thick', 'shadow'
+    },
   },
   keymaps = {
     toggle = '<leader>jp',
