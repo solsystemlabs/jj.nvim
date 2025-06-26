@@ -370,8 +370,17 @@ local function render_commit(commit, mode_config, window_width)
 end
 
 
--- Render a list of commits with line number tracking
-M.render_commits = function(commits, mode, window_width)
+-- Render elided section
+local function render_elided_section(elided_entry)
+  local lines = {}
+  for _, line in ipairs(elided_entry.lines) do
+    table.insert(lines, line)
+  end
+  return lines
+end
+
+-- Render a list of mixed entries (commits and elided sections) with line number tracking
+M.render_commits = function(mixed_entries, mode, window_width)
   mode = mode or config.get('log.format') or 'comfortable'
   local mode_config = RENDER_MODES[mode] or RENDER_MODES.comfortable
 
@@ -383,30 +392,48 @@ M.render_commits = function(commits, mode, window_width)
   local all_lines = {}
   local line_number = 1
 
-  -- Defensive check to ensure commits is a table
-  if not commits or type(commits) ~= 'table' then
-    commits = {}
+  -- Defensive check to ensure mixed_entries is a table
+  if not mixed_entries or type(mixed_entries) ~= 'table' then
+    mixed_entries = {}
   end
 
-  for _, commit in ipairs(commits) do
-    -- Set the starting line for this commit
-    commit.line_start = line_number
+  for _, entry in ipairs(mixed_entries) do
+    if entry.type == "elided" then
+      -- Handle elided section
+      entry.line_start = line_number
+      
+      local elided_lines = render_elided_section(entry)
+      
+      -- Add lines to the overall display
+      for _, line in ipairs(elided_lines) do
+        table.insert(all_lines, line)
+        line_number = line_number + 1
+      end
+      
+      entry.line_end = line_number - 1
+    else
+      -- Handle commit (entry is a commit object)
+      local commit = entry
+      
+      -- Set the starting line for this commit
+      commit.line_start = line_number
 
-    -- Render the commit with window width for wrapping
-    local commit_lines = render_commit(commit, mode_config, window_width)
+      -- Render the commit with window width for wrapping
+      local commit_lines = render_commit(commit, mode_config, window_width)
 
-    -- Add lines to the overall display
-    for _, line in ipairs(commit_lines) do
-      table.insert(all_lines, line)
-      line_number = line_number + 1
-    end
+      -- Add lines to the overall display
+      for _, line in ipairs(commit_lines) do
+        table.insert(all_lines, line)
+        line_number = line_number + 1
+      end
 
-    -- Set the ending line for this commit
-    commit.line_end = line_number - 1
+      -- Set the ending line for this commit
+      commit.line_end = line_number - 1
 
-    -- Adjust header_line to be absolute (not relative to commit)
-    if commit.header_line then
-      commit.header_line = commit.line_start + commit.header_line - 1
+      -- Adjust header_line to be absolute (not relative to commit)
+      if commit.header_line then
+        commit.header_line = commit.line_start + commit.header_line - 1
+      end
     end
   end
 
@@ -440,11 +467,16 @@ M.get_available_modes = function()
 end
 
 -- Get the commit that contains a specific line number
-M.get_commit_at_line = function(commits, line_number)
-  for _, commit in ipairs(commits) do
-    if commit.line_start and commit.line_end then
-      if line_number >= commit.line_start and line_number <= commit.line_end then
-        return commit
+M.get_commit_at_line = function(mixed_entries, line_number)
+  for _, entry in ipairs(mixed_entries) do
+    if entry.line_start and entry.line_end then
+      if line_number >= entry.line_start and line_number <= entry.line_end then
+        -- Only return commit entries, not elided sections
+        if entry.type == "elided" then
+          return nil -- Elided sections are not navigable
+        else
+          return entry -- This is a commit
+        end
       end
     end
   end
@@ -457,11 +489,15 @@ M.get_commit_header_line = function(commit)
 end
 
 -- Get all commit header lines (for navigation targets)
-M.get_all_header_lines = function(commits)
+M.get_all_header_lines = function(mixed_entries)
   local header_lines = {}
-  for _, commit in ipairs(commits) do
-    local header_line = M.get_commit_header_line(commit)
-    table.insert(header_lines, header_line)
+  for _, entry in ipairs(mixed_entries) do
+    -- Only include commits, not elided sections
+    if entry.type ~= "elided" then
+      local commit = entry
+      local header_line = M.get_commit_header_line(commit)
+      table.insert(header_lines, header_line)
+    end
   end
   return header_lines
 end
