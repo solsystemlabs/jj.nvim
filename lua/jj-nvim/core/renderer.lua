@@ -46,6 +46,7 @@ local COLORS = {
   description_real_current = '\27[1m', -- Current commit real description (bold white)
   description_real_regular = '', -- Regular commit real description (white)
   empty_indicator = '\27[38;5;2m', -- "(empty)" indicator (green)
+  bookmarks = '\27[1m\27[38;5;5m', -- Bookmarks (bold purple)
   branch_symbol = '│', -- Branch continuation symbol
   reset = '\27[0m', -- Reset all formatting
   reset_fg = '\27[39m', -- Reset foreground only
@@ -56,7 +57,7 @@ local function get_display_width(text)
   if not text or text == "" then
     return 0
   end
-  
+
   -- Strip ANSI codes and get display width
   local clean_text = ansi.strip_ansi(text)
   return vim.fn.strdisplaywidth(clean_text)
@@ -65,46 +66,46 @@ end
 -- Helper function to inject graph characters at wrap points
 local function inject_graph_chars_for_wrapping(text, graph_prefix, window_width)
   if not text or text == "" or not window_width then
-    return {text}
+    return { text }
   end
-  
+
   local text_width = get_display_width(text)
   local graph_width = get_display_width(graph_prefix or "")
-  
+
   -- If the line doesn't exceed window width, no injection needed
   if text_width <= window_width then
-    return {text}
+    return { text }
   end
-  
+
   -- Calculate where wraps will occur and split the text
   local lines = {}
   local remaining_text = text
   local available_width = window_width - graph_width
-  
+
   while get_display_width(remaining_text) > available_width do
     -- Find a good break point
     local break_point = available_width
-    
+
     -- Try to break at word boundary (find last space within available width)
     local clean_text = ansi.strip_ansi(remaining_text)
     local last_space = clean_text:sub(1, available_width):find(" [^ ]*$")
     if last_space and last_space > available_width * 0.7 then
       break_point = last_space - 1
     end
-    
+
     -- Extract the portion that fits
     local line_portion = remaining_text:sub(1, break_point)
     table.insert(lines, line_portion)
-    
+
     -- Remove the extracted portion and trim leading spaces
     remaining_text = remaining_text:sub(break_point + 1):gsub("^%s+", "")
   end
-  
+
   -- Add the remaining text
   if remaining_text ~= "" then
     table.insert(lines, remaining_text)
   end
-  
+
   return lines
 end
 
@@ -113,14 +114,14 @@ local function apply_symbol_colors(graph_text, commit)
   if not graph_text or graph_text == "" then
     return graph_text
   end
-  
+
   local result = graph_text
   local is_current = commit:is_current()
-  
+
   -- Apply symbol coloring in order of specificity
   -- Start with conflict symbols (×) - these should always be red regardless of commit type
   result = result:gsub("×", "\27[31m×\27[0m")
-  
+
   -- Then apply commit-specific symbol coloring
   if is_current then
     result = result:gsub("@", COLORS.current_symbol .. "@" .. COLORS.reset_fg)
@@ -128,7 +129,7 @@ local function apply_symbol_colors(graph_text, commit)
   if commit.root then
     result = result:gsub("◆", COLORS.root_symbol .. "◆" .. COLORS.reset_fg)
   end
-  
+
   return result
 end
 
@@ -137,11 +138,11 @@ local function get_continuation_graph(graph_prefix)
   if not graph_prefix or graph_prefix == "" then
     return ""
   end
-  
+
   -- Strip ANSI codes for analysis
   local clean_graph = ansi.strip_ansi(graph_prefix)
   local result = ""
-  
+
   -- Replace graph symbols, keeping the column structure
   for i = 1, vim.fn.strchars(clean_graph) do
     local char = vim.fn.strcharpart(clean_graph, i - 1, 1)
@@ -150,13 +151,13 @@ local function get_continuation_graph(graph_prefix)
     elseif char == "│" then
       result = result .. "│"
     elseif char == "─" then
-      result = result .. " "  -- horizontal lines become spaces
+      result = result .. " " -- horizontal lines become spaces
     else
       -- Other graph characters (├, ╮, ╯, ╭, ┤, ×, ○, @, ◆) become │
       result = result .. "│"
     end
   end
-  
+
   return result
 end
 
@@ -208,6 +209,14 @@ local function render_commit(commit, mode_config, window_width)
     table.insert(line_parts, " " .. timestamp_color .. timestamp .. COLORS.reset_fg)
   end
 
+  -- Bookmarks
+  if #commit.bookmarks > 0 then
+    local bookmarks_str = commit:get_bookmarks_display()
+    if bookmarks_str ~= "" then
+      table.insert(line_parts, " " .. COLORS.bookmarks .. bookmarks_str .. COLORS.reset_fg)
+    end
+  end
+
   -- Commit ID
   local commit_id = commit.short_commit_id
   if commit_id ~= "" then
@@ -223,23 +232,47 @@ local function render_commit(commit, mode_config, window_width)
     end
   end
 
-  -- Complete the main line
-  local main_line = table.concat(line_parts) .. COLORS.reset
-  table.insert(lines, main_line)
+  -- Handle intelligent wrapping of main commit line
+  local graph_width = get_display_width(apply_symbol_colors(commit.complete_graph or "", commit))
+  local continuation_prefix = get_continuation_graph(apply_symbol_colors(commit.complete_graph or "", commit))
+
+  -- Build the line with intelligent wrapping
+  local current_line_parts = {}
+  local current_width = graph_width
+  local wrapped_lines = {}
+
+  for i, part in ipairs(line_parts) do
+    local part_width = get_display_width(part)
+
+    -- Check if adding this part would exceed window width
+    if current_width + part_width > window_width and #current_line_parts > 0 then
+      -- Start a new line with this part, removing any leading space from the part
+      table.insert(wrapped_lines, table.concat(current_line_parts))
+      local trimmed_part = part:gsub("^%s+", "") -- Remove leading spaces
+      current_line_parts = { continuation_prefix .. trimmed_part }
+      current_width = get_display_width(continuation_prefix) + get_display_width(trimmed_part)
+    else
+      -- Add to current line
+      table.insert(current_line_parts, part)
+      current_width = current_width + part_width
+    end
+  end
+
+  -- Add the final line
+  if #current_line_parts > 0 then
+    table.insert(wrapped_lines, table.concat(current_line_parts))
+  end
+
+  -- Add all wrapped lines to the commit
+  for _, wrapped_line in ipairs(wrapped_lines) do
+    table.insert(lines, wrapped_line .. COLORS.reset)
+  end
 
   -- Set the header line for navigation (always the first line)
   commit.header_line = 1
 
-  -- Add additional lines from parsed graph data (descriptions, connectors, bookmarks)
-  if commit.additional_lines and #commit.additional_lines > 0 then
-    for _, line_data in ipairs(commit.additional_lines) do
-      local full_line = line_data.graph_prefix .. line_data.content
-      table.insert(lines, full_line)
-    end
-  end
-  
-  -- Always add description for non-root commits in comfortable/detailed mode
-  if mode_config.show_description and not mode_config.single_line and not commit.root then
+  -- Always add description in comfortable/detailed mode (before connector lines)
+  if mode_config.show_description and not mode_config.single_line then
     local description = commit:get_short_description()
     if description and description ~= "" then
       local desc_color
@@ -266,10 +299,10 @@ local function render_commit(commit, mode_config, window_width)
       -- Use the captured description_graph with proper symbol coloring and wrapping
       local desc_graph = apply_symbol_colors(commit.description_graph or "", commit)
       local desc_content = formatted_desc .. COLORS.reset_fg .. COLORS.reset
-      
+
       -- Inject graph characters for proper wrapping
       local wrapped_lines = inject_graph_chars_for_wrapping(desc_content, desc_graph, window_width)
-      
+
       -- Add each wrapped line with appropriate graph prefix
       for i, wrapped_text in ipairs(wrapped_lines) do
         local line_graph
@@ -286,29 +319,11 @@ local function render_commit(commit, mode_config, window_width)
     end
   end
 
-  -- Add bookmarks if configured
-  if mode_config.show_bookmarks and #commit.bookmarks > 0 then
-    local bookmarks_str = commit:get_bookmarks_display()
-    if bookmarks_str ~= "" then
-      local bookmark_graph = apply_symbol_colors(commit.description_graph or "", commit)
-      local bookmark_content = "bookmarks: " .. bookmarks_str
-      
-      -- Inject graph characters for proper wrapping
-      local wrapped_lines = inject_graph_chars_for_wrapping(bookmark_content, bookmark_graph, window_width)
-      
-      -- Add each wrapped line with appropriate graph prefix
-      for i, wrapped_text in ipairs(wrapped_lines) do
-        local line_graph
-        if i == 1 then
-          -- First line: use original graph structure
-          line_graph = bookmark_graph
-        else
-          -- Continuation lines: use simple │ continuation
-          line_graph = get_continuation_graph(bookmark_graph)
-        end
-        local bookmark_line = line_graph .. wrapped_text
-        table.insert(lines, bookmark_line)
-      end
+  -- Add additional lines from parsed graph data (connectors after description)
+  if commit.additional_lines and #commit.additional_lines > 0 then
+    for _, line_data in ipairs(commit.additional_lines) do
+      local full_line = line_data.graph_prefix .. line_data.content
+      table.insert(lines, full_line)
     end
   end
 
@@ -317,10 +332,10 @@ local function render_commit(commit, mode_config, window_width)
     local parents_str = table.concat(commit.parents, ", ")
     local parent_graph = apply_symbol_colors(commit.description_graph or "", commit)
     local parent_content = "parents: " .. parents_str
-    
+
     -- Inject graph characters for proper wrapping
     local wrapped_lines = inject_graph_chars_for_wrapping(parent_content, parent_graph, window_width)
-    
+
     -- Add each wrapped line with appropriate graph prefix
     for i, wrapped_text in ipairs(wrapped_lines) do
       local line_graph
@@ -440,4 +455,3 @@ M.get_all_header_lines = function(commits)
 end
 
 return M
-
