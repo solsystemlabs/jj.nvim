@@ -178,14 +178,17 @@ local function render_commit(commit, mode_config, window_width)
 
   -- table.insert(line_parts, "  ") -- Spacing after graph
 
-  -- Change ID with proper coloring
+  -- Change ID with proper coloring based on shortest unique prefix
   local change_id = commit.short_change_id or commit.change_id:sub(1, 8)
+  local shortest_change_id = commit.shortest_change_id or ""
   local change_id_color = is_current and COLORS.change_id_current or COLORS.change_id_regular
   local change_id_dim_color = COLORS.change_id_dim
 
-  if #change_id > 1 then
-    table.insert(line_parts, change_id_color .. change_id:sub(1, 1) .. COLORS.reset)
-    table.insert(line_parts, change_id_dim_color .. change_id:sub(2) .. COLORS.reset_fg)
+  -- Color the shortest unique prefix, dim the rest
+  local colored_length = #shortest_change_id
+  if colored_length > 0 and colored_length < #change_id then
+    table.insert(line_parts, change_id_color .. change_id:sub(1, colored_length) .. COLORS.reset)
+    table.insert(line_parts, change_id_dim_color .. change_id:sub(colored_length + 1) .. COLORS.reset_fg)
   else
     table.insert(line_parts, change_id_color .. change_id .. COLORS.reset)
   end
@@ -217,16 +220,19 @@ local function render_commit(commit, mode_config, window_width)
     end
   end
 
-  -- Commit ID
+  -- Commit ID with proper coloring based on shortest unique prefix
   local commit_id = commit.short_commit_id
   if commit_id ~= "" then
+    local shortest_commit_id = commit.shortest_commit_id or ""
     local commit_id_color = is_current and COLORS.commit_id_current or COLORS.commit_id_regular
     local commit_id_dim_color = COLORS.commit_id_dim
 
     table.insert(line_parts, " ")
-    if #commit_id > 1 then
-      table.insert(line_parts, commit_id_color .. commit_id:sub(1, 1) .. COLORS.reset)
-      table.insert(line_parts, commit_id_dim_color .. commit_id:sub(2) .. COLORS.reset_fg)
+    -- Color the shortest unique prefix, dim the rest
+    local colored_length = #shortest_commit_id
+    if colored_length > 0 and colored_length < #commit_id then
+      table.insert(line_parts, commit_id_color .. commit_id:sub(1, colored_length) .. COLORS.reset)
+      table.insert(line_parts, commit_id_dim_color .. commit_id:sub(colored_length + 1) .. COLORS.reset_fg)
     else
       table.insert(line_parts, commit_id_color .. commit_id .. COLORS.reset)
     end

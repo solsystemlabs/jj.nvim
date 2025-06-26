@@ -7,7 +7,7 @@ local ansi = require('jj-nvim.utils.ansi')
 -- Template to extract commit data using jj's template syntax
 -- Each field is separated by | delimiter, with explicit newlines between commits
 local COMMIT_TEMPLATE =
-[[change_id ++ "|" ++ commit_id ++ "|" ++ change_id.short(8) ++ "|" ++ commit_id.short(8) ++ "|" ++ author.name() ++ "|" ++ author.email() ++ "|" ++ author.timestamp() ++ "|" ++ description.first_line() ++ "|" ++ if(current_working_copy, "true", "false") ++ "|" ++ if(empty, "true", "false") ++ "|" ++ if(mine, "true", "false") ++ "|" ++ if(root, "true", "false") ++ "|" ++ bookmarks.join(",") ++ "|" ++ parents.map(|p| p.commit_id().short(8)).join(",") ++ "\n"]]
+[[change_id ++ "|" ++ commit_id ++ "|" ++ change_id.short(8) ++ "|" ++ commit_id.short(8) ++ "|" ++ change_id.shortest() ++ "|" ++ commit_id.shortest() ++ "|" ++ author.name() ++ "|" ++ author.email() ++ "|" ++ author.timestamp() ++ "|" ++ description.first_line() ++ "|" ++ if(current_working_copy, "true", "false") ++ "|" ++ if(empty, "true", "false") ++ "|" ++ if(mine, "true", "false") ++ "|" ++ if(root, "true", "false") ++ "|" ++ bookmarks.join(",") ++ "|" ++ parents.map(|p| p.commit_id().short(8)).join(",") ++ "\n"]]
 
 
 -- Helper function to parse template data into lookup map
@@ -20,24 +20,26 @@ local function parse_template_data(data_output)
     if line ~= "" then
       local parts = vim.split(line, '|', { plain = true })
 
-      if #parts >= 14 then
+      if #parts >= 16 then
         local commit_data = {
           change_id = parts[1] or "",
           commit_id = parts[2] or "",
           short_change_id = parts[3] or "",
           short_commit_id = parts[4] or "",
+          shortest_change_id = parts[5] or "",
+          shortest_commit_id = parts[6] or "",
           author = {
-            name = parts[5] or "",
-            email = parts[6] or "",
-            timestamp = parts[7] or ""
+            name = parts[7] or "",
+            email = parts[8] or "",
+            timestamp = parts[9] or ""
           },
-          description = parts[8] or "",
-          current_working_copy = parts[9] == "true",
-          empty = parts[10] == "true",
-          mine = parts[11] == "true",
-          root = parts[12] == "true",
-          bookmarks = parts[13] ~= "" and vim.split(parts[13], ',', { plain = true }) or {},
-          parents = parts[14] ~= "" and vim.split(parts[14], ',', { plain = true }) or {}
+          description = parts[10] or "",
+          current_working_copy = parts[11] == "true",
+          empty = parts[12] == "true",
+          mine = parts[13] == "true",
+          root = parts[14] == "true",
+          bookmarks = parts[15] ~= "" and vim.split(parts[15], ',', { plain = true }) or {},
+          parents = parts[16] ~= "" and vim.split(parts[16], ',', { plain = true }) or {}
         }
 
         commit_data_by_id[commit_data.short_commit_id] = commit_data

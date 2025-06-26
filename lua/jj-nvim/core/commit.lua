@@ -13,6 +13,8 @@ function Commit.new(data)
   self.commit_id = data.commit_id or ""
   self.short_change_id = data.short_change_id or ""
   self.short_commit_id = data.short_commit_id or ""
+  self.shortest_change_id = data.shortest_change_id or ""
+  self.shortest_commit_id = data.shortest_commit_id or ""
   
   -- Authorship information
   self.author = data.author or {}
