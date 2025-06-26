@@ -9,6 +9,7 @@ M.defaults = {
     border = {
       enabled = true,
       style = 'left', -- 'none', 'single', 'double', 'rounded', 'thick', 'shadow', 'left'
+      color = 'gray', -- 'gray', 'subtle', 'accent', 'muted' or hex color like '#555555'
     },
   },
   keymaps = {

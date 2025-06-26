@@ -3,6 +3,7 @@ local M = {}
 local config = require('jj-nvim.config')
 local buffer = require('jj-nvim.ui.buffer')
 local navigation = require('jj-nvim.ui.navigation')
+local themes = require('jj-nvim.ui.themes')
 
 -- Constants
 local WINDOW_CONSTRAINTS = {
@@ -20,6 +21,22 @@ local state = {
   buf_id = nil,
 }
 
+-- Helper function to setup border highlight group
+local function setup_border_highlight()
+  local border_color = config.get('window.border.color')
+  local theme_name = config.get('colors.theme') or 'auto'
+  
+  -- Auto-detect theme if set to 'auto'
+  if theme_name == 'auto' then
+    theme_name = themes.detect_theme()
+  end
+  
+  local hex_color = themes.get_border_color(border_color, theme_name)
+  
+  -- Create a highlight group for the border
+  vim.api.nvim_set_hl(0, 'JJBorder', { fg = hex_color })
+end
+
 -- Helper function to get border configuration
 local function get_border_config()
   local border_enabled = config.get('window.border.enabled')
@@ -28,6 +45,9 @@ local function get_border_config()
   if not border_enabled then
     return 'none'
   end
+
+  -- Setup the border highlight
+  setup_border_highlight()
 
   if border_style == 'single' then
     return 'single'
@@ -72,7 +92,14 @@ end
 local function setup_window_display()
   vim.api.nvim_win_set_option(state.win_id, 'wrap', config.get('window.wrap'))
   vim.api.nvim_win_set_option(state.win_id, 'cursorline', true)
-  vim.api.nvim_win_set_option(state.win_id, 'winhl', '')
+  
+  -- Set border highlight if border is enabled
+  local border_enabled = config.get('window.border.enabled')
+  if border_enabled then
+    vim.api.nvim_win_set_option(state.win_id, 'winhl', 'FloatBorder:JJBorder')
+  else
+    vim.api.nvim_win_set_option(state.win_id, 'winhl', '')
+  end
 
   -- Ensure buffer supports colors
   vim.api.nvim_buf_set_option(state.buf_id, 'syntax', 'off')
