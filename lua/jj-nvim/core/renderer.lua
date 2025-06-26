@@ -290,7 +290,8 @@ local function render_commit(commit, mode_config, window_width)
   commit.header_line = 1
 
   -- Always add description in comfortable/detailed mode (before connector lines)
-  if mode_config.show_description and not mode_config.single_line then
+  -- Skip description for root commits
+  if mode_config.show_description and not mode_config.single_line and not commit.root then
     local description = commit:get_short_description()
     if description and description ~= "" then
       local desc_color
