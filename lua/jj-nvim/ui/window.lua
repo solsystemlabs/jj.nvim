@@ -4,6 +4,7 @@ local config = require('jj-nvim.config')
 local buffer = require('jj-nvim.ui.buffer')
 local navigation = require('jj-nvim.ui.navigation')
 local themes = require('jj-nvim.ui.themes')
+local actions = require('jj-nvim.jj.actions')
 
 -- Constants
 local WINDOW_CONSTRAINTS = {
@@ -197,6 +198,24 @@ M.setup_keymaps = function()
       -- TODO: Implement diff preview
     else
       vim.notify("No commit selected", vim.log.levels.WARN)
+    end
+  end, opts)
+
+  -- Edit commit
+  vim.keymap.set('n', 'e', function()
+    local commit = navigation.get_current_commit(state.win_id)
+    if actions.edit_commit(commit) then
+      -- Refresh buffer to show updated state
+      buffer.refresh(state.buf_id)
+    end
+  end, opts)
+
+  -- Abandon commit
+  vim.keymap.set('n', 'a', function()
+    local commit = navigation.get_current_commit(state.win_id)
+    if actions.abandon_commit(commit) then
+      -- Refresh buffer to show updated state
+      buffer.refresh(state.buf_id)
     end
   end, opts)
 
