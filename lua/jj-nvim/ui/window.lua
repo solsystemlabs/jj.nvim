@@ -248,6 +248,58 @@ M.setup_keymaps = function()
   vim.keymap.set('n', '_', function() M.adjust_width(-WIDTH_ADJUSTMENTS.SMALL) end, opts)
 end
 
+-- Setup keymaps for target selection mode
+M.setup_target_selection_keymaps = function()
+  if not state.buf_id then return end
+
+  local opts = { noremap = true, silent = true, buffer = state.buf_id }
+
+  -- Override Enter and Escape for target selection
+  vim.keymap.set('n', '<CR>', function() M.confirm_target_selection() end, opts)
+  vim.keymap.set('n', '<Esc>', function() M.cancel_target_selection() end, opts)
+
+  -- Keep navigation keys active (j/k for commit navigation)
+  vim.keymap.set('n', 'j', function()
+    navigation.next_commit(state.win_id)
+  end, opts)
+  vim.keymap.set('n', 'k', function()
+    navigation.prev_commit(state.win_id)
+  end, opts)
+
+  -- Additional navigation
+  vim.keymap.set('n', 'J', function()
+    navigation.next_commit_centered(state.win_id)
+  end, opts)
+  vim.keymap.set('n', 'K', function()
+    navigation.prev_commit_centered(state.win_id)
+  end, opts)
+
+  -- Go to specific commits
+  vim.keymap.set('n', 'gg', function()
+    navigation.goto_first_commit(state.win_id)
+  end, opts)
+  vim.keymap.set('n', 'G', function()
+    navigation.goto_last_commit(state.win_id)
+  end, opts)
+  vim.keymap.set('n', '@', function()
+    navigation.goto_current_commit(state.win_id)
+  end, opts)
+
+  -- Disable other actions during target selection
+  vim.keymap.set('n', 'q', function() 
+    vim.notify("Press Esc to cancel target selection", vim.log.levels.INFO)
+  end, opts)
+  vim.keymap.set('n', 'n', function() 
+    vim.notify("Press Esc to cancel target selection", vim.log.levels.INFO)
+  end, opts)
+  vim.keymap.set('n', 'e', function() 
+    vim.notify("Press Esc to cancel target selection", vim.log.levels.INFO)
+  end, opts)
+  vim.keymap.set('n', 'a', function() 
+    vim.notify("Press Esc to cancel target selection", vim.log.levels.INFO)
+  end, opts)
+end
+
 M.adjust_width = function(delta)
   if not M.is_open() then return end
 
@@ -297,8 +349,9 @@ M.setup_commit_highlighting = function()
   -- Create highlight namespace for commit highlighting
   local ns_id = vim.api.nvim_create_namespace('jj_commit_highlight')
 
-  -- Define highlight group for selected commit
-  vim.api.nvim_set_hl(0, 'JJCommitSelected', { bg = '#3c3836' }) -- Dark background for selection
+  -- Define highlight groups for selected commit
+  vim.api.nvim_set_hl(0, 'JJCommitSelected', { bg = '#3c3836' }) -- Dark background for normal selection
+  vim.api.nvim_set_hl(0, 'JJTargetSelection', { bg = '#1d2021', fg = '#fb4934', bold = true }) -- Red background for target selection
 
   -- Function to highlight the current commit
   local function highlight_current_commit()
@@ -318,6 +371,9 @@ M.setup_commit_highlighting = function()
     -- Highlight all lines belonging to this commit with full window width
     if commit.line_start and commit.line_end then
       local window_width = vim.api.nvim_win_get_width(state.win_id)
+      
+      -- Choose highlight group based on current mode
+      local highlight_group = M.is_mode(MODES.TARGET_SELECT) and 'JJTargetSelection' or 'JJCommitSelected'
 
       for line_idx = commit.line_start, commit.line_end do
         -- Get the actual line content to see its length
@@ -325,13 +381,13 @@ M.setup_commit_highlighting = function()
         local content_length = vim.fn.strdisplaywidth(line_content)
 
         -- Highlight the actual content
-        vim.api.nvim_buf_add_highlight(state.buf_id, ns_id, 'JJCommitSelected', line_idx - 1, 0, -1)
+        vim.api.nvim_buf_add_highlight(state.buf_id, ns_id, highlight_group, line_idx - 1, 0, -1)
 
         -- Extend highlighting to full window width if content is shorter
         if content_length < window_width then
           -- Add virtual text to fill the remaining space
           vim.api.nvim_buf_set_extmark(state.buf_id, ns_id, line_idx - 1, #line_content, {
-            virt_text = { { string.rep(" ", window_width - content_length), 'JJCommitSelected' } },
+            virt_text = { { string.rep(" ", window_width - content_length), highlight_group } },
             virt_text_pos = 'inline'
           })
         end
@@ -373,6 +429,85 @@ end
 M.reset_mode = function()
   state.mode = MODES.NORMAL
   state.mode_data = {}
+  -- Clear any target selection UI feedback
+  if state.win_id and vim.api.nvim_win_is_valid(state.win_id) then
+    M.setup_commit_highlighting()  -- Reset to normal highlighting
+  end
+end
+
+-- Enter target selection mode
+M.enter_target_selection_mode = function(action_type)
+  if not M.is_open() then
+    vim.notify("JJ window is not open", vim.log.levels.WARN)
+    return
+  end
+  
+  -- Store current cursor position to return to if cancelled
+  local current_line = vim.api.nvim_win_get_cursor(state.win_id)[1]
+  
+  M.set_mode(MODES.TARGET_SELECT, {
+    action = action_type,  -- "after" or "before"
+    original_line = current_line
+  })
+  
+  -- Update keymaps for target selection
+  M.setup_target_selection_keymaps()
+  
+  -- Show status message
+  local action_desc = action_type == "after" and "after" or "before"
+  vim.notify(string.format("Select commit to insert %s (Enter to confirm, Esc to cancel)", action_desc), vim.log.levels.INFO)
+end
+
+-- Confirm target selection and execute action
+M.confirm_target_selection = function()
+  if not M.is_mode(MODES.TARGET_SELECT) then
+    return
+  end
+  
+  local mode_data = select(2, M.get_mode())
+  local target_commit = navigation.get_current_commit(state.win_id)
+  
+  if not target_commit then
+    vim.notify("No valid commit selected", vim.log.levels.WARN)
+    return
+  end
+  
+  local action_type = mode_data.action
+  local success = false
+  
+  if action_type == "after" then
+    success = actions.new_after(target_commit)
+  elseif action_type == "before" then
+    success = actions.new_before(target_commit)
+  end
+  
+  if success then
+    buffer.refresh(state.buf_id)
+  end
+  
+  -- Return to normal mode
+  M.reset_mode()
+  M.setup_keymaps()  -- Restore normal keymaps
+end
+
+-- Cancel target selection and return to normal mode
+M.cancel_target_selection = function()
+  if not M.is_mode(MODES.TARGET_SELECT) then
+    return
+  end
+  
+  local mode_data = select(2, M.get_mode())
+  
+  -- Return cursor to original position
+  if mode_data.original_line and state.win_id and vim.api.nvim_win_is_valid(state.win_id) then
+    vim.api.nvim_win_set_cursor(state.win_id, {mode_data.original_line, 0})
+  end
+  
+  -- Return to normal mode
+  M.reset_mode()
+  M.setup_keymaps()  -- Restore normal keymaps
+  
+  vim.notify("Target selection cancelled", vim.log.levels.INFO)
 end
 
 -- Show new change creation menu
@@ -414,15 +549,15 @@ M.show_new_change_menu = function()
       },
       {
         key = "e",
-        description = "Create new change after (siblings)",
+        description = "Create new change after (select target)",
         action = "new_after", 
-        data = { parent = current_commit and current_commit.parents[1] }
+        data = {}
       },
       {
         key = "b",
-        description = "Create new change before (insert)",
+        description = "Create new change before (select target)",
         action = "new_before",
-        data = { child = current_commit }
+        data = {}
       }
     }
   }
@@ -464,8 +599,14 @@ M.handle_new_change_selection = function(selected_item)
         vim.notify("New change cancelled", vim.log.levels.INFO)
       end
     end)
+  elseif selected_item.action == "new_after" then
+    -- Enter target selection mode for after
+    M.enter_target_selection_mode("after")
+  elseif selected_item.action == "new_before" then
+    -- Enter target selection mode for before
+    M.enter_target_selection_mode("before")
   else
-    -- Other actions will be implemented in later phases
+    -- Fallback for unknown actions
     vim.notify("Feature not yet implemented: " .. selected_item.description, vim.log.levels.INFO)
   end
 end

@@ -200,4 +200,126 @@ M.new_child_with_message = function(parent_commit, message)
   return M.new_child(parent_commit, { message = message })
 end
 
+-- Create a new change after the specified commit (sibling)
+M.new_after = function(target_commit, options)
+  if not target_commit then
+    vim.notify("No target commit specified", vim.log.levels.WARN)
+    return false
+  end
+
+  options = options or {}
+  
+  -- Validate target commit data
+  local change_id = target_commit.change_id or target_commit.short_change_id
+  if not change_id or change_id == "" then
+    vim.notify("Invalid target commit: missing change ID", vim.log.levels.ERROR)
+    return false
+  end
+
+  -- Build command arguments for jj new --after
+  local cmd_args = {'new', '--after', change_id}
+  
+  -- Add message if provided
+  if options.message and options.message ~= "" then
+    table.insert(cmd_args, '-m')
+    table.insert(cmd_args, options.message)
+  end
+
+  vim.notify(string.format("Creating new change after commit %s...", 
+    target_commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+
+  -- Execute jj new --after command
+  local result, err = commands.execute(cmd_args)
+  
+  if not result then
+    local error_msg = err or "Unknown error"
+    if error_msg:find("No such revision") then
+      error_msg = "Commit not found - it may have been abandoned or modified"
+    elseif error_msg:find("would create a cycle") then
+      error_msg = "Cannot create change - would create a cycle in commit graph"
+    elseif error_msg:find("not in workspace") then
+      error_msg = "Not in a jj workspace"
+    end
+    
+    vim.notify(string.format("Failed to create new change: %s", error_msg), vim.log.levels.ERROR)
+    return false
+  end
+
+  -- Parse output for additional information
+  local new_change_id = result:match("Working copy now at: (%w+)")
+  if new_change_id then
+    vim.notify(string.format("Created new change %s after %s", 
+      new_change_id:sub(1, 8), target_commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+  else
+    vim.notify(string.format("Created new change after %s", 
+      target_commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+  end
+  
+  return true
+end
+
+-- Create a new change before the specified commit (insert)
+M.new_before = function(target_commit, options)
+  if not target_commit then
+    vim.notify("No target commit specified", vim.log.levels.WARN)
+    return false
+  end
+
+  options = options or {}
+  
+  -- Validate target commit data
+  local change_id = target_commit.change_id or target_commit.short_change_id
+  if not change_id or change_id == "" then
+    vim.notify("Invalid target commit: missing change ID", vim.log.levels.ERROR)
+    return false
+  end
+
+  -- Don't allow inserting before root commit
+  if target_commit.root then
+    vim.notify("Cannot insert before the root commit", vim.log.levels.WARN)
+    return false
+  end
+
+  -- Build command arguments for jj new --before
+  local cmd_args = {'new', '--before', change_id}
+  
+  -- Add message if provided
+  if options.message and options.message ~= "" then
+    table.insert(cmd_args, '-m')
+    table.insert(cmd_args, options.message)
+  end
+
+  vim.notify(string.format("Creating new change before commit %s...", 
+    target_commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+
+  -- Execute jj new --before command
+  local result, err = commands.execute(cmd_args)
+  
+  if not result then
+    local error_msg = err or "Unknown error"
+    if error_msg:find("No such revision") then
+      error_msg = "Commit not found - it may have been abandoned or modified"
+    elseif error_msg:find("would create a cycle") then
+      error_msg = "Cannot create change - would create a cycle in commit graph"
+    elseif error_msg:find("not in workspace") then
+      error_msg = "Not in a jj workspace"
+    end
+    
+    vim.notify(string.format("Failed to create new change: %s", error_msg), vim.log.levels.ERROR)
+    return false
+  end
+
+  -- Parse output for additional information
+  local new_change_id = result:match("Working copy now at: (%w+)")
+  if new_change_id then
+    vim.notify(string.format("Created new change %s before %s", 
+      new_change_id:sub(1, 8), target_commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+  else
+    vim.notify(string.format("Created new change before %s", 
+      target_commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+  end
+  
+  return true
+end
+
 return M
