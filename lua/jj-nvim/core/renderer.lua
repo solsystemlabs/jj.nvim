@@ -80,24 +80,24 @@ local function wrap_text_by_words(text, graph_prefix, continuation_prefix, windo
   -- Simple word splitting approach - split on spaces from clean text, then reconstruct
   local clean_text = ansi.strip_ansi(text)
   local words = vim.split(clean_text, "%s+", { plain = false })
-  
+
   -- Apply intelligent wrapping logic similar to main commit line
   local wrapped_lines = {}
   local current_line_words = {}
   local current_width = graph_width
   local continuation_width = get_display_width(continuation_prefix)
-  
+
   for i, word in ipairs(words) do
     if word ~= "" then -- Skip empty words from multiple spaces
       local word_width = get_display_width(word)
       local space_width = #current_line_words > 0 and 1 or 0
-      
+
       -- Check if adding this word would exceed window width
       if current_width + space_width + word_width > window_width and #current_line_words > 0 then
         -- Start a new line with this word
         local line_content = table.concat(current_line_words, " ")
         table.insert(wrapped_lines, graph_prefix .. line_content)
-        
+
         current_line_words = { word }
         current_width = continuation_width + word_width
         graph_prefix = continuation_prefix -- Use continuation prefix for subsequent lines
@@ -108,13 +108,13 @@ local function wrap_text_by_words(text, graph_prefix, continuation_prefix, windo
       end
     end
   end
-  
+
   -- Add the final line
   if #current_line_words > 0 then
     local line_content = table.concat(current_line_words, " ")
     table.insert(wrapped_lines, graph_prefix .. line_content)
   end
-  
+
   return wrapped_lines
 end
 
@@ -148,29 +148,36 @@ local function get_continuation_graph_from_commit(source_line)
     return ""
   end
 
-  -- Strip ANSI codes for analysis
+  -- 1. Take the graph content part of the main line
   local clean_line = ansi.strip_ansi(source_line)
   
-  -- Extract only the graph prefix (stop at description text)
-  local graph_prefix = ""
-  for i = 1, vim.fn.strchars(clean_line) do
-    local char = vim.fn.strcharpart(clean_line, i - 1, 1)
-    
-    -- Only process graph characters and spaces
-    if char:match("[│├─╮╯╭┤~@○◆×%s]") then
-      graph_prefix = graph_prefix .. char
+  -- Extract graph content by finding where description starts
+  local graph_content = ""
+  local chars = {}
+  
+  -- Convert to UTF-8 character array
+  for char in string.gmatch(clean_line, "[%z\1-\127\194-\244][\128-\191]*") do
+    table.insert(chars, char)
+  end
+  
+  -- Find end of graph section
+  for _, char in ipairs(chars) do
+    if char == " " or char == "│" or char == "@" or char == "○" or char == "◆" or char == "×" or 
+       char == "─" or char == "├" or char == "┤" or char == "╭" or char == "╰" or char == "╮" or char == "╯" then
+      graph_content = graph_content .. char
     else
-      -- Hit description text, stop here
+      -- Hit description text
       break
     end
   end
   
-  -- Get the display width of the graph prefix
-  local graph_width = get_display_width(graph_prefix)
+  -- 2. Count columns, trimming only outer whitespace
+  local trimmed_graph = graph_content:gsub("^%s+", ""):gsub("%s+$", "")
+  local num_chars = get_display_width(trimmed_graph)
   
-  -- Generate continuation: '│ ' repeated (width / 2) times, minus 1
-  local pairs_count = math.floor(graph_width / 2) - 1
-  return string.rep("│ ", pairs_count)
+  -- 3. Use formula numChars / 2 for '| ' instances, plus single '|' at end, plus '  ' for text indentation
+  local pairs_count = math.floor(num_chars / 2)
+  return string.rep("│ ", pairs_count) .. "│" .. "  "
 end
 
 
@@ -322,12 +329,8 @@ local function render_commit(commit, mode_config, window_width)
       -- Use the captured description_graph with proper symbol coloring and wrapping
       local desc_graph = apply_symbol_colors(commit.description_graph or "", commit)
       local desc_content = formatted_desc .. COLORS.reset_fg .. COLORS.reset
-      -- Use the longer of commit graph or description graph for continuation
-      local source_graph = commit.complete_graph
-      if commit.description_graph and vim.fn.strchars(ansi.strip_ansi(commit.description_graph)) > vim.fn.strchars(ansi.strip_ansi(source_graph)) then
-        source_graph = commit.description_graph
-      end
-      local continuation_graph = get_continuation_graph_from_commit(source_graph)
+      -- Use the description graph structure for continuation
+      local continuation_graph = get_continuation_graph_from_commit(commit.description_graph)
 
       -- Use word-based wrapping for descriptions
       local wrapped_lines = wrap_text_by_words(desc_content, desc_graph, continuation_graph, window_width)
@@ -401,31 +404,31 @@ M.render_commits = function(mixed_entries, mode, window_width)
     if entry.type == "elided" then
       -- Handle elided section
       entry.line_start = line_number
-      
+
       local elided_lines = render_elided_section(entry)
-      
+
       -- Add lines to the overall display
       for _, line in ipairs(elided_lines) do
         table.insert(all_lines, line)
         line_number = line_number + 1
       end
-      
+
       entry.line_end = line_number - 1
     elseif entry.type == "connector" then
       -- Handle standalone connector section
       entry.line_start = line_number
-      
+
       -- Add connector lines directly to display
       for _, line in ipairs(entry.lines) do
         table.insert(all_lines, line)
         line_number = line_number + 1
       end
-      
+
       entry.line_end = line_number - 1
     else
       -- Handle commit (entry is a commit object)
       local commit = entry
-      
+
       -- Set the starting line for this commit
       commit.line_start = line_number
 
@@ -484,7 +487,7 @@ M.get_commit_at_line = function(mixed_entries, line_number)
       if line_number >= entry.line_start and line_number <= entry.line_end then
         -- Only return commit entries, not elided sections
         if entry.type == "elided" then
-          return nil -- Elided sections are not navigable
+          return nil   -- Elided sections are not navigable
         else
           return entry -- This is a commit
         end

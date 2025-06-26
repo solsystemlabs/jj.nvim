@@ -399,9 +399,6 @@ local function merge_graph_and_template_data(graph_entries, commit_data_by_id)
 
         -- Add graph structure from Phase 1
         commit.complete_graph = graph_entry.commit_graph
-        if graph_entry.description_graph then
-          graph_entry.description_graph = graph_entry.description_graph .. "  "
-        end
         commit.description_graph = graph_entry.description_graph or
             generate_fallback_description_graph(graph_entry.commit_graph)
 
