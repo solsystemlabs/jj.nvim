@@ -107,4 +107,57 @@ M.abandon_commit = function(commit)
   return true
 end
 
+-- Create a new child change from the specified parent commit
+M.new_child = function(parent_commit)
+  if not parent_commit then
+    vim.notify("No parent commit specified", vim.log.levels.WARN)
+    return false
+  end
+
+  -- Don't allow creating children from the root commit in most cases
+  if parent_commit.root then
+    vim.notify("Cannot create child of root commit", vim.log.levels.WARN)
+    return false
+  end
+
+  local change_id = parent_commit.change_id or parent_commit.short_change_id
+  if not change_id or change_id == "" then
+    vim.notify("Invalid parent commit: missing change ID", vim.log.levels.ERROR)
+    return false
+  end
+
+  vim.notify(string.format("Creating new child of commit %s...", 
+    parent_commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+
+  -- Execute jj new command with parent specification
+  local result, err = commands.execute({'new', change_id})
+  
+  if not result then
+    vim.notify(string.format("Failed to create new change: %s", err or "Unknown error"), vim.log.levels.ERROR)
+    return false
+  end
+
+  -- Success feedback
+  vim.notify(string.format("Created new child change of %s", 
+    parent_commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+  
+  return true
+end
+
+-- Get a user-friendly description of what the new child command will do
+M.get_new_child_description = function(parent_commit)
+  if not parent_commit then
+    return "No parent commit selected"
+  end
+  
+  if parent_commit.root then
+    return "Cannot create child of root commit"
+  end
+  
+  local change_id = parent_commit.short_change_id or parent_commit.change_id:sub(1, 8)
+  local description = parent_commit:get_short_description()
+  
+  return string.format("Create new child of %s: %s", change_id, description)
+end
+
 return M

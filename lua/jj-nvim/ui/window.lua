@@ -5,6 +5,7 @@ local buffer = require('jj-nvim.ui.buffer')
 local navigation = require('jj-nvim.ui.navigation')
 local themes = require('jj-nvim.ui.themes')
 local actions = require('jj-nvim.jj.actions')
+local inline_menu = require('jj-nvim.ui.inline_menu')
 
 -- Constants
 local WINDOW_CONSTRAINTS = {
@@ -17,9 +18,19 @@ local WIDTH_ADJUSTMENTS = {
   LARGE = 5,
 }
 
+-- Window modes for different interaction states
+local MODES = {
+  NORMAL = 'normal',       -- Standard log browsing mode
+  NEW_MENU = 'new_menu',   -- New change creation menu mode
+  TARGET_SELECT = 'target_select', -- Target selection mode for new changes
+  MULTI_SELECT = 'multi_select',   -- Multi-parent selection mode
+}
+
 local state = {
   win_id = nil,
   buf_id = nil,
+  mode = MODES.NORMAL,
+  mode_data = {},  -- Mode-specific data storage
 }
 
 -- Helper function to setup border highlight group
@@ -219,6 +230,11 @@ M.setup_keymaps = function()
     end
   end, opts)
 
+  -- New change creation
+  vim.keymap.set('n', 'n', function()
+    M.show_new_change_menu()
+  end, opts)
+
   -- Buffer refresh
   vim.keymap.set('n', 'R', function()
     vim.notify("Refreshing commits...", vim.log.levels.INFO)
@@ -338,6 +354,95 @@ M.get_current_line = function()
   if not M.is_open() then return nil end
   local line_nr = vim.api.nvim_win_get_cursor(state.win_id)[1]
   return vim.api.nvim_buf_get_lines(state.buf_id, line_nr - 1, line_nr, false)[1]
+end
+
+-- Mode management functions
+M.set_mode = function(mode, data)
+  state.mode = mode
+  state.mode_data = data or {}
+end
+
+M.get_mode = function()
+  return state.mode, state.mode_data
+end
+
+M.is_mode = function(mode)
+  return state.mode == mode
+end
+
+M.reset_mode = function()
+  state.mode = MODES.NORMAL
+  state.mode_data = {}
+end
+
+-- Show new change creation menu
+M.show_new_change_menu = function()
+  if not M.is_open() then
+    return
+  end
+  
+  -- Check if menu is already active
+  if inline_menu.is_active() then
+    return
+  end
+  
+  -- Get current commit for context
+  local current_commit = navigation.get_current_commit(state.win_id)
+  
+  -- Define menu configuration
+  local menu_config = {
+    id = "new_change",
+    title = "Create New Change",
+    items = {
+      {
+        key = "c",
+        description = "Create new child change",
+        action = "new_child",
+        data = { parent = current_commit }
+      },
+      {
+        key = "e",
+        description = "Create new change after (siblings)",
+        action = "new_after", 
+        data = { parent = current_commit and current_commit.parents[1] }
+      },
+      {
+        key = "b",
+        description = "Create new change before (insert)",
+        action = "new_before",
+        data = { child = current_commit }
+      }
+    }
+  }
+  
+  -- Show the menu
+  local success = inline_menu.show(state.win_id, menu_config, {
+    on_select = function(selected_item)
+      M.handle_new_change_selection(selected_item)
+    end,
+    on_cancel = function()
+      M.reset_mode()
+    end
+  })
+  
+  if success then
+    M.set_mode(MODES.NEW_MENU, { menu_config = menu_config })
+  end
+end
+
+-- Handle new change menu selection
+M.handle_new_change_selection = function(selected_item)
+  M.reset_mode()
+  
+  if selected_item.action == "new_child" then
+    -- Simple new child creation
+    if actions.new_child(selected_item.data.parent) then
+      buffer.refresh(state.buf_id)
+    end
+  else
+    -- Other actions will be implemented in later phases
+    vim.notify("Feature not yet implemented: " .. selected_item.description, vim.log.levels.INFO)
+  end
 end
 
 return M
