@@ -39,6 +39,9 @@ local function get_border_config()
     return { '█', '█', '█', '█', '█', '█', '█', '█' }
   elseif border_style == 'shadow' then
     return { ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ' }
+  elseif border_style == 'left' then
+    -- Left-only border: top-left, top, top-right, right, bottom-right, bottom, bottom-left, left
+    return { '', '', '', '', '', '', '', '│' }
   else
     return border_style -- Allow custom border styles
   end

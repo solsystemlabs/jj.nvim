@@ -8,7 +8,7 @@ M.defaults = {
     wrap = true, -- Re-enabled until we fix smart wrapping
     border = {
       enabled = true,
-      style = 'single', -- 'none', 'single', 'double', 'rounded', 'thick', 'shadow'
+      style = 'left', -- 'none', 'single', 'double', 'rounded', 'thick', 'shadow', 'left'
     },
   },
   keymaps = {
