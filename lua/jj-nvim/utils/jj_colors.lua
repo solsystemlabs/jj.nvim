@@ -2,7 +2,7 @@ local M = {}
 
 local commands = require('jj-nvim.jj.commands')
 local config = require('jj-nvim.config')
-local themes = require('jj-nvim.themes')
+local themes = require('jj-nvim.ui.themes')
 
 
 -- Cache for jj color configuration
@@ -42,17 +42,19 @@ M.map_256_to_jj_color = function(color_num)
     return theme.color_256_map[color_num]
   end
   
-  -- Fallback to semantic mappings
+  -- Fallback to semantic mappings based on actual jj color usage
   local jj_colors = M.get_jj_colors()
   local semantic_mappings = {
     [1] = theme and theme.colors and theme.colors.red, -- Color 1 (red) for conflicts and symbols
-    [2] = themes.map_jj_color(jj_colors and jj_colors['working_copy'], theme) or (theme and theme.colors and theme.colors.bright_green),
-    [13] = themes.map_jj_color(jj_colors and jj_colors['change_id'], theme) or (theme and theme.colors and theme.colors.bright_magenta),
-    [8] = theme and theme.colors and theme.colors.bright_black,
-    [3] = themes.map_jj_color(jj_colors and jj_colors['author'], theme) or (theme and theme.colors and theme.colors.yellow),
-    [14] = themes.map_jj_color(jj_colors and jj_colors['timestamp'], theme) or (theme and theme.colors and theme.colors.bright_cyan),
-    [4] = themes.map_jj_color(jj_colors and jj_colors['commit_id'], theme) or (theme and theme.colors and theme.colors.blue),
-    [5] = themes.map_jj_color(jj_colors and jj_colors['bookmark'], theme) or (theme and theme.colors and theme.colors.magenta),
+    [2] = themes.map_jj_color(jj_colors and jj_colors['working_copy'], theme) or (theme and theme.colors and theme.colors.green), -- (empty) text
+    [3] = themes.map_jj_color(jj_colors and jj_colors['author'], theme) or (theme and theme.colors and theme.colors.yellow), -- Author email
+    [4] = themes.map_jj_color(jj_colors and jj_colors['commit_id'], theme) or (theme and theme.colors and theme.colors.blue), -- Commit ID (regular)
+    [5] = themes.map_jj_color(jj_colors and jj_colors['change_id'], theme) or (theme and theme.colors and theme.colors.magenta), -- Change ID (regular)
+    [6] = themes.map_jj_color(jj_colors and jj_colors['timestamp'], theme) or (theme and theme.colors and theme.colors.cyan), -- Timestamps (regular)
+    [8] = theme and theme.colors and theme.colors.bright_black, -- Dim text
+    [12] = theme and theme.colors and theme.colors.bright_blue, -- Commit ID (current commit)
+    [13] = theme and theme.colors and theme.colors.bright_magenta, -- Change ID (current commit)
+    [14] = theme and theme.colors and theme.colors.bright_cyan, -- Timestamps (current commit)
   }
   
   return semantic_mappings[color_num]

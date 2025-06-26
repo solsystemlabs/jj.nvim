@@ -80,6 +80,68 @@ local function has_elided_section_ahead(graph_lines, current_index)
   return false
 end
 
+-- Helper function to extract graph prefix from a description line
+local function extract_graph_prefix_from_line(description_line, commit_graph)
+  if not description_line or description_line == "" then
+    return generate_fallback_description_graph(commit_graph)
+  end
+  
+  -- Strip ANSI codes for analysis
+  local clean_line = ansi.strip_ansi(description_line)
+  local clean_commit_graph = ansi.strip_ansi(commit_graph or "")
+  
+  -- The description line has the same graph structure as the commit line,
+  -- but with description text instead of commit ID
+  -- We need to find where the description text starts and extract everything before it
+  
+  -- Strategy: Find the rightmost non-graph character position in the commit graph
+  -- and use that as a reference point for the description graph
+  local commit_graph_length = vim.fn.strchars(clean_commit_graph)
+  
+  -- Find where the actual description text starts by looking for text patterns
+  -- Description text typically starts after spaces following the graph structure
+  local graph_end_pos = 0
+  local in_graph_area = true
+  
+  for i = 1, vim.fn.strchars(clean_line) do
+    local char = vim.fn.strcharpart(clean_line, i - 1, 1)
+    
+    if in_graph_area then
+      -- We're still in the graph area if we see graph characters or spaces
+      if char:match("[│├─╮╯╭┤~%s]") then
+        graph_end_pos = i
+      else
+        -- We've hit non-graph content (description text)
+        in_graph_area = false
+        break
+      end
+    end
+  end
+  
+  -- Extract the graph prefix portion
+  local graph_prefix = ""
+  if graph_end_pos > 0 then
+    graph_prefix = vim.fn.strcharpart(clean_line, 0, graph_end_pos)
+    
+    -- Ensure the graph prefix has the same length as the commit graph
+    -- by padding with spaces if necessary
+    local prefix_length = vim.fn.strchars(graph_prefix)
+    if prefix_length < commit_graph_length then
+      graph_prefix = graph_prefix .. string.rep(" ", commit_graph_length - prefix_length)
+    end
+  else
+    -- Fallback to generating from commit graph
+    return generate_fallback_description_graph(commit_graph)
+  end
+  
+  -- Add trailing spaces for description area
+  if not graph_prefix:match("%s%s$") then
+    graph_prefix = graph_prefix .. "  "
+  end
+  
+  return graph_prefix
+end
+
 -- Helper function to parse graph structure from * separator output
 local function parse_graph_structure(graph_output)
   local graph_lines = vim.split(graph_output, '\n', { plain = true })
@@ -129,7 +191,8 @@ local function parse_graph_structure(graph_output)
       state = "collecting_elided"
     elseif state == "expecting_description" then
       -- DESCRIPTION LINE: First non-* line after commit
-      current_entry.description_graph = line
+      -- Extract just the graph prefix from the description line
+      current_entry.description_graph = extract_graph_prefix_from_line(line, current_entry.commit_graph)
       state = "collecting_connectors"
     elseif state == "collecting_connectors" then
       -- CONNECTOR LINES: Check if this starts an elided section or leads to one
@@ -144,8 +207,26 @@ local function parse_graph_structure(graph_output)
         }
         state = "collecting_elided"
       else
-        -- Normal connector line
-        table.insert(current_entry.connector_lines, line)
+        -- Check if this connector line should be standalone for graph flow continuity
+        local clean_line = ansi.strip_ansi(line)
+        local has_complex_connectors = clean_line:match("╭") or clean_line:match("╰") or clean_line:match("├") or clean_line:match("┤")
+        
+        if has_complex_connectors then
+          -- Complex connector lines should be standalone to maintain graph flow
+          table.insert(entries, current_entry)
+          current_entry = nil
+          
+          -- Create standalone connector entry
+          local standalone_connector = {
+            type = "connector", 
+            lines = { line }
+          }
+          table.insert(entries, standalone_connector)
+          state = "looking_for_commit"
+        else
+          -- Simple connector lines can be added to current commit
+          table.insert(current_entry.connector_lines, line)
+        end
       end
     elseif state == "collecting_elided" then
       -- Continue collecting elided lines or transition back to looking for commits
@@ -212,14 +293,50 @@ local function generate_fallback_description_graph(commit_graph)
   local clean_graph = ansi.strip_ansi(commit_graph)
   local result = ""
   local char_count = vim.fn.strchars(clean_graph)
+  
+  -- Find the position of the commit symbol (rightmost symbol)
+  local commit_symbol_pos = nil
+  local commit_symbols = { "@", "○", "◆", "×" }
+  
+  for i = char_count - 1, 0, -1 do
+    local char = vim.fn.strcharpart(clean_graph, i, 1)
+    for _, sym in ipairs(commit_symbols) do
+      if char == sym then
+        commit_symbol_pos = i
+        break
+      end
+    end
+    if commit_symbol_pos then break end
+  end
+  
+  -- Build the description graph prefix
   for i = 0, char_count - 1 do
     local char = vim.fn.strcharpart(clean_graph, i, 1)
+    
     if char == " " then
       result = result .. " "
+    elseif char == "│" then
+      result = result .. "│"
+    elseif commit_symbol_pos and i == commit_symbol_pos then
+      -- Replace commit symbol with vertical bar to maintain flow
+      result = result .. "│"
+    elseif char == "─" then
+      -- Horizontal lines become spaces in description area
+      result = result .. " "
+    elseif char:match("[├┤╭╰╮╯]") then
+      -- Complex connectors become vertical bars to maintain column flow
+      result = result .. "│"
     else
-      result = result .. "│" -- Replace any graph symbol with │
+      -- Any other symbol becomes vertical bar
+      result = result .. "│"
     end
   end
+  
+  -- Ensure we have proper spacing after the graph
+  if not result:match("%s$") then
+    result = result .. "  "
+  end
+  
   return result
 end
 
@@ -265,6 +382,15 @@ local function merge_graph_and_template_data(graph_entries, commit_data_by_id)
         line_end = nil    -- Will be set during rendering
       }
       table.insert(result, elided_entry)
+    elseif graph_entry.type == "connector" then
+      -- Create standalone connector entry
+      local connector_entry = {
+        type = "connector",
+        lines = graph_entry.lines,
+        line_start = nil, -- Will be set during rendering
+        line_end = nil    -- Will be set during rendering
+      }
+      table.insert(result, connector_entry)
     elseif graph_entry.type == "commit" then
       local template_data = commit_data_by_id[graph_entry.commit_id]
 

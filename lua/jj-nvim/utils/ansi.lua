@@ -57,18 +57,18 @@ M.parse_ansi_line = function(line)
   -- Check if this line is part of the current commit (working copy)
   local stripped_line = line:gsub('\27%[[%d;]*m', '') -- Remove ANSI codes
   local is_current_commit = false
-  
+
   if stripped_line:match('^@') then
     -- Line starts with @ symbol - definitely current commit
     is_current_commit = true
-  elseif stripped_line:match('^│') then
-    -- Line starts with │ - check if it has bold formatting (indicates current commit context)
-    is_current_commit = line:find('\27%[1m') ~= nil
+  elseif stripped_line:match('^│.*%(no description set%)') then
+    -- Description line for current commit
+    is_current_commit = line:find('\27%[1m\27%[38;5;3m') ~= nil -- Bold yellow for current commit description
   end
 
-  -- Debug: uncomment to see current commit detection
+  -- Debug: show current commit detection
   -- if is_current_commit then
-  --   print("CURRENT COMMIT DETECTED: " .. stripped_line:sub(1, 20))
+  --   vim.notify("CURRENT COMMIT DETECTED: " .. stripped_line:sub(1, 40), vim.log.levels.INFO)
   -- end
 
   while pos <= #line do
@@ -196,11 +196,11 @@ M.get_highlight_name = function(attrs, is_current_commit)
   local hl_attrs = {}
   if attrs.fg then
     if type(attrs.fg) == 'number' then
-      -- Convert 256-color number to hex color
-      local hex_color = M.color_256_to_hex(attrs.fg, is_current_commit)
+      -- Convert 256-color number to hex color, considering bold for brighter colors
+      local hex_color = M.color_256_to_hex(attrs.fg, is_current_commit, attrs.bold)
       hl_attrs.fg = hex_color
       -- Debug: uncomment to see color mappings
-      -- print("Color " .. attrs.fg .. " -> " .. hex_color .. (is_current_commit and " (current)" or ""))
+      -- print("Color " .. attrs.fg .. " -> " .. hex_color .. (is_current_commit and " (current)" or "") .. (attrs.bold and " (bold)" or ""))
     else
       hl_attrs.fg = attrs.fg -- Use the color name
     end
@@ -223,24 +223,45 @@ M.get_highlight_name = function(attrs, is_current_commit)
   return hl_name
 end
 
-M.color_256_to_hex = function(color_num, is_current_commit)
-  -- Special case: color 3 (author email and description) on current commit should be bright_yellow
-  if color_num == 3 and is_current_commit then
-    local bright_yellow = jj_colors.get_current_theme_color('bright_yellow')
-    local fallback_yellow = jj_colors.map_256_to_jj_color(3)
-    -- Debug: uncomment to see color override
-    -- print("USING BRIGHT_YELLOW for color 3: " .. (bright_yellow or "nil") .. " fallback: " .. (fallback_yellow or "nil"))
-    return bright_yellow or fallback_yellow
-  end
-
-  -- Map to jj theme colors
+M.color_256_to_hex = function(color_num, is_current_commit, is_bold)
+  -- Debug: show what colors we're processing
+  -- vim.notify("Processing color " .. color_num .. (is_current_commit and " (current)" or "") .. (is_bold and " (bold)" or ""), vim.log.levels.INFO)
+  
+  -- Map to jj theme colors first
   local jj_mapped_color = jj_colors.map_256_to_jj_color(color_num)
   if jj_mapped_color then
     return jj_mapped_color
   end
 
-  -- For unmapped colors, return nil (no highlighting)
-  return nil
+  -- Handle current commit color mapping: when current commit uses regular colors (4,5,6), 
+  -- map them to bright versions (12,13,14)
+  if is_current_commit then
+    if color_num == 4 then
+      color_num = 12  -- Map regular blue to bright blue
+    elseif color_num == 5 then
+      color_num = 13  -- Map regular magenta to bright magenta  
+    elseif color_num == 6 then
+      color_num = 14  -- Map regular cyan to bright cyan
+    end
+  end
+
+  -- Color mappings based on actual jj output
+  local default_mappings = {
+    [1] = '#ff6b6b',   -- red (conflicts)
+    [2] = '#51cf66',   -- green ((empty) text)  
+    [3] = '#feca57',   -- yellow (author)
+    [4] = '#74b9ff',   -- blue (commit ID - regular commits)
+    [5] = '#fd79a8',   -- magenta (change ID - regular commits)
+    [6] = '#55efc4',   -- cyan (timestamps - regular commits)
+    [8] = '#666666',   -- bright black (gray/dim text)
+    [11] = '#fffa65',  -- bright yellow
+    [12] = '#89CFF0',  -- bright blue (commit ID - current commit)
+    [13] = '#FF6EC7',  -- bright magenta (change ID - current commit) 
+    [14] = '#40E0D0',  -- bright cyan (timestamps - current commit)
+    [15] = '#ffffff',  -- bright white
+  }
+  
+  return default_mappings[color_num]
 end
 
 M.strip_ansi = function(text)
@@ -248,3 +269,4 @@ M.strip_ansi = function(text)
 end
 
 return M
+

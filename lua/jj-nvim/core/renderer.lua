@@ -142,33 +142,37 @@ local function apply_symbol_colors(graph_text, commit)
   return result
 end
 
--- Helper function to generate continuation graph for wrapped lines
-local function get_continuation_graph(graph_prefix)
-  if not graph_prefix or graph_prefix == "" then
+-- Helper function to generate continuation graph from commit graph structure
+local function get_continuation_graph_from_commit(source_line)
+  if not source_line or source_line == "" then
     return ""
   end
 
   -- Strip ANSI codes for analysis
-  local clean_graph = ansi.strip_ansi(graph_prefix)
-  local result = ""
-
-  -- Replace graph symbols, keeping the column structure
-  for i = 1, vim.fn.strchars(clean_graph) do
-    local char = vim.fn.strcharpart(clean_graph, i - 1, 1)
-    if char == " " then
-      result = result .. " "
-    elseif char == "│" then
-      result = result .. "│"
-    elseif char == "─" then
-      result = result .. " " -- horizontal lines become spaces
+  local clean_line = ansi.strip_ansi(source_line)
+  
+  -- Extract only the graph prefix (stop at description text)
+  local graph_prefix = ""
+  for i = 1, vim.fn.strchars(clean_line) do
+    local char = vim.fn.strcharpart(clean_line, i - 1, 1)
+    
+    -- Only process graph characters and spaces
+    if char:match("[│├─╮╯╭┤~@○◆×%s]") then
+      graph_prefix = graph_prefix .. char
     else
-      -- Other graph characters (├, ╮, ╯, ╭, ┤, ×, ○, @, ◆) become │
-      result = result .. "│"
+      -- Hit description text, stop here
+      break
     end
   end
-
-  return result
+  
+  -- Get the display width of the graph prefix
+  local graph_width = get_display_width(graph_prefix)
+  
+  -- Generate continuation: '│ ' repeated (width / 2) times, minus 1
+  local pairs_count = math.floor(graph_width / 2) - 1
+  return string.rep("│ ", pairs_count)
 end
+
 
 -- Render a single commit according to the specified mode
 local function render_commit(commit, mode_config, window_width)
@@ -252,7 +256,7 @@ local function render_commit(commit, mode_config, window_width)
 
   -- Handle intelligent wrapping of main commit line
   local graph_width = get_display_width(styled_graph)
-  local continuation_prefix = get_continuation_graph(styled_graph)
+  local continuation_prefix = get_continuation_graph_from_commit(styled_graph)
 
   -- Build the line with intelligent wrapping
   local current_line_parts = {}
@@ -318,7 +322,12 @@ local function render_commit(commit, mode_config, window_width)
       -- Use the captured description_graph with proper symbol coloring and wrapping
       local desc_graph = apply_symbol_colors(commit.description_graph or "", commit)
       local desc_content = formatted_desc .. COLORS.reset_fg .. COLORS.reset
-      local continuation_graph = get_continuation_graph(desc_graph)
+      -- Use the longer of commit graph or description graph for continuation
+      local source_graph = commit.complete_graph
+      if commit.description_graph and vim.fn.strchars(ansi.strip_ansi(commit.description_graph)) > vim.fn.strchars(ansi.strip_ansi(source_graph)) then
+        source_graph = commit.description_graph
+      end
+      local continuation_graph = get_continuation_graph_from_commit(source_graph)
 
       -- Use word-based wrapping for descriptions
       local wrapped_lines = wrap_text_by_words(desc_content, desc_graph, continuation_graph, window_width)
@@ -343,7 +352,7 @@ local function render_commit(commit, mode_config, window_width)
     local parents_str = table.concat(commit.parents, ", ")
     local parent_graph = apply_symbol_colors(commit.description_graph or "", commit)
     local parent_content = "parents: " .. parents_str
-    local continuation_graph = get_continuation_graph(parent_graph)
+    local continuation_graph = get_continuation_graph_from_commit(parent_graph)
 
     -- Use word-based wrapping for parent information
     local wrapped_lines = wrap_text_by_words(parent_content, parent_graph, continuation_graph, window_width)
@@ -397,6 +406,17 @@ M.render_commits = function(mixed_entries, mode, window_width)
       
       -- Add lines to the overall display
       for _, line in ipairs(elided_lines) do
+        table.insert(all_lines, line)
+        line_number = line_number + 1
+      end
+      
+      entry.line_end = line_number - 1
+    elseif entry.type == "connector" then
+      -- Handle standalone connector section
+      entry.line_start = line_number
+      
+      -- Add connector lines directly to display
+      for _, line in ipairs(entry.lines) do
         table.insert(all_lines, line)
         line_number = line_number + 1
       end

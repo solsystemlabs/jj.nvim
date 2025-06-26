@@ -1,6 +1,6 @@
 local M = {}
 
--- Theme definitions with border color palettes
+-- Theme definitions with border color palettes and semantic colors
 M.themes = {
   -- Default theme with neutral colors
   default = {
@@ -9,6 +9,21 @@ M.themes = {
       subtle = '#444444',
       accent = '#888888',
       muted = '#333333',
+    },
+    colors = {
+      red = '#ff6b6b',
+      green = '#51cf66',
+      bright_green = '#69db7c',
+      yellow = '#feca57',
+      bright_yellow = '#fffa65',
+      blue = '#74b9ff',
+      bright_blue = '#a29bfe',
+      magenta = '#fd79a8',
+      bright_magenta = '#e84393',
+      cyan = '#55efc4',
+      bright_cyan = '#81ecec',
+      bright_black = '#666666',
+      white = '#ffffff',
     }
   },
   
@@ -19,6 +34,21 @@ M.themes = {
       subtle = '#3c3836',  -- gruvbox dark gray
       accent = '#928374',  -- gruvbox light gray
       muted = '#282828',   -- gruvbox dark background
+    },
+    colors = {
+      red = '#fb4934',
+      green = '#b8bb26',
+      bright_green = '#b8bb26',
+      yellow = '#fabd2f',
+      bright_yellow = '#fabd2f',
+      blue = '#83a598',
+      bright_blue = '#83a598',
+      magenta = '#d3869b',
+      bright_magenta = '#d3869b',
+      cyan = '#8ec07c',
+      bright_cyan = '#8ec07c',
+      bright_black = '#928374',
+      white = '#ebdbb2',
     }
   },
   
@@ -29,6 +59,21 @@ M.themes = {
       subtle = '#45475a',  -- catppuccin surface2
       accent = '#9399b2',  -- catppuccin overlay1
       muted = '#313244',   -- catppuccin surface0
+    },
+    colors = {
+      red = '#f38ba8',
+      green = '#a6e3a1',
+      bright_green = '#a6e3a1',
+      yellow = '#f9e2af',
+      bright_yellow = '#f9e2af',
+      blue = '#89b4fa',
+      bright_blue = '#89b4fa',
+      magenta = '#cba6f7',
+      bright_magenta = '#cba6f7',
+      cyan = '#94e2d5',
+      bright_cyan = '#94e2d5',
+      bright_black = '#6c7086',
+      white = '#cdd6f4',
     }
   },
   
@@ -39,6 +84,21 @@ M.themes = {
       subtle = '#3b4261',  -- tokyo night bg_highlight
       accent = '#737aa2',  -- tokyo night dark5
       muted = '#24283b',   -- tokyo night bg_dark
+    },
+    colors = {
+      red = '#f7768e',
+      green = '#9ece6a',
+      bright_green = '#9ece6a',
+      yellow = '#e0af68',
+      bright_yellow = '#e0af68',
+      blue = '#7aa2f7',
+      bright_blue = '#7aa2f7',
+      magenta = '#bb9af7',
+      bright_magenta = '#bb9af7',
+      cyan = '#7dcfff',
+      bright_cyan = '#7dcfff',
+      bright_black = '#565f89',
+      white = '#c0caf5',
     }
   },
   
@@ -49,6 +109,21 @@ M.themes = {
       subtle = '#3b4252',  -- nord polar night
       accent = '#81a1c1',  -- nord frost blue
       muted = '#2e3440',   -- nord dark
+    },
+    colors = {
+      red = '#bf616a',
+      green = '#a3be8c',
+      bright_green = '#a3be8c',
+      yellow = '#ebcb8b',
+      bright_yellow = '#ebcb8b',
+      blue = '#81a1c1',
+      bright_blue = '#81a1c1',
+      magenta = '#b48ead',
+      bright_magenta = '#b48ead',
+      cyan = '#88c0d0',
+      bright_cyan = '#88c0d0',
+      bright_black = '#4c566a',
+      white = '#eceff4',
     }
   }
 }
@@ -95,6 +170,24 @@ M.detect_theme = function()
   else
     return 'default'
   end
+end
+
+-- Get theme definition by name
+M.get_theme = function(theme_name)
+  -- Handle auto detection
+  if theme_name == 'auto' then
+    theme_name = M.detect_theme()
+  end
+  
+  -- Return theme or fallback to default
+  return M.themes[theme_name] or M.themes.default
+end
+
+-- Map JJ color to theme color (placeholder function)
+M.map_jj_color = function(jj_color, theme)
+  -- For now, just return the original color or nil
+  -- This function can be enhanced later for more sophisticated color mapping
+  return jj_color
 end
 
 -- Get all available themes
