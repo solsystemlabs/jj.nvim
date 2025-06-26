@@ -6,6 +6,7 @@ local navigation = require('jj-nvim.ui.navigation')
 local themes = require('jj-nvim.ui.themes')
 local actions = require('jj-nvim.jj.actions')
 local inline_menu = require('jj-nvim.ui.inline_menu')
+local selection_column = require('jj-nvim.ui.selection_column')
 
 -- Constants
 local WINDOW_CONSTRAINTS = {
@@ -31,6 +32,7 @@ local state = {
   buf_id = nil,
   mode = MODES.NORMAL,
   mode_data = {},  -- Mode-specific data storage
+  selected_commits = {},  -- For multi-select mode
 }
 
 -- Helper function to setup border highlight group
@@ -300,6 +302,75 @@ M.setup_target_selection_keymaps = function()
   end, opts)
 end
 
+-- Setup keymaps for multi-select mode
+M.setup_multi_select_keymaps = function()
+  if not state.buf_id then return end
+
+  -- First, explicitly remove conflicting keymaps
+  pcall(vim.keymap.del, 'n', '<CR>', { buffer = state.buf_id })
+  pcall(vim.keymap.del, 'n', '<Esc>', { buffer = state.buf_id })
+  pcall(vim.keymap.del, 'n', '<Space>', { buffer = state.buf_id })
+  
+  local opts = { noremap = true, silent = true, buffer = state.buf_id }
+
+  -- Space to toggle commit selection
+  vim.keymap.set('n', '<Space>', function() M.toggle_commit_selection() end, opts)
+
+  -- Enter to confirm selection and create merge commit
+  vim.keymap.set('n', '<CR>', function() M.confirm_multi_selection() end, opts)
+  
+  -- Escape to cancel multi-select mode
+  vim.keymap.set('n', '<Esc>', function() M.cancel_multi_selection() end, opts)
+
+  -- Keep navigation keys active (j/k for commit navigation)
+  vim.keymap.set('n', 'j', function()
+    navigation.next_commit(state.win_id)
+    M.update_multi_select_display()
+  end, opts)
+  vim.keymap.set('n', 'k', function()
+    navigation.prev_commit(state.win_id)
+    M.update_multi_select_display()
+  end, opts)
+
+  -- Additional navigation
+  vim.keymap.set('n', 'J', function()
+    navigation.next_commit_centered(state.win_id)
+    M.update_multi_select_display()
+  end, opts)
+  vim.keymap.set('n', 'K', function()
+    navigation.prev_commit_centered(state.win_id)
+    M.update_multi_select_display()
+  end, opts)
+
+  -- Go to specific commits
+  vim.keymap.set('n', 'gg', function()
+    navigation.goto_first_commit(state.win_id)
+    M.update_multi_select_display()
+  end, opts)
+  vim.keymap.set('n', 'G', function()
+    navigation.goto_last_commit(state.win_id)
+    M.update_multi_select_display()
+  end, opts)
+  vim.keymap.set('n', '@', function()
+    navigation.goto_current_commit(state.win_id)
+    M.update_multi_select_display()
+  end, opts)
+
+  -- Disable other actions during multi-select mode
+  vim.keymap.set('n', 'q', function() 
+    vim.notify("Press Esc to cancel multi-selection, Enter to confirm", vim.log.levels.INFO)
+  end, opts)
+  vim.keymap.set('n', 'n', function() 
+    vim.notify("Press Esc to cancel multi-selection, Enter to confirm", vim.log.levels.INFO)
+  end, opts)
+  vim.keymap.set('n', 'e', function() 
+    vim.notify("Press Esc to cancel multi-selection, Enter to confirm", vim.log.levels.INFO)
+  end, opts)
+  vim.keymap.set('n', 'a', function() 
+    vim.notify("Press Esc to cancel multi-selection, Enter to confirm", vim.log.levels.INFO)
+  end, opts)
+end
+
 M.adjust_width = function(delta)
   if not M.is_open() then return end
 
@@ -427,11 +498,25 @@ M.is_mode = function(mode)
 end
 
 M.reset_mode = function()
-  state.mode = MODES.NORMAL
-  state.mode_data = {}
   -- Clear any target selection UI feedback
   if state.win_id and vim.api.nvim_win_is_valid(state.win_id) then
+    -- Reset state first
+    local old_mode = state.mode
+    state.mode = MODES.NORMAL
+    state.mode_data = {}
+    state.selected_commits = {}  -- Clear multi-select state
+    
+    -- If we were in multi-select mode, refresh to remove selection column
+    if old_mode == MODES.MULTI_SELECT then
+      M.refresh_with_multi_select()  -- This will now render without selection column
+    end
+    
     M.setup_commit_highlighting()  -- Reset to normal highlighting
+  else
+    -- Just reset state if window is not valid
+    state.mode = MODES.NORMAL
+    state.mode_data = {}
+    state.selected_commits = {}
   end
 end
 
@@ -558,6 +643,12 @@ M.show_new_change_menu = function()
         description = "Create new change before (select target)",
         action = "new_before",
         data = {}
+      },
+      {
+        key = "m",
+        description = "Create merge commit (select multiple parents)",
+        action = "multi_select",
+        data = {}
       }
     }
   }
@@ -605,10 +696,179 @@ M.handle_new_change_selection = function(selected_item)
   elseif selected_item.action == "new_before" then
     -- Enter target selection mode for before
     M.enter_target_selection_mode("before")
+  elseif selected_item.action == "multi_select" then
+    -- Enter multi-select mode for merge commit
+    M.enter_multi_select_mode()
   else
     -- Fallback for unknown actions
     vim.notify("Feature not yet implemented: " .. selected_item.description, vim.log.levels.INFO)
   end
+end
+
+-- Enter multi-select mode for creating merge commits
+M.enter_multi_select_mode = function()
+  if not M.is_open() then
+    vim.notify("JJ window is not open", vim.log.levels.WARN)
+    return
+  end
+  
+  -- Store current cursor position
+  local current_line = vim.api.nvim_win_get_cursor(state.win_id)[1]
+  
+  M.set_mode(MODES.MULTI_SELECT, {
+    original_line = current_line
+  })
+  
+  -- Initialize selection state
+  state.selected_commits = {}
+  
+  -- Update keymaps for multi-select
+  M.setup_multi_select_keymaps()
+  
+  -- Refresh buffer to show selection column
+  M.refresh_with_multi_select()
+  
+  -- Show status message
+  vim.notify("Multi-select mode: Use Space to toggle selection, Enter to confirm, Esc to cancel", vim.log.levels.INFO)
+end
+
+-- Toggle commit selection in multi-select mode
+M.toggle_commit_selection = function()
+  if not M.is_mode(MODES.MULTI_SELECT) then
+    return
+  end
+  
+  local current_commit = navigation.get_current_commit(state.win_id)
+  if not current_commit then
+    vim.notify("No commit at cursor position", vim.log.levels.WARN)
+    return
+  end
+  
+  -- Toggle selection
+  state.selected_commits = selection_column.toggle_commit_selection(current_commit, state.selected_commits)
+  
+  -- Update display
+  M.update_multi_select_display()
+end
+
+-- Update multi-select display (highlighting and column)
+M.update_multi_select_display = function()
+  if not M.is_mode(MODES.MULTI_SELECT) or not state.buf_id then
+    return
+  end
+  
+  -- Get current commits for highlighting
+  local mixed_entries = buffer.get_commits(state.buf_id)
+  if mixed_entries then
+    selection_column.highlight_selected_commits(state.buf_id, mixed_entries, state.selected_commits)
+  end
+end
+
+-- Confirm multi-selection and create merge commit
+M.confirm_multi_selection = function()
+  if not M.is_mode(MODES.MULTI_SELECT) then
+    return
+  end
+  
+  local mixed_entries = buffer.get_commits(state.buf_id)
+  if not mixed_entries then
+    vim.notify("No commits available", vim.log.levels.WARN)
+    return
+  end
+  
+  -- Simple validation: just check we have at least 2 commits selected
+  if not state.selected_commits or #state.selected_commits < 2 then
+    vim.notify("At least 2 commits must be selected for a multi-parent change", vim.log.levels.WARN)
+    return
+  end
+  
+  -- Show selection summary and confirm (show short version of IDs for readability)
+  local short_ids = {}
+  for _, change_id in ipairs(state.selected_commits) do
+    table.insert(short_ids, change_id:sub(1, 8))
+  end
+  local commit_summary = table.concat(short_ids, ", ")
+  local confirm_msg = string.format("Create merge commit with %d parents: %s?", #state.selected_commits, commit_summary)
+  
+  -- Use vim.ui.select for better confirmation
+  vim.ui.select({'Yes', 'No'}, {
+    prompt = confirm_msg,
+  }, function(choice)
+    if choice == 'Yes' then
+      -- Create the merge commit directly using the selected change IDs
+      local success = actions.new_with_change_ids(state.selected_commits)
+      
+      if success then
+        buffer.refresh(state.buf_id)
+      end
+      
+      -- Return to normal mode
+      M.reset_mode()
+      M.setup_keymaps()  -- Restore normal keymaps
+    else
+      vim.notify("Merge commit creation cancelled", vim.log.levels.INFO)
+    end
+  end)
+end
+
+-- Cancel multi-selection and return to normal mode
+M.cancel_multi_selection = function()
+  if not M.is_mode(MODES.MULTI_SELECT) then
+    return
+  end
+  
+  local mode_data = select(2, M.get_mode())
+  
+  -- Return cursor to original position
+  if mode_data.original_line and state.win_id and vim.api.nvim_win_is_valid(state.win_id) then
+    vim.api.nvim_win_set_cursor(state.win_id, {mode_data.original_line, 0})
+  end
+  
+  -- Return to normal mode
+  M.reset_mode()
+  M.setup_keymaps()  -- Restore normal keymaps
+  
+  vim.notify("Multi-selection cancelled", vim.log.levels.INFO)
+end
+
+-- Refresh buffer with multi-select support
+M.refresh_with_multi_select = function()
+  if not state.buf_id then
+    return false
+  end
+  
+  -- Parse latest commits
+  local parser = require('jj-nvim.core.parser')
+  local commits, err = parser.parse_all_commits_with_separate_graph()
+  if err then
+    vim.notify("Failed to refresh commits: " .. err, vim.log.levels.ERROR)
+    return false
+  end
+  
+  commits = commits or {}
+  
+  -- Prepare multi-select data if in multi-select mode
+  local multi_select_data = nil
+  if M.is_mode(MODES.MULTI_SELECT) then
+    multi_select_data = {
+      selected_commits = state.selected_commits
+    }
+  end
+  
+  -- Update buffer with multi-select support
+  local success = buffer.update_from_commits(state.buf_id, commits, buffer.get_mode(), multi_select_data)
+  
+  -- Apply selection highlighting if in multi-select mode
+  if M.is_mode(MODES.MULTI_SELECT) then
+    -- Schedule highlighting to ensure buffer is fully updated
+    vim.schedule(function()
+      if state.buf_id and vim.api.nvim_buf_is_valid(state.buf_id) then
+        selection_column.highlight_selected_commits(state.buf_id, commits, state.selected_commits)
+      end
+    end)
+  end
+  
+  return success
 end
 
 return M

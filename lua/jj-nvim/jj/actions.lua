@@ -3,6 +3,48 @@ local M = {}
 local commands = require('jj-nvim.jj.commands')
 local buffer = require('jj-nvim.ui.buffer')
 
+-- Helper function to get change ID from commit
+local function get_change_id(commit)
+  if not commit then
+    return nil, "No commit provided"
+  end
+  
+  local change_id = commit.change_id or commit.short_change_id
+  if not change_id or change_id == "" then
+    return nil, "Invalid commit: missing change ID"
+  end
+  
+  return change_id, nil
+end
+
+-- Helper function to get short display ID from commit
+local function get_short_display_id(commit, change_id)
+  return commit.short_change_id or change_id:sub(1, 8)
+end
+
+-- Helper function to handle command execution with common error patterns
+local function execute_with_error_handling(cmd_args, error_context)
+  local result, err = commands.execute(cmd_args)
+  
+  if not result then
+    local error_msg = err or "Unknown error"
+    if error_msg:find("No such revision") then
+      error_msg = "Commit not found - it may have been abandoned or modified"
+    elseif error_msg:find("would create a cycle") then
+      error_msg = "Cannot create change - would create a cycle in commit graph"
+    elseif error_msg:find("not in workspace") then
+      error_msg = "Not in a jj workspace"
+    elseif error_msg:find("duplicate") then
+      error_msg = "Duplicate change IDs specified"
+    end
+    
+    vim.notify(string.format("Failed to %s: %s", error_context, error_msg), vim.log.levels.ERROR)
+    return false, error_msg
+  end
+  
+  return result, nil
+end
+
 -- Edit the specified commit
 M.edit_commit = function(commit)
   if not commit then
@@ -16,26 +58,21 @@ M.edit_commit = function(commit)
     return false
   end
 
-  -- Use change_id for jj edit command
-  local change_id = commit.change_id or commit.short_change_id
-  if not change_id or change_id == "" then
-    vim.notify("Invalid commit: missing change ID", vim.log.levels.ERROR)
+  local change_id, err = get_change_id(commit)
+  if not change_id then
+    vim.notify(err, vim.log.levels.ERROR)
     return false
   end
 
-  vim.notify(string.format("Editing commit %s...", commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+  local display_id = get_short_display_id(commit, change_id)
+  vim.notify(string.format("Editing commit %s...", display_id), vim.log.levels.INFO)
 
-  -- Execute jj edit command
-  local result, err = commands.execute({'edit', change_id})
-  
+  local result, exec_err = execute_with_error_handling({'edit', change_id}, "edit commit")
   if not result then
-    vim.notify(string.format("Failed to edit commit: %s", err or "Unknown error"), vim.log.levels.ERROR)
     return false
   end
 
-  -- Success feedback
-  vim.notify(string.format("Now editing commit %s", commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
-  
+  vim.notify(string.format("Now editing commit %s", display_id), vim.log.levels.INFO)
   return true
 end
 
@@ -74,16 +111,16 @@ M.abandon_commit = function(commit)
     return false
   end
 
-  local change_id = commit.change_id or commit.short_change_id
-  if not change_id or change_id == "" then
-    vim.notify("Invalid commit: missing change ID", vim.log.levels.ERROR)
+  local change_id, err = get_change_id(commit)
+  if not change_id then
+    vim.notify(err, vim.log.levels.ERROR)
     return false
   end
 
   -- Confirm before abandoning
   local description = commit:get_short_description()
-  local confirm_msg = string.format("Abandon commit %s: %s? (y/N)", 
-    commit.short_change_id or change_id:sub(1, 8), description)
+  local display_id = get_short_display_id(commit, change_id)
+  local confirm_msg = string.format("Abandon commit %s: %s? (y/N)", display_id, description)
   
   local choice = vim.fn.input(confirm_msg)
   if choice:lower() ~= 'y' and choice:lower() ~= 'yes' then
@@ -91,20 +128,21 @@ M.abandon_commit = function(commit)
     return false
   end
 
-  vim.notify(string.format("Abandoning commit %s...", commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+  vim.notify(string.format("Abandoning commit %s...", display_id), vim.log.levels.INFO)
 
-  -- Execute jj abandon command
-  local result, err = commands.execute({'abandon', change_id})
-  
+  local result, exec_err = execute_with_error_handling({'abandon', change_id}, "abandon commit")
   if not result then
-    vim.notify(string.format("Failed to abandon commit: %s", err or "Unknown error"), vim.log.levels.ERROR)
     return false
   end
 
-  -- Success feedback
-  vim.notify(string.format("Abandoned commit %s", commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
-  
+  vim.notify(string.format("Abandoned commit %s", display_id), vim.log.levels.INFO)
   return true
+end
+
+-- Helper function to extract new change ID from jj command output
+local function extract_new_change_id(result)
+  if not result then return nil end
+  return result:match("Working copy now at: (%w+)")
 end
 
 -- Create a new child change from the specified parent commit
@@ -116,10 +154,9 @@ M.new_child = function(parent_commit, options)
 
   options = options or {}
   
-  -- Validate parent commit data
-  local change_id = parent_commit.change_id or parent_commit.short_change_id
-  if not change_id or change_id == "" then
-    vim.notify("Invalid parent commit: missing change ID", vim.log.levels.ERROR)
+  local change_id, err = get_change_id(parent_commit)
+  if not change_id then
+    vim.notify(err, vim.log.levels.ERROR)
     return false
   end
 
@@ -134,10 +171,7 @@ M.new_child = function(parent_commit, options)
   end
 
   -- Build command arguments
-  local cmd_args = {'new'}
-  
-  -- Add parent specification
-  table.insert(cmd_args, change_id)
+  local cmd_args = {'new', change_id}
   
   -- Add message if provided
   if options.message and options.message ~= "" then
@@ -145,35 +179,21 @@ M.new_child = function(parent_commit, options)
     table.insert(cmd_args, options.message)
   end
 
-  vim.notify(string.format("Creating new child of commit %s...", 
-    parent_commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+  local display_id = get_short_display_id(parent_commit, change_id)
+  vim.notify(string.format("Creating new child of commit %s...", display_id), vim.log.levels.INFO)
 
-  -- Execute jj new command with enhanced error handling
-  local result, err = commands.execute(cmd_args)
-  
+  local result, exec_err = execute_with_error_handling(cmd_args, "create new change")
   if not result then
-    -- Enhanced error reporting
-    local error_msg = err or "Unknown error"
-    if error_msg:find("No such revision") then
-      error_msg = "Commit not found - it may have been abandoned or modified"
-    elseif error_msg:find("would create a cycle") then
-      error_msg = "Cannot create child - would create a cycle in commit graph"
-    elseif error_msg:find("not in workspace") then
-      error_msg = "Not in a jj workspace"
-    end
-    
-    vim.notify(string.format("Failed to create new change: %s", error_msg), vim.log.levels.ERROR)
     return false
   end
 
   -- Parse output for additional information
-  local new_change_id = result:match("Working copy now at: (%w+)")
+  local new_change_id = extract_new_change_id(result)
   if new_change_id then
     vim.notify(string.format("Created new change %s as child of %s", 
-      new_change_id:sub(1, 8), parent_commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+      new_change_id:sub(1, 8), display_id), vim.log.levels.INFO)
   else
-    vim.notify(string.format("Created new child change of %s", 
-      parent_commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+    vim.notify(string.format("Created new child change of %s", display_id), vim.log.levels.INFO)
   end
   
   return true
@@ -209,10 +229,9 @@ M.new_after = function(target_commit, options)
 
   options = options or {}
   
-  -- Validate target commit data
-  local change_id = target_commit.change_id or target_commit.short_change_id
-  if not change_id or change_id == "" then
-    vim.notify("Invalid target commit: missing change ID", vim.log.levels.ERROR)
+  local change_id, err = get_change_id(target_commit)
+  if not change_id then
+    vim.notify(err, vim.log.levels.ERROR)
     return false
   end
 
@@ -225,34 +244,21 @@ M.new_after = function(target_commit, options)
     table.insert(cmd_args, options.message)
   end
 
-  vim.notify(string.format("Creating new change after commit %s...", 
-    target_commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+  local display_id = get_short_display_id(target_commit, change_id)
+  vim.notify(string.format("Creating new change after commit %s...", display_id), vim.log.levels.INFO)
 
-  -- Execute jj new --after command
-  local result, err = commands.execute(cmd_args)
-  
+  local result, exec_err = execute_with_error_handling(cmd_args, "create new change")
   if not result then
-    local error_msg = err or "Unknown error"
-    if error_msg:find("No such revision") then
-      error_msg = "Commit not found - it may have been abandoned or modified"
-    elseif error_msg:find("would create a cycle") then
-      error_msg = "Cannot create change - would create a cycle in commit graph"
-    elseif error_msg:find("not in workspace") then
-      error_msg = "Not in a jj workspace"
-    end
-    
-    vim.notify(string.format("Failed to create new change: %s", error_msg), vim.log.levels.ERROR)
     return false
   end
 
   -- Parse output for additional information
-  local new_change_id = result:match("Working copy now at: (%w+)")
+  local new_change_id = extract_new_change_id(result)
   if new_change_id then
     vim.notify(string.format("Created new change %s after %s", 
-      new_change_id:sub(1, 8), target_commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+      new_change_id:sub(1, 8), display_id), vim.log.levels.INFO)
   else
-    vim.notify(string.format("Created new change after %s", 
-      target_commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+    vim.notify(string.format("Created new change after %s", display_id), vim.log.levels.INFO)
   end
   
   return true
@@ -267,10 +273,9 @@ M.new_before = function(target_commit, options)
 
   options = options or {}
   
-  -- Validate target commit data
-  local change_id = target_commit.change_id or target_commit.short_change_id
-  if not change_id or change_id == "" then
-    vim.notify("Invalid target commit: missing change ID", vim.log.levels.ERROR)
+  local change_id, err = get_change_id(target_commit)
+  if not change_id then
+    vim.notify(err, vim.log.levels.ERROR)
     return false
   end
 
@@ -289,34 +294,70 @@ M.new_before = function(target_commit, options)
     table.insert(cmd_args, options.message)
   end
 
-  vim.notify(string.format("Creating new change before commit %s...", 
-    target_commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+  local display_id = get_short_display_id(target_commit, change_id)
+  vim.notify(string.format("Creating new change before commit %s...", display_id), vim.log.levels.INFO)
 
-  -- Execute jj new --before command
-  local result, err = commands.execute(cmd_args)
-  
+  local result, exec_err = execute_with_error_handling(cmd_args, "create new change")
   if not result then
-    local error_msg = err or "Unknown error"
-    if error_msg:find("No such revision") then
-      error_msg = "Commit not found - it may have been abandoned or modified"
-    elseif error_msg:find("would create a cycle") then
-      error_msg = "Cannot create change - would create a cycle in commit graph"
-    elseif error_msg:find("not in workspace") then
-      error_msg = "Not in a jj workspace"
-    end
-    
-    vim.notify(string.format("Failed to create new change: %s", error_msg), vim.log.levels.ERROR)
     return false
   end
 
   -- Parse output for additional information
-  local new_change_id = result:match("Working copy now at: (%w+)")
+  local new_change_id = extract_new_change_id(result)
   if new_change_id then
     vim.notify(string.format("Created new change %s before %s", 
-      new_change_id:sub(1, 8), target_commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+      new_change_id:sub(1, 8), display_id), vim.log.levels.INFO)
   else
-    vim.notify(string.format("Created new change before %s", 
-      target_commit.short_change_id or change_id:sub(1, 8)), vim.log.levels.INFO)
+    vim.notify(string.format("Created new change before %s", display_id), vim.log.levels.INFO)
+  end
+  
+  return true
+end
+
+
+-- Create a new change with multiple parents using change IDs directly
+M.new_with_change_ids = function(change_ids, options)
+  if not change_ids or type(change_ids) ~= 'table' or #change_ids == 0 then
+    vim.notify("No change IDs specified", vim.log.levels.WARN)
+    return false
+  end
+
+  if #change_ids < 2 then
+    vim.notify("At least 2 change IDs required for multi-parent change", vim.log.levels.WARN)
+    return false
+  end
+
+  options = options or {}
+  
+  -- Build command arguments for jj new with multiple change IDs
+  local cmd_args = {'new'}
+  
+  -- Add all change IDs directly
+  for _, change_id in ipairs(change_ids) do
+    table.insert(cmd_args, change_id)
+  end
+  
+  -- Add message if provided
+  if options.message and options.message ~= "" then
+    table.insert(cmd_args, '-m')
+    table.insert(cmd_args, options.message)
+  end
+
+  local changes_str = table.concat(change_ids, ", ")
+  vim.notify(string.format("Creating merge commit with parents: %s...", changes_str), vim.log.levels.INFO)
+
+  local result, exec_err = execute_with_error_handling(cmd_args, "create merge commit")
+  if not result then
+    return false
+  end
+
+  -- Parse output for additional information
+  local new_change_id = extract_new_change_id(result)
+  if new_change_id then
+    vim.notify(string.format("Created merge commit %s with parents: %s", 
+      new_change_id:sub(1, 8), changes_str), vim.log.levels.INFO)
+  else
+    vim.notify(string.format("Created merge commit with parents: %s", changes_str), vim.log.levels.INFO)
   end
   
   return true
