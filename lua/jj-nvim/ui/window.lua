@@ -134,6 +134,9 @@ M.open = function(content)
     return
   end
 
+  -- Clear selections on window open
+  state.selected_commits = {}
+
   state.buf_id = buffer.create(content)
   state.win_id = vim.api.nvim_open_win(state.buf_id, true, create_window_config())
 
@@ -146,6 +149,9 @@ M.open_with_buffer = function(buf_id)
     return
   end
 
+  -- Clear selections on window open
+  state.selected_commits = {}
+
   state.buf_id = buf_id
   state.win_id = vim.api.nvim_open_win(state.buf_id, true, create_window_config())
 
@@ -156,6 +162,10 @@ M.close = function()
   if state.win_id and vim.api.nvim_win_is_valid(state.win_id) then
     vim.api.nvim_win_close(state.win_id, false)
   end
+  
+  -- Clear selections on window close
+  state.selected_commits = {}
+  
   state.win_id = nil
   state.buf_id = nil
 end
