@@ -224,7 +224,10 @@ M.setup_keymaps = function()
   end, opts)
 
   -- Actions on commits
-  -- Note: <CR> key binding removed - use Space to select commits instead
+  -- Override Enter key to prevent default cursor movement behavior
+  vim.keymap.set('n', '<CR>', function()
+    -- No-op: prevent default Enter behavior (moving cursor down)
+  end, opts)
 
   -- Edit commit
   vim.keymap.set('n', 'e', function()
