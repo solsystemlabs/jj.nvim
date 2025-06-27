@@ -6,7 +6,7 @@ local navigation = require('jj-nvim.ui.navigation')
 local themes = require('jj-nvim.ui.themes')
 local actions = require('jj-nvim.jj.actions')
 local inline_menu = require('jj-nvim.ui.inline_menu')
-local selection_column = require('jj-nvim.ui.selection_column')
+local multi_select = require('jj-nvim.ui.multi_select')
 
 -- Constants
 local WINDOW_CONSTRAINTS = {
@@ -413,68 +413,111 @@ M.adjust_width = function(delta)
   buffer.refresh(state.buf_id)
 end
 
+-- Function to highlight the current commit (extracted for reuse)
+M.highlight_current_commit = function()
+  if not state.buf_id or not state.win_id or not vim.api.nvim_win_is_valid(state.win_id) then return end
+
+  local ns_id = vim.api.nvim_create_namespace('jj_commit_highlight')
+
+  -- Clear both highlighting namespaces to prevent conflicts
+  vim.api.nvim_buf_clear_namespace(state.buf_id, ns_id, 0, -1)
+  if M.is_mode(MODES.MULTI_SELECT) then
+    local multi_select_ns = vim.api.nvim_create_namespace('jj_multi_select')
+    vim.api.nvim_buf_clear_namespace(state.buf_id, multi_select_ns, 0, -1)
+  end
+
+  -- Get current cursor position
+  local cursor = vim.api.nvim_win_get_cursor(state.win_id)
+  local line_number = cursor[1]
+
+  -- Get the commit at this line
+  local commit = buffer.get_commit_at_line(line_number)
+  local cursor_commit_id = nil
+  if commit then
+    cursor_commit_id = commit.change_id or commit.short_change_id
+  end
+
+  -- Apply multi-select highlighting first for all selected commits EXCEPT the one under cursor
+  if M.is_mode(MODES.MULTI_SELECT) then
+    local commits = buffer.get_commits(state.buf_id)
+    if commits then
+      local window_width = vim.api.nvim_win_get_width(state.win_id)
+      -- Filter out the commit under cursor to avoid duplicate highlighting
+      local filtered_selected = {}
+      for _, selected_id in ipairs(state.selected_commits) do
+        if selected_id ~= cursor_commit_id then
+          table.insert(filtered_selected, selected_id)
+        end
+      end
+      multi_select.highlight_selected_commits(state.buf_id, commits, filtered_selected, window_width)
+    end
+  end
+
+  -- Apply cursor highlighting only to the commit under cursor
+  if not commit then return end
+
+  if commit.line_start and commit.line_end then
+    local window_width = vim.api.nvim_win_get_width(state.win_id)
+    
+    -- Check if this commit is selected in multi-select mode
+    local is_selected_commit = false
+    if M.is_mode(MODES.MULTI_SELECT) and state.selected_commits then
+      for _, selected_id in ipairs(state.selected_commits) do
+        if selected_id == cursor_commit_id then
+          is_selected_commit = true
+          break
+        end
+      end
+    end
+    
+    -- Choose highlight group based on current mode and selection status
+    local highlight_group
+    if M.is_mode(MODES.TARGET_SELECT) then
+      highlight_group = 'JJTargetSelection'
+    elseif is_selected_commit then
+      highlight_group = 'JJSelectedCommitCursor'  -- Special highlight for selected commit under cursor
+    else
+      highlight_group = 'JJCommitSelected'
+    end
+
+    for line_idx = commit.line_start, commit.line_end do
+      -- Get the actual line content to see its length
+      local line_content = vim.api.nvim_buf_get_lines(state.buf_id, line_idx - 1, line_idx, false)[1] or ""
+      local content_length = vim.fn.strdisplaywidth(line_content)
+
+      -- Highlight the actual content
+      vim.api.nvim_buf_add_highlight(state.buf_id, ns_id, highlight_group, line_idx - 1, 0, -1)
+
+      -- Extend highlighting to full window width if content is shorter
+      if content_length < window_width then
+        -- Add virtual text to fill the remaining space
+        vim.api.nvim_buf_set_extmark(state.buf_id, ns_id, line_idx - 1, #line_content, {
+          virt_text = { { string.rep(" ", window_width - content_length), highlight_group } },
+          virt_text_pos = 'inline'
+        })
+      end
+    end
+  end
+end
+
 -- Set up commit highlighting system
 M.setup_commit_highlighting = function()
   if not state.buf_id or not state.win_id then return end
 
-  -- Create highlight namespace for commit highlighting
-  local ns_id = vim.api.nvim_create_namespace('jj_commit_highlight')
-
   -- Define highlight groups for selected commit
   vim.api.nvim_set_hl(0, 'JJCommitSelected', { bg = '#3c3836' }) -- Dark background for normal selection
   vim.api.nvim_set_hl(0, 'JJTargetSelection', { bg = '#1d2021', fg = '#fb4934', bold = true }) -- Red background for target selection
-
-  -- Function to highlight the current commit
-  local function highlight_current_commit()
-    if not state.win_id or not vim.api.nvim_win_is_valid(state.win_id) then return end
-
-    -- Clear previous highlighting
-    vim.api.nvim_buf_clear_namespace(state.buf_id, ns_id, 0, -1)
-
-    -- Get current cursor position
-    local cursor = vim.api.nvim_win_get_cursor(state.win_id)
-    local line_number = cursor[1]
-
-    -- Get the commit at this line
-    local commit = buffer.get_commit_at_line(line_number)
-    if not commit then return end
-
-    -- Highlight all lines belonging to this commit with full window width
-    if commit.line_start and commit.line_end then
-      local window_width = vim.api.nvim_win_get_width(state.win_id)
-      
-      -- Choose highlight group based on current mode
-      local highlight_group = M.is_mode(MODES.TARGET_SELECT) and 'JJTargetSelection' or 'JJCommitSelected'
-
-      for line_idx = commit.line_start, commit.line_end do
-        -- Get the actual line content to see its length
-        local line_content = vim.api.nvim_buf_get_lines(state.buf_id, line_idx - 1, line_idx, false)[1] or ""
-        local content_length = vim.fn.strdisplaywidth(line_content)
-
-        -- Highlight the actual content
-        vim.api.nvim_buf_add_highlight(state.buf_id, ns_id, highlight_group, line_idx - 1, 0, -1)
-
-        -- Extend highlighting to full window width if content is shorter
-        if content_length < window_width then
-          -- Add virtual text to fill the remaining space
-          vim.api.nvim_buf_set_extmark(state.buf_id, ns_id, line_idx - 1, #line_content, {
-            virt_text = { { string.rep(" ", window_width - content_length), highlight_group } },
-            virt_text_pos = 'inline'
-          })
-        end
-      end
-    end
-  end
+  vim.api.nvim_set_hl(0, 'JJSelectedCommitCursor', { bg = '#5a5a5a' }) -- Lighter background for selected commit under cursor
 
   -- Set up autocmd to highlight on cursor movement
   vim.api.nvim_create_autocmd({ 'CursorMoved', 'CursorMovedI' }, {
     buffer = state.buf_id,
-    callback = highlight_current_commit,
+    callback = M.highlight_current_commit,
     group = vim.api.nvim_create_augroup('JJCommitHighlight_' .. state.buf_id, { clear = true })
   })
 
   -- Initial highlighting
-  highlight_current_commit()
+  M.highlight_current_commit()
 end
 
 M.get_current_line = function()
@@ -506,9 +549,11 @@ M.reset_mode = function()
     state.mode_data = {}
     state.selected_commits = {}  -- Clear multi-select state
     
-    -- If we were in multi-select mode, refresh to remove selection column
+    -- If we were in multi-select mode, clear multi-select highlighting
     if old_mode == MODES.MULTI_SELECT then
-      M.refresh_with_multi_select()  -- This will now render without selection column
+      -- Clear multi-select highlighting namespace
+      local multi_select_ns = vim.api.nvim_create_namespace('jj_multi_select')
+      vim.api.nvim_buf_clear_namespace(state.buf_id, multi_select_ns, 0, -1)
     end
     
     M.setup_commit_highlighting()  -- Reset to normal highlighting
@@ -725,8 +770,8 @@ M.enter_multi_select_mode = function()
   -- Update keymaps for multi-select
   M.setup_multi_select_keymaps()
   
-  -- Refresh buffer to show selection column
-  M.refresh_with_multi_select()
+  -- Refresh buffer to show selection highlighting
+  M.refresh_buffer()
   
   -- Show status message
   vim.notify("Multi-select mode: Use Space to toggle selection, Enter to confirm, Esc to cancel", vim.log.levels.INFO)
@@ -745,7 +790,7 @@ M.toggle_commit_selection = function()
   end
   
   -- Toggle selection
-  state.selected_commits = selection_column.toggle_commit_selection(current_commit, state.selected_commits)
+  state.selected_commits = multi_select.toggle_commit_selection(current_commit, state.selected_commits)
   
   -- Update display
   M.update_multi_select_display()
@@ -757,11 +802,8 @@ M.update_multi_select_display = function()
     return
   end
   
-  -- Get current commits for highlighting
-  local mixed_entries = buffer.get_commits(state.buf_id)
-  if mixed_entries then
-    selection_column.highlight_selected_commits(state.buf_id, mixed_entries, state.selected_commits)
-  end
+  -- Use the same highlighting logic that prevents duplicate extmarks
+  M.highlight_current_commit()
 end
 
 -- Confirm multi-selection and create merge commit
@@ -831,8 +873,8 @@ M.cancel_multi_selection = function()
   vim.notify("Multi-selection cancelled", vim.log.levels.INFO)
 end
 
--- Refresh buffer with multi-select support
-M.refresh_with_multi_select = function()
+-- Refresh buffer (with multi-select highlighting if active)
+M.refresh_buffer = function()
   if not state.buf_id then
     return false
   end
@@ -847,23 +889,16 @@ M.refresh_with_multi_select = function()
   
   commits = commits or {}
   
-  -- Prepare multi-select data if in multi-select mode
-  local multi_select_data = nil
-  if M.is_mode(MODES.MULTI_SELECT) then
-    multi_select_data = {
-      selected_commits = state.selected_commits
-    }
-  end
-  
-  -- Update buffer with multi-select support
-  local success = buffer.update_from_commits(state.buf_id, commits, buffer.get_mode(), multi_select_data)
+  -- Update buffer content (no more selection column injection)
+  local success = buffer.update_from_commits(state.buf_id, commits, buffer.get_mode())
   
   -- Apply selection highlighting if in multi-select mode
   if M.is_mode(MODES.MULTI_SELECT) then
     -- Schedule highlighting to ensure buffer is fully updated
     vim.schedule(function()
       if state.buf_id and vim.api.nvim_buf_is_valid(state.buf_id) then
-        selection_column.highlight_selected_commits(state.buf_id, commits, state.selected_commits)
+        local window_width = state.win_id and vim.api.nvim_win_is_valid(state.win_id) and vim.api.nvim_win_get_width(state.win_id) or 80
+        multi_select.highlight_selected_commits(state.buf_id, commits, state.selected_commits, window_width)
       end
     end)
   end

@@ -149,7 +149,7 @@ M.update = function(buf_id, content)
 end
 
 -- Update buffer content from commit objects
-M.update_from_commits = function(buf_id, commits, mode, multi_select_data)
+M.update_from_commits = function(buf_id, commits, mode)
   if not vim.api.nvim_buf_is_valid(buf_id) then
     return false
   end
@@ -161,43 +161,6 @@ M.update_from_commits = function(buf_id, commits, mode, multi_select_data)
   
   -- Render commits with highlights (window width will be retrieved from config)
   local highlighted_lines, raw_lines = renderer.render_with_highlights(commits, buffer_state.current_mode)
-  
-  -- Add selection column if in multi-select mode
-  if multi_select_data and multi_select_data.selected_commits then
-    local selection_column = require('jj-nvim.ui.selection_column')
-    
-    -- Process each line and add selection column
-    for line_nr, line_data in ipairs(highlighted_lines) do
-      -- Find which commit this line belongs to
-      local commit_for_line = nil
-      for _, entry in ipairs(commits) do
-        if entry.type ~= "commit" then
-          goto continue
-        end
-        
-        local commit = entry
-        if commit.line_start and commit.line_end and 
-           line_nr >= commit.line_start and line_nr <= commit.line_end then
-          commit_for_line = commit
-          break
-        end
-        ::continue::
-      end
-      
-      -- Add selection indicator
-      local selection_indicator
-      if commit_for_line and line_nr == commit_for_line.line_start then
-        -- Header line - show selection indicator
-        selection_indicator = selection_column.render_selection_indicator(commit_for_line, multi_select_data.selected_commits)
-      else
-        -- Non-header line - show spaces for alignment
-        selection_indicator = string.rep(' ', selection_column.get_selection_column_width())
-      end
-      
-      -- Prepend selection column to the line
-      line_data.text = selection_indicator .. line_data.text
-    end
-  end
   
   vim.api.nvim_buf_set_option(buf_id, 'modifiable', true)
   vim.api.nvim_buf_set_option(buf_id, 'readonly', false)
