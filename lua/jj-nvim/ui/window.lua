@@ -283,13 +283,16 @@ M.setup_keymaps = function()
     end
   end, opts)
 
-  -- Clear all selections
+  -- Clear all selections or close window
   vim.keymap.set('n', '<Esc>', function()
     local count = #state.selected_commits
     if count > 0 then
       state.selected_commits = multi_select.clear_all_selections()
       -- Update highlighting to reflect cleared selections
       M.highlight_current_commit()
+    else
+      -- No selections to clear, close the window (normal Esc behavior)
+      M.close()
     end
   end, opts)
 
@@ -482,10 +485,10 @@ M.highlight_current_commit = function()
 
   -- Clear both highlighting namespaces to prevent conflicts
   vim.api.nvim_buf_clear_namespace(state.buf_id, ns_id, 0, -1)
-  if M.is_mode(MODES.MULTI_SELECT) then
-    local multi_select_ns = vim.api.nvim_create_namespace('jj_multi_select')
-    vim.api.nvim_buf_clear_namespace(state.buf_id, multi_select_ns, 0, -1)
-  end
+  
+  -- Always clear multi-select namespace - either to reapply with current selections or to clear all
+  local multi_select_ns = vim.api.nvim_create_namespace('jj_multi_select')
+  vim.api.nvim_buf_clear_namespace(state.buf_id, multi_select_ns, 0, -1)
 
   -- Get current cursor position
   local cursor = vim.api.nvim_win_get_cursor(state.win_id)
