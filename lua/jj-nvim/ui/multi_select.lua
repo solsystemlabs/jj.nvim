@@ -124,4 +124,10 @@ M.highlight_selected_commits = function(buf_id, mixed_entries, selected_commits,
   end
 end
 
+-- Clear all selections
+M.clear_all_selections = function()
+  vim.notify("Cleared all selections", vim.log.levels.INFO)
+  return {}
+end
+
 return M

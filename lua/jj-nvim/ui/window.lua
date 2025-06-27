@@ -198,21 +198,23 @@ M.setup_keymaps = function()
 
   -- Snap to commit header if cursor is on a description line
   vim.keymap.set('n', '<Space>', function()
-    navigation.snap_to_commit_header(state.win_id)
+    local commit = navigation.get_current_commit(state.win_id)
+    if commit then
+      state.selected_commits = multi_select.toggle_commit_selection(commit, state.selected_commits)
+      -- Update highlighting to reflect selection changes
+      M.highlight_current_commit()
+      -- Show current selection count
+      local count = #state.selected_commits
+      if count > 0 then
+        vim.notify(string.format("Selection: %d commit%s", count, count > 1 and "s" or ""), vim.log.levels.INFO)
+      end
+    else
+      vim.notify("No commit under cursor", vim.log.levels.WARN)
+    end
   end, opts)
 
   -- Actions on commits
-  vim.keymap.set('n', '<CR>', function()
-    local commit = navigation.get_current_commit(state.win_id)
-    if commit then
-      vim.notify(string.format("Selected commit: %s (%s)",
-        commit.short_change_id,
-        commit:get_short_description()), vim.log.levels.INFO)
-      -- TODO: Implement diff preview
-    else
-      vim.notify("No commit selected", vim.log.levels.WARN)
-    end
-  end, opts)
+  -- Note: <CR> key binding removed - use Space to select commits instead
 
   -- Edit commit
   vim.keymap.set('n', 'e', function()
@@ -223,12 +225,61 @@ M.setup_keymaps = function()
     end
   end, opts)
 
-  -- Abandon commit
+  -- Abandon commit(s)
   vim.keymap.set('n', 'a', function()
-    local commit = navigation.get_current_commit(state.win_id)
-    if actions.abandon_commit(commit) then
-      -- Refresh buffer to show updated state
-      buffer.refresh(state.buf_id)
+    if #state.selected_commits > 0 then
+      -- Abandon selected commits
+      actions.abandon_multiple_commits(state.selected_commits, function()
+        -- Clear selections after abandoning
+        state.selected_commits = {}
+        -- Refresh buffer to show updated state
+        buffer.refresh(state.buf_id)
+      end)
+    else
+      -- Abandon current commit
+      local commit = navigation.get_current_commit(state.win_id)
+      if commit then
+        actions.abandon_commit(commit, function()
+          -- Refresh buffer to show updated state
+          buffer.refresh(state.buf_id)
+        end)
+      else
+        vim.notify("No commit under cursor to abandon", vim.log.levels.WARN)
+      end
+    end
+  end, opts)
+
+  -- Explicit multi-abandon (abandon all selected commits)
+  vim.keymap.set('n', 'A', function()
+    if #state.selected_commits > 0 then
+      actions.abandon_multiple_commits(state.selected_commits, function()
+        -- Clear selections after abandoning
+        state.selected_commits = {}
+        -- Refresh buffer to show updated state
+        buffer.refresh(state.buf_id)
+      end)
+    else
+      vim.notify("No commits selected for multi-abandon", vim.log.levels.WARN)
+    end
+  end, opts)
+
+  -- Show selection status
+  vim.keymap.set('n', 's', function()
+    local count = #state.selected_commits
+    if count > 0 then
+      vim.notify(string.format("%d commit%s selected", count, count > 1 and "s" or ""), vim.log.levels.INFO)
+    else
+      vim.notify("No commits selected", vim.log.levels.INFO)
+    end
+  end, opts)
+
+  -- Clear all selections
+  vim.keymap.set('n', '<Esc>', function()
+    local count = #state.selected_commits
+    if count > 0 then
+      state.selected_commits = multi_select.clear_all_selections()
+      -- Update highlighting to reflect cleared selections
+      M.highlight_current_commit()
     end
   end, opts)
 
@@ -438,7 +489,7 @@ M.highlight_current_commit = function()
   end
 
   -- Apply multi-select highlighting first for all selected commits EXCEPT the one under cursor
-  if M.is_mode(MODES.MULTI_SELECT) then
+  if #state.selected_commits > 0 then
     local commits = buffer.get_commits(state.buf_id)
     if commits then
       local window_width = vim.api.nvim_win_get_width(state.win_id)
@@ -459,9 +510,9 @@ M.highlight_current_commit = function()
   if commit.line_start and commit.line_end then
     local window_width = vim.api.nvim_win_get_width(state.win_id)
     
-    -- Check if this commit is selected in multi-select mode
+    -- Check if this commit is selected
     local is_selected_commit = false
-    if M.is_mode(MODES.MULTI_SELECT) and state.selected_commits then
+    if state.selected_commits then
       for _, selected_id in ipairs(state.selected_commits) do
         if selected_id == cursor_commit_id then
           is_selected_commit = true

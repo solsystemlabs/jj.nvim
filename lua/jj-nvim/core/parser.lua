@@ -85,27 +85,27 @@ local function extract_graph_prefix_from_line(description_line, commit_graph)
   if not description_line or description_line == "" then
     return generate_fallback_description_graph(commit_graph)
   end
-  
+
   -- Strip ANSI codes for analysis
   local clean_line = ansi.strip_ansi(description_line)
   local clean_commit_graph = ansi.strip_ansi(commit_graph or "")
-  
+
   -- The description line has the same graph structure as the commit line,
   -- but with description text instead of commit ID
   -- We need to find where the description text starts and extract everything before it
-  
+
   -- Strategy: Find the rightmost non-graph character position in the commit graph
   -- and use that as a reference point for the description graph
   local commit_graph_length = vim.fn.strchars(clean_commit_graph)
-  
+
   -- Find where the actual description text starts by looking for text patterns
   -- Description text typically starts after spaces following the graph structure
   local graph_end_pos = 0
   local in_graph_area = true
-  
+
   for i = 1, vim.fn.strchars(clean_line) do
     local char = vim.fn.strcharpart(clean_line, i - 1, 1)
-    
+
     if in_graph_area then
       -- We're still in the graph area if we see graph characters or spaces
       if char:match("[│├─╮╯╭┤~%s]") then
@@ -117,12 +117,12 @@ local function extract_graph_prefix_from_line(description_line, commit_graph)
       end
     end
   end
-  
+
   -- Extract the graph prefix portion
   local graph_prefix = ""
   if graph_end_pos > 0 then
     graph_prefix = vim.fn.strcharpart(clean_line, 0, graph_end_pos)
-    
+
     -- Ensure the graph prefix has the same length as the commit graph
     -- by padding with spaces if necessary
     local prefix_length = vim.fn.strchars(graph_prefix)
@@ -133,12 +133,12 @@ local function extract_graph_prefix_from_line(description_line, commit_graph)
     -- Fallback to generating from commit graph
     return generate_fallback_description_graph(commit_graph)
   end
-  
+
   -- Add trailing spaces for description area
   if not graph_prefix:match("%s%s$") then
     graph_prefix = graph_prefix .. "  "
   end
-  
+
   return graph_prefix
 end
 
@@ -148,7 +148,8 @@ local function parse_graph_structure(graph_output)
   local entries = {} -- Now contains both commits and elided sections
   local current_entry = nil
   local current_elided = nil
-  local state = "looking_for_commit" -- "looking_for_commit", "expecting_description", "collecting_connectors", "collecting_elided"
+  local state =
+  "looking_for_commit" -- "looking_for_commit", "expecting_description", "collecting_connectors", "collecting_elided"
 
   for line_index, line in ipairs(graph_lines) do
     if line:match("^%s*$") and state ~= "collecting_elided" then
@@ -183,7 +184,7 @@ local function parse_graph_structure(graph_output)
       -- ELIDED LINE: Start elided section, but first save current commit
       table.insert(entries, current_entry)
       current_entry = nil
-      
+
       current_elided = {
         type = "elided",
         lines = { line } -- Start with the elided line
@@ -200,7 +201,7 @@ local function parse_graph_structure(graph_output)
         -- This connector line starts or precedes an elided section
         table.insert(entries, current_entry)
         current_entry = nil
-        
+
         current_elided = {
           type = "elided",
           lines = { line } -- Start with this connector line
@@ -209,16 +210,17 @@ local function parse_graph_structure(graph_output)
       else
         -- Check if this connector line should be standalone for graph flow continuity
         local clean_line = ansi.strip_ansi(line)
-        local has_complex_connectors = clean_line:match("╭") or clean_line:match("╰") or clean_line:match("├") or clean_line:match("┤")
-        
+        local has_complex_connectors = clean_line:match("╭") or clean_line:match("╰") or clean_line:match("├") or
+            clean_line:match("┤")
+
         if has_complex_connectors then
           -- Complex connector lines should be standalone to maintain graph flow
           table.insert(entries, current_entry)
           current_entry = nil
-          
+
           -- Create standalone connector entry
           local standalone_connector = {
-            type = "connector", 
+            type = "connector",
             lines = { line }
           }
           table.insert(entries, standalone_connector)
@@ -237,7 +239,7 @@ local function parse_graph_structure(graph_output)
         -- Commit line encountered, save elided section and start new commit
         table.insert(entries, current_elided)
         current_elided = nil
-        
+
         local star_pos = line:find("*", 1, true)
         local commit_graph = line:sub(1, star_pos - 1)
         local commit_id_raw = line:sub(star_pos + 1):match("^%s*(.-)%s*$")
@@ -261,7 +263,7 @@ local function parse_graph_structure(graph_output)
         table.insert(entries, current_entry)
         current_entry = nil
       end
-      
+
       current_elided = {
         type = "elided",
         lines = { line }
@@ -293,11 +295,11 @@ local function generate_fallback_description_graph(commit_graph)
   local clean_graph = ansi.strip_ansi(commit_graph)
   local result = ""
   local char_count = vim.fn.strchars(clean_graph)
-  
+
   -- Find the position of the commit symbol (rightmost symbol)
   local commit_symbol_pos = nil
   local commit_symbols = { "@", "○", "◆", "×" }
-  
+
   for i = char_count - 1, 0, -1 do
     local char = vim.fn.strcharpart(clean_graph, i, 1)
     for _, sym in ipairs(commit_symbols) do
@@ -308,11 +310,11 @@ local function generate_fallback_description_graph(commit_graph)
     end
     if commit_symbol_pos then break end
   end
-  
+
   -- Build the description graph prefix
   for i = 0, char_count - 1 do
     local char = vim.fn.strcharpart(clean_graph, i, 1)
-    
+
     if char == " " then
       result = result .. " "
     elseif char == "│" then
@@ -331,12 +333,12 @@ local function generate_fallback_description_graph(commit_graph)
       result = result .. "│"
     end
   end
-  
+
   -- Ensure we have proper spacing after the graph
   if not result:match("%s$") then
     result = result .. "  "
   end
-  
+
   return result
 end
 
