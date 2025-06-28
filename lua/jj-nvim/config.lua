@@ -31,8 +31,14 @@ M.defaults = {
   },
   diff = {
     format = 'git', -- 'git', 'stat', 'color-words', 'name-only'
-    split = 'horizontal', -- 'horizontal', 'vertical'
+    display = 'split', -- 'split', 'float'
+    split = 'horizontal', -- 'horizontal', 'vertical' (for split mode)
     size = 50, -- Size percentage for diff window
+    float = {
+      width = 0.8, -- Floating window width as percentage of screen
+      height = 0.8, -- Floating window height as percentage of screen
+      border = 'rounded', -- 'none', 'single', 'double', 'rounded', 'solid', 'shadow'
+    },
   }
 }
 

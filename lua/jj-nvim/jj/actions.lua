@@ -555,8 +555,35 @@ local function create_diff_buffer(content, commit_id, diff_type)
   return buf_id
 end
 
+-- Create floating window configuration
+local function create_float_config()
+  local float_config = config.get('diff.float') or {}
+  local width_ratio = float_config.width or 0.8
+  local height_ratio = float_config.height or 0.8
+  local border = float_config.border or 'rounded'
+  
+  local screen_width = vim.o.columns
+  local screen_height = vim.o.lines
+  
+  local width = math.floor(screen_width * width_ratio)
+  local height = math.floor(screen_height * height_ratio)
+  local col = math.floor((screen_width - width) / 2)
+  local row = math.floor((screen_height - height) / 2)
+  
+  return {
+    relative = 'editor',
+    width = width,
+    height = height,
+    col = col,
+    row = row,
+    style = 'minimal',
+    border = border,
+    zindex = 100,
+  }
+end
+
 -- Display diff buffer in a split window
-local function display_diff_buffer(buf_id, split_direction)
+local function display_diff_buffer_split(buf_id, split_direction)
   split_direction = split_direction or 'horizontal'
   
   -- Get current window to return focus later
@@ -572,17 +599,42 @@ local function display_diff_buffer(buf_id, split_direction)
   -- Switch to the new buffer
   vim.api.nvim_win_set_buf(0, buf_id)
   
-  -- Set up keymap to close diff window
+  return vim.api.nvim_get_current_win()
+end
+
+-- Display diff buffer in a floating window
+local function display_diff_buffer_float(buf_id)
+  local float_config = create_float_config()
+  local win_id = vim.api.nvim_open_win(buf_id, true, float_config)
+  
+  -- Set window options for better appearance
+  vim.api.nvim_win_set_option(win_id, 'wrap', false)
+  vim.api.nvim_win_set_option(win_id, 'cursorline', true)
+  
+  return win_id
+end
+
+-- Display diff buffer based on configuration
+local function display_diff_buffer(buf_id, display_mode, split_direction)
+  local win_id
+  
+  if display_mode == 'float' then
+    win_id = display_diff_buffer_float(buf_id)
+  else
+    win_id = display_diff_buffer_split(buf_id, split_direction)
+  end
+  
+  -- Set up keymap to close diff window (works for both split and float)
   vim.keymap.set('n', 'q', function()
-    vim.api.nvim_win_close(0, false)
+    vim.api.nvim_win_close(win_id, false)
   end, { buffer = buf_id, noremap = true, silent = true })
   
   -- Set up keymap to return to log window
   vim.keymap.set('n', '<Esc>', function()
-    vim.api.nvim_win_close(0, false)
+    vim.api.nvim_win_close(win_id, false)
   end, { buffer = buf_id, noremap = true, silent = true })
   
-  return vim.api.nvim_get_current_win()
+  return win_id
 end
 
 -- Show diff for the specified commit
@@ -654,10 +706,12 @@ M.show_diff = function(commit, format, options)
   
   -- Create and display diff buffer
   local buf_id = create_diff_buffer(diff_content, display_id, format)
+  local display_mode = config.get('diff.display') or 'split'
   local split_direction = config.get('diff.split') or 'horizontal'
-  local diff_win = display_diff_buffer(buf_id, split_direction)
+  local diff_win = display_diff_buffer(buf_id, display_mode, split_direction)
   
-  vim.notify(string.format("Showing %s diff for commit %s", format, display_id), vim.log.levels.INFO)
+  local display_type = display_mode == 'float' and 'floating window' or 'split window'
+  vim.notify(string.format("Showing %s diff for commit %s (%s)", format, display_id, display_type), vim.log.levels.INFO)
   return true
 end
 
