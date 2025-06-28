@@ -24,22 +24,22 @@ local RENDER_MODES = {
   }
 }
 
--- Color codes that match jj's output for consistency
+-- Color codes that match jj's actual output for consistency
 local COLORS = {
   current_symbol = '\27[1m\27[38;5;2m', -- @ symbol (bold green)
   regular_symbol = '', -- ○ symbol (no color)
   root_symbol = '\27[1m\27[38;5;14m', -- ◆ symbol (bold bright cyan)
   conflict_symbol = '\27[1m\27[38;5;1m', -- × symbol (bold red)
-  change_id_current = '\27[1m\27[38;5;13m', -- Current commit change ID (bold magenta)
-  change_id_regular = '\27[1m\27[38;5;5m', -- Regular commit change ID (bold purple)
+  change_id_current = '\27[1m\27[38;5;13m', -- Current commit change ID (bold bright magenta)
+  change_id_regular = '\27[1m\27[38;5;13m', -- Regular commit change ID (bold bright magenta) - matches actual jj
   change_id_dim = '\27[38;5;8m', -- Dim part of change ID
   author_current = '\27[1m\27[38;5;3m', -- Current commit author (bold yellow)
   author_regular = '\27[38;5;3m', -- Regular commit author (yellow)
   author_root = '\27[38;5;2m', -- Root commit author (dark green)
-  timestamp_current = '\27[38;5;14m', -- Current commit timestamp (bright cyan)
-  timestamp_regular = '\27[38;5;6m', -- Regular commit timestamp (cyan)
-  commit_id_current = '\27[38;5;12m', -- Current commit ID (bright blue)
-  commit_id_regular = '\27[1m\27[38;5;4m', -- Regular commit ID (bold blue)
+  timestamp_current = '\27[38;5;14m', -- Current commit timestamp (bright cyan) - matches actual jj
+  timestamp_regular = '\27[38;5;14m', -- Regular commit timestamp (bright cyan) - matches actual jj
+  commit_id_current = '\27[38;5;12m', -- Current commit ID (bright blue) - matches actual jj
+  commit_id_regular = '\27[38;5;12m', -- Regular commit ID (bright blue) - matches actual jj
   commit_id_dim = '\27[38;5;8m', -- Dim part of commit ID
   description_current = '\27[1m\27[38;5;3m', -- Current commit "(no description set)" (bold yellow)
   description_regular = '\27[38;5;3m', -- Regular commit "(no description set)" (yellow)
@@ -224,7 +224,7 @@ local function render_commit(commit, mode_config, window_width)
 
   table.insert(line_parts, styled_graph)
 
-  -- Change ID with proper coloring based on shortest unique prefix
+  -- Change ID with proper coloring - use hardcoded colors that match jj's actual output
   local change_id = commit.short_change_id or commit.change_id:sub(1, 8)
   local shortest_change_id = commit.shortest_change_id or ""
   local change_id_color = is_current and COLORS.change_id_current or COLORS.change_id_regular
@@ -232,13 +232,15 @@ local function render_commit(commit, mode_config, window_width)
 
   -- Color the shortest unique prefix, dim the rest (keep as single part for wrapping)
   local colored_length = #shortest_change_id
+  local colored_change_id
   if colored_length > 0 and colored_length < #change_id then
-    local combined_change_id = change_id_color .. change_id:sub(1, colored_length) .. COLORS.reset .. 
-                               change_id_dim_color .. change_id:sub(colored_length + 1) .. COLORS.reset_fg
-    table.insert(line_parts, combined_change_id)
+    colored_change_id = change_id_color .. change_id:sub(1, colored_length) .. COLORS.reset .. 
+                       change_id_dim_color .. change_id:sub(colored_length + 1) .. COLORS.reset_fg
   else
-    table.insert(line_parts, change_id_color .. change_id .. COLORS.reset)
+    colored_change_id = change_id_color .. change_id .. COLORS.reset
   end
+  
+  table.insert(line_parts, colored_change_id)
 
   -- Author
   local author = commit:get_author_display()
@@ -267,7 +269,7 @@ local function render_commit(commit, mode_config, window_width)
     end
   end
 
-  -- Commit ID with proper coloring based on shortest unique prefix
+  -- Commit ID with proper coloring - use hardcoded colors that match jj's actual output
   local commit_id = commit.short_commit_id
   if commit_id ~= "" then
     local shortest_commit_id = commit.shortest_commit_id or ""
@@ -276,13 +278,15 @@ local function render_commit(commit, mode_config, window_width)
 
     -- Color the shortest unique prefix, dim the rest (keep as single part for wrapping)
     local colored_length = #shortest_commit_id
+    local colored_commit_id
     if colored_length > 0 and colored_length < #commit_id then
-      local combined_commit_id = " " .. commit_id_color .. commit_id:sub(1, colored_length) .. COLORS.reset .. 
-                                 commit_id_dim_color .. commit_id:sub(colored_length + 1) .. COLORS.reset_fg
-      table.insert(line_parts, combined_commit_id)
+      colored_commit_id = " " .. commit_id_color .. commit_id:sub(1, colored_length) .. COLORS.reset .. 
+                         commit_id_dim_color .. commit_id:sub(colored_length + 1) .. COLORS.reset_fg
     else
-      table.insert(line_parts, " " .. commit_id_color .. commit_id .. COLORS.reset)
+      colored_commit_id = " " .. commit_id_color .. commit_id .. COLORS.reset
     end
+    
+    table.insert(line_parts, colored_commit_id)
   end
 
   -- Conflict indicator (last item on the line)
@@ -366,10 +370,18 @@ local function render_commit(commit, mode_config, window_width)
           -- Color "(empty)" in green and rest in description color
           local empty_part = "(empty) "
           local rest_part = description:sub(#empty_part + 1)
-          formatted_desc = COLORS.empty_indicator .. empty_part .. COLORS.reset_fg .. desc_color .. rest_part
+          
+          local empty_color = (commit.colors and commit.colors.empty_indicator and commit.colors.empty_indicator ~= "") 
+                             and commit.colors.empty_indicator or COLORS.empty_indicator
+          local desc_final_color = (commit.colors and commit.colors.description and commit.colors.description ~= "") 
+                                  and commit.colors.description or desc_color
+          
+          formatted_desc = empty_color .. empty_part .. COLORS.reset_fg .. desc_final_color .. rest_part
         else
-          -- Normal description coloring
-          formatted_desc = desc_color .. description
+          -- Normal description coloring - use stored color if available
+          local desc_final_color = (commit.colors and commit.colors.description and commit.colors.description ~= "") 
+                                   and commit.colors.description or desc_color
+          formatted_desc = desc_final_color .. description
         end
 
         -- Add expansion indicator for expandable descriptions (only on first line when not expanded)

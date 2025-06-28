@@ -60,6 +60,19 @@ function Commit.new(data)
   self.description_graph = data.description_graph or "" -- Graph structure for description line
   self.additional_lines = data.additional_lines or {} -- Description/connector lines with graph info
 
+  -- Color information (extracted from jj's ANSI output)
+  self.colors = data.colors or {
+    change_id = "",        -- ANSI codes for change ID
+    commit_id = "",        -- ANSI codes for commit ID  
+    author = "",           -- ANSI codes for author
+    timestamp = "",        -- ANSI codes for timestamp
+    description = "",      -- ANSI codes for description
+    bookmarks = "",        -- ANSI codes for bookmarks
+    graph = "",            -- ANSI codes for graph symbols
+    empty_indicator = "",  -- ANSI codes for "(empty)" text
+    conflict_indicator = "" -- ANSI codes for "conflict" text
+  }
+
   return self
 end
 
@@ -205,6 +218,48 @@ end
 -- Check if this commit should be highlighted as current
 function Commit:is_current()
   return self.current_working_copy
+end
+
+-- Get colored version of a field if color information is available
+function Commit:get_colored_field(field_name, plain_text, reset)
+  reset = reset or "\27[0m" -- Default reset code
+  local color = self.colors[field_name]
+  if color and color ~= "" then
+    return color .. plain_text .. reset
+  else
+    return plain_text
+  end
+end
+
+-- Get colored change ID
+function Commit:get_colored_change_id(reset)
+  local change_id = self.short_change_id or self.change_id:sub(1, 8)
+  return self:get_colored_field("change_id", change_id, reset)
+end
+
+-- Get colored commit ID  
+function Commit:get_colored_commit_id(reset)
+  return self:get_colored_field("commit_id", self.short_commit_id, reset)
+end
+
+-- Get colored author
+function Commit:get_colored_author(reset)
+  return self:get_colored_field("author", self:get_author_display(), reset)
+end
+
+-- Get colored timestamp
+function Commit:get_colored_timestamp(reset)
+  return self:get_colored_field("timestamp", self:get_timestamp_display(), reset)
+end
+
+-- Get colored description
+function Commit:get_colored_description(reset)
+  return self:get_colored_field("description", self:get_short_description(), reset)
+end
+
+-- Get colored bookmarks
+function Commit:get_colored_bookmarks(reset)
+  return self:get_colored_field("bookmarks", self:get_bookmarks_display(), reset)
 end
 
 -- Factory function to create commits from template data

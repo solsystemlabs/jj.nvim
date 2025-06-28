@@ -268,5 +268,91 @@ M.strip_ansi = function(text)
   return text:gsub('\27%[[%d;]*m', '')
 end
 
+-- Extract ANSI color codes from text and return both codes and clean text
+M.extract_color_and_text = function(text)
+  if not text or text == "" then
+    return "", ""
+  end
+  
+  local color_codes = {}
+  local clean_text = ""
+  local pos = 1
+  
+  while pos <= #text do
+    local esc_start, esc_end = text:find('\27%[[%d;]*m', pos)
+    
+    if not esc_start then
+      -- No more ANSI codes, append remaining text
+      clean_text = clean_text .. text:sub(pos)
+      break
+    end
+    
+    -- Add text before ANSI code
+    if esc_start > pos then
+      clean_text = clean_text .. text:sub(pos, esc_start - 1)
+    end
+    
+    -- Extract and store ANSI code, but filter out reset codes
+    local ansi_code = text:sub(esc_start, esc_end)
+    -- Only include actual color codes, not reset codes
+    if not ansi_code:match('\27%[39m') and not ansi_code:match('\27%[0m') then
+      table.insert(color_codes, ansi_code)
+    end
+    
+    pos = esc_end + 1
+  end
+  
+  -- Return the color codes concatenated and clean text
+  return table.concat(color_codes), clean_text
+end
+
+-- Extract color information from a field with delimiters
+M.extract_field_colors = function(colored_text, field_start_marker, field_end_marker)
+  if not colored_text or colored_text == "" then
+    return "", ""
+  end
+  
+  -- Find the field boundaries
+  local start_pos = colored_text:find(field_start_marker, 1, true)
+  local end_pos = colored_text:find(field_end_marker, 1, true)
+  
+  if not start_pos or not end_pos or end_pos <= start_pos then
+    return "", ""
+  end
+  
+  -- Extract the field content (including ANSI codes)
+  local field_content = colored_text:sub(start_pos + #field_start_marker, end_pos - 1)
+  
+  -- Separate color codes from text
+  return M.extract_color_and_text(field_content)
+end
+
+-- Get the opening ANSI codes from a piece of colored text
+M.get_opening_color_codes = function(text)
+  if not text or text == "" then
+    return ""
+  end
+  
+  local codes = {}
+  local pos = 1
+  
+  -- Extract all ANSI codes from the beginning until we hit actual text
+  while pos <= #text do
+    local esc_start, esc_end = text:find('\27%[[%d;]*m', pos)
+    
+    if not esc_start or esc_start ~= pos then
+      -- No ANSI code at current position, we've hit text
+      break
+    end
+    
+    -- Found ANSI code at current position
+    local ansi_code = text:sub(esc_start, esc_end)
+    table.insert(codes, ansi_code)
+    pos = esc_end + 1
+  end
+  
+  return table.concat(codes)
+end
+
 return M
 
