@@ -148,7 +148,7 @@ local function get_continuation_graph_from_commit(source_line)
     return ""
   end
 
-  -- 1. Take the graph content part of the main line
+  -- Strip ANSI codes to get clean structure for analysis
   local clean_line = ansi.strip_ansi(source_line)
   
   -- Extract graph content by finding where description starts
@@ -171,13 +171,41 @@ local function get_continuation_graph_from_commit(source_line)
     end
   end
   
-  -- 2. Count columns, trimming only outer whitespace
-  local trimmed_graph = graph_content:gsub("^%s+", ""):gsub("%s+$", "")
-  local num_chars = get_display_width(trimmed_graph)
+  -- Build continuation graph preserving original spacing structure
+  local result = ""
+  local char_count = vim.fn.strchars(graph_content)
   
-  -- 3. Use formula numChars / 2 for '| ' instances, plus single '|' at end, plus '  ' for text indentation
-  local pairs_count = math.floor(num_chars / 2)
-  return string.rep("│ ", pairs_count) .. "│" .. "  "
+  -- Process each character in the graph content
+  for i = 0, char_count - 1 do
+    local char = vim.fn.strcharpart(graph_content, i, 1)
+    
+    if char == " " then
+      -- Preserve spaces exactly as they are
+      result = result .. " "
+    elseif char == "│" then
+      -- Keep vertical bars as they are
+      result = result .. "│"
+    elseif char == "@" or char == "○" or char == "◆" or char == "×" then
+      -- Replace commit symbols with vertical bars to maintain flow
+      result = result .. "│"
+    elseif char == "─" then
+      -- Horizontal lines become spaces in continuation area
+      result = result .. " "
+    elseif char:match("[├┤╭╰╮╯]") then
+      -- Complex connectors become vertical bars to maintain column flow
+      result = result .. "│"
+    else
+      -- Any other symbol becomes vertical bar
+      result = result .. "│"
+    end
+  end
+  
+  -- Ensure we have proper spacing after the graph for text indentation
+  if not result:match("%s%s$") then
+    result = result .. "  "
+  end
+  
+  return result
 end
 
 
