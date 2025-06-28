@@ -1004,12 +1004,6 @@ M.toggle_description_expansion = function()
 
   -- Toggle expansion state on the commit object itself
   commit.expanded = not commit.expanded
-  
-  if commit.expanded then
-    vim.notify("Expanded description", vim.log.levels.INFO)
-  else
-    vim.notify("Collapsed description", vim.log.levels.INFO)
-  end
 
   -- Re-render buffer with updated expansion state
   local all_commits = buffer.get_commits()
