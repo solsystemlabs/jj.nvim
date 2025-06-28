@@ -304,8 +304,18 @@ local function render_commit(commit, mode_config, window_width)
   -- Always add description in comfortable/detailed mode (before connector lines)
   -- Skip description for root commits
   if mode_config.show_description and not mode_config.single_line and not commit.root then
-    local description = commit:get_short_description()
-    if description and description ~= "" then
+    -- Get description(s) based on expansion state
+    local descriptions = {}
+    if commit.expanded then
+      descriptions = commit:get_full_description_lines()
+    else
+      local short_desc = commit:get_short_description()
+      if short_desc and short_desc ~= "" then
+        descriptions = {short_desc}
+      end
+    end
+    
+    if #descriptions > 0 then
       local desc_color
       if commit:has_real_description() then
         -- Real descriptions are white (bold for current commit)
@@ -315,30 +325,57 @@ local function render_commit(commit, mode_config, window_width)
         desc_color = is_current and COLORS.description_current or COLORS.description_regular
       end
 
-      -- Handle "(empty)" coloring separately from description
-      local formatted_desc = ""
-      if commit.empty and description:find("^%(empty%) ") then
-        -- Color "(empty)" in green and rest in description color
-        local empty_part = "(empty) "
-        local rest_part = description:sub(#empty_part + 1)
-        formatted_desc = COLORS.empty_indicator .. empty_part .. COLORS.reset_fg .. desc_color .. rest_part
-      else
-        -- Normal description coloring
-        formatted_desc = desc_color .. description
-      end
-
       -- Use the captured description_graph with proper symbol coloring and wrapping
       local desc_graph = apply_symbol_colors(commit.description_graph or "", commit)
-      local desc_content = formatted_desc .. COLORS.reset_fg .. COLORS.reset
       -- Use the description graph structure for continuation
       local continuation_graph = get_continuation_graph_from_commit(commit.description_graph)
 
-      -- Use word-based wrapping for descriptions
-      local wrapped_lines = wrap_text_by_words(desc_content, desc_graph, continuation_graph, window_width)
+      -- Process each description line
+      for i, description in ipairs(descriptions) do
+        -- Handle "(empty)" coloring separately from description
+        local formatted_desc = ""
+        if commit.empty and description:find("^%(empty%) ") then
+          -- Color "(empty)" in green and rest in description color
+          local empty_part = "(empty) "
+          local rest_part = description:sub(#empty_part + 1)
+          formatted_desc = COLORS.empty_indicator .. empty_part .. COLORS.reset_fg .. desc_color .. rest_part
+        else
+          -- Normal description coloring
+          formatted_desc = desc_color .. description
+        end
 
-      -- Add each wrapped line
-      for _, wrapped_line in ipairs(wrapped_lines) do
-        table.insert(lines, wrapped_line)
+        -- Add expansion indicator for expandable descriptions (only on first line when not expanded)
+        if i == 1 and not commit.expanded and commit:has_expandable_description() then
+          formatted_desc = formatted_desc .. COLORS.reset_fg .. COLORS.change_id_dim .. " ▶" .. COLORS.reset_fg
+        elseif i == 1 and commit.expanded and commit:has_expandable_description() then
+          formatted_desc = formatted_desc .. COLORS.reset_fg .. COLORS.change_id_dim .. " ▼" .. COLORS.reset_fg
+        end
+
+        local desc_content = formatted_desc .. COLORS.reset_fg .. COLORS.reset
+
+        -- For expanded descriptions, first line uses desc_graph, subsequent lines use spaces
+        local line_graph = desc_graph
+        if commit.expanded and i > 1 then
+          -- Create a space-filled graph for continuation lines
+          local graph_length = vim.fn.strdisplaywidth(ansi.strip_ansi(desc_graph))
+          line_graph = string.rep(" ", graph_length)
+        end
+
+        -- For expanded descriptions, use space-filled continuation instead of graph continuation
+        local wrap_continuation = continuation_graph
+        if commit.expanded then
+          -- Use spaces for wrapped lines within expanded descriptions
+          local graph_length = vim.fn.strdisplaywidth(ansi.strip_ansi(line_graph))
+          wrap_continuation = string.rep(" ", graph_length)
+        end
+
+        -- Use word-based wrapping for descriptions
+        local wrapped_lines = wrap_text_by_words(desc_content, line_graph, wrap_continuation, window_width)
+
+        -- Add each wrapped line
+        for _, wrapped_line in ipairs(wrapped_lines) do
+          table.insert(lines, wrapped_line)
+        end
       end
     end
   end

@@ -2,11 +2,36 @@ local M = {}
 
 local buffer = require('jj-nvim.ui.buffer')
 
+-- Helper function to collapse all expanded commits
+local function collapse_expanded_commits(win_id)
+  local all_commits = buffer.get_commits()
+  if all_commits then
+    local has_changes = false
+    for _, commit in ipairs(all_commits) do
+      if commit.expanded then
+        commit.expanded = false
+        has_changes = true
+      end
+    end
+    
+    -- Re-render if there were changes
+    if has_changes then
+      local buf_id = vim.api.nvim_win_get_buf(win_id)
+      if buf_id then
+        buffer.update_from_commits(buf_id, all_commits, buffer.get_mode())
+      end
+    end
+  end
+end
+
 -- Navigate to the next commit
 M.next_commit = function(win_id)
   if not win_id or not vim.api.nvim_win_is_valid(win_id) then
     return false
   end
+  
+  -- Collapse any expanded commits before navigating
+  collapse_expanded_commits(win_id)
   
   local buf_id = vim.api.nvim_win_get_buf(win_id)
   local cursor = vim.api.nvim_win_get_cursor(win_id)
@@ -43,6 +68,9 @@ M.prev_commit = function(win_id)
     return false
   end
   
+  -- Collapse any expanded commits before navigating
+  collapse_expanded_commits(win_id)
+  
   local buf_id = vim.api.nvim_win_get_buf(win_id)
   local cursor = vim.api.nvim_win_get_cursor(win_id)
   local current_line = cursor[1]
@@ -78,6 +106,9 @@ M.goto_commit = function(win_id, commit_index)
   if not win_id or not vim.api.nvim_win_is_valid(win_id) then
     return false
   end
+  
+  -- Collapse any expanded commits before navigating
+  collapse_expanded_commits(win_id)
   
   local header_lines = buffer.get_header_lines()
   if not header_lines or commit_index < 0 or commit_index >= #header_lines then

@@ -299,6 +299,11 @@ M.setup_keymaps = function()
     end
   end, opts)
 
+  -- Toggle description expansion
+  vim.keymap.set('n', '<Tab>', function()
+    M.toggle_description_expansion()
+  end, opts)
+
   -- New change creation
   vim.keymap.set('n', 'n', function()
     M.show_new_change_menu()
@@ -971,6 +976,46 @@ M.refresh_buffer = function()
   end
   
   return success
+end
+
+-- Toggle description expansion for current commit
+M.toggle_description_expansion = function()
+  local commit = navigation.get_current_commit(state.win_id)
+  if not commit then
+    vim.notify("No commit under cursor", vim.log.levels.WARN)
+    return
+  end
+
+  -- Check if this commit has expandable descriptions
+  if not commit:has_expandable_description() then
+    vim.notify("Commit has no expandable description", vim.log.levels.INFO)
+    return
+  end
+
+  -- First, collapse any other expanded commits
+  local all_commits = buffer.get_commits()
+  if all_commits then
+    for _, c in ipairs(all_commits) do
+      if c ~= commit then
+        c.expanded = false
+      end
+    end
+  end
+
+  -- Toggle expansion state on the commit object itself
+  commit.expanded = not commit.expanded
+  
+  if commit.expanded then
+    vim.notify("Expanded description", vim.log.levels.INFO)
+  else
+    vim.notify("Collapsed description", vim.log.levels.INFO)
+  end
+
+  -- Re-render buffer with updated expansion state
+  local all_commits = buffer.get_commits()
+  if all_commits then
+    buffer.update_from_commits(state.buf_id, all_commits, buffer.get_mode())
+  end
 end
 
 return M

@@ -22,6 +22,7 @@ function Commit.new(data)
 
   -- Content
   self.description = data.description or ""
+  self.full_description = data.full_description or ""
   self.empty = data.empty or false
 
   -- Status flags
@@ -142,6 +143,55 @@ function Commit:get_short_description()
   end
 
   return desc_text
+end
+
+-- Check if this commit has an expandable description (multi-line)
+function Commit:has_expandable_description()
+  if not self.full_description or self.full_description == "" then
+    return false
+  end
+  
+  -- Check if full description has multiple lines
+  local lines = vim.split(self.full_description, '\n', {plain = true})
+  if #lines > 1 then
+    -- Filter out empty lines to see if there's actually additional content
+    local non_empty_lines = 0
+    for _, line in ipairs(lines) do
+      if line:match("%S") then -- Line contains non-whitespace
+        non_empty_lines = non_empty_lines + 1
+      end
+    end
+    return non_empty_lines > 1
+  end
+  
+  -- Single line: check if full description is meaningfully different from first line
+  -- (accounting for potential formatting differences)
+  local first_line = lines[1] or ""
+  local short_desc = self.description or ""
+  
+  -- Remove leading/trailing whitespace for comparison
+  first_line = first_line:match("^%s*(.-)%s*$")
+  short_desc = short_desc:match("^%s*(.-)%s*$")
+  
+  return first_line ~= short_desc and first_line ~= ""
+end
+
+-- Get full description lines (for expansion)
+function Commit:get_full_description_lines()
+  if not self.full_description or self.full_description == "" then
+    -- Fallback to short description if no full description available
+    return {self:get_short_description()}
+  else
+    -- Split full description into lines
+    local lines = vim.split(self.full_description, '\n', {plain = true})
+    
+    -- Add "(empty)" prefix to first line if needed
+    if self.empty and lines[1] and not lines[1]:find("^%(empty%) ") then
+      lines[1] = "(empty) " .. lines[1]
+    end
+    
+    return lines
+  end
 end
 
 -- Get bookmarks display string
