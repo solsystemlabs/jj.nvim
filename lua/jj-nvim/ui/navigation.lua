@@ -2,6 +2,33 @@ local M = {}
 
 local buffer = require('jj-nvim.ui.buffer')
 
+-- Helper function to ensure cursor stays in log area (not status area)
+local function ensure_cursor_in_log_area(win_id)
+  if not win_id or not vim.api.nvim_win_is_valid(win_id) then
+    return
+  end
+  
+  local cursor = vim.api.nvim_win_get_cursor(win_id)
+  local current_line = cursor[1]
+  local window_width = vim.api.nvim_win_get_width(win_id)
+  local status_height = buffer.get_status_height(window_width)
+  
+  -- If cursor is in status area, move to first commit
+  if current_line <= status_height then
+    local header_lines = buffer.get_header_lines(window_width)
+    if header_lines and #header_lines > 0 then
+      vim.api.nvim_win_set_cursor(win_id, {header_lines[1], 0})
+    else
+      vim.api.nvim_win_set_cursor(win_id, {status_height + 1, 0})
+    end
+  end
+end
+
+-- Add function to move cursor to first commit (public function)
+M.goto_first_commit_after_status = function(win_id)
+  ensure_cursor_in_log_area(win_id)
+end
+
 -- Helper function to collapse all expanded commits
 local function collapse_expanded_commits(win_id)
   local all_commits = buffer.get_commits()
@@ -38,7 +65,8 @@ M.next_commit = function(win_id)
   local current_line = cursor[1]
   
   -- Get all header lines for navigation
-  local header_lines = buffer.get_header_lines()
+  local window_width = vim.api.nvim_win_get_width(win_id)
+  local header_lines = buffer.get_header_lines(window_width)
   if not header_lines or #header_lines == 0 then
     return false
   end
@@ -76,7 +104,8 @@ M.prev_commit = function(win_id)
   local current_line = cursor[1]
   
   -- Get all header lines for navigation
-  local header_lines = buffer.get_header_lines()
+  local window_width = vim.api.nvim_win_get_width(win_id)
+  local header_lines = buffer.get_header_lines(window_width)
   if not header_lines or #header_lines == 0 then
     return false
   end
@@ -110,7 +139,8 @@ M.goto_commit = function(win_id, commit_index)
   -- Collapse any expanded commits before navigating
   collapse_expanded_commits(win_id)
   
-  local header_lines = buffer.get_header_lines()
+  local window_width = vim.api.nvim_win_get_width(win_id)
+  local header_lines = buffer.get_header_lines(window_width)
   if not header_lines or commit_index < 0 or commit_index >= #header_lines then
     return false
   end
@@ -127,7 +157,8 @@ end
 
 -- Navigate to the last commit
 M.goto_last_commit = function(win_id)
-  local header_lines = buffer.get_header_lines()
+  local window_width = vim.api.nvim_win_get_width(win_id)
+  local header_lines = buffer.get_header_lines(window_width)
   if not header_lines or #header_lines == 0 then
     return false
   end
@@ -226,7 +257,8 @@ M.is_on_commit_header = function(win_id)
   local cursor = vim.api.nvim_win_get_cursor(win_id)
   local current_line = cursor[1]
   
-  local header_lines = buffer.get_header_lines()
+  local window_width = vim.api.nvim_win_get_width(win_id)
+  local header_lines = buffer.get_header_lines(window_width)
   if not header_lines then
     return false
   end
@@ -253,7 +285,8 @@ M.snap_to_commit_header = function(win_id)
   local cursor = vim.api.nvim_win_get_cursor(win_id)
   local current_line = cursor[1]
   
-  local header_lines = buffer.get_header_lines()
+  local window_width = vim.api.nvim_win_get_width(win_id)
+  local header_lines = buffer.get_header_lines(window_width)
   if not header_lines or #header_lines == 0 then
     return false
   end

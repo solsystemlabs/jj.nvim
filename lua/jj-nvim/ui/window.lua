@@ -21,8 +21,8 @@ local WIDTH_ADJUSTMENTS = {
 
 -- Window modes for different interaction states
 local MODES = {
-  NORMAL = 'normal',       -- Standard log browsing mode
-  NEW_MENU = 'new_menu',   -- New change creation menu mode
+  NORMAL = 'normal',               -- Standard log browsing mode
+  NEW_MENU = 'new_menu',           -- New change creation menu mode
   TARGET_SELECT = 'target_select', -- Target selection mode for new changes
   MULTI_SELECT = 'multi_select',   -- Multi-parent selection mode
 }
@@ -31,22 +31,22 @@ local state = {
   win_id = nil,
   buf_id = nil,
   mode = MODES.NORMAL,
-  mode_data = {},  -- Mode-specific data storage
-  selected_commits = {},  -- For multi-select mode
+  mode_data = {},        -- Mode-specific data storage
+  selected_commits = {}, -- For multi-select mode
 }
 
 -- Helper function to setup border highlight group
 local function setup_border_highlight()
   local border_color = config.get('window.border.color')
   local theme_name = config.get('colors.theme') or 'auto'
-  
+
   -- Auto-detect theme if set to 'auto'
   if theme_name == 'auto' then
     theme_name = themes.detect_theme()
   end
-  
+
   local hex_color = themes.get_border_color(border_color, theme_name)
-  
+
   -- Create a highlight group for the border
   vim.api.nvim_set_hl(0, 'JJBorder', { fg = hex_color })
 end
@@ -106,7 +106,7 @@ end
 local function setup_window_display()
   vim.api.nvim_win_set_option(state.win_id, 'wrap', config.get('window.wrap'))
   vim.api.nvim_win_set_option(state.win_id, 'cursorline', true)
-  
+
   -- Set border highlight if border is enabled
   local border_enabled = config.get('window.border.enabled')
   if border_enabled then
@@ -156,16 +156,48 @@ M.open_with_buffer = function(buf_id)
   state.win_id = vim.api.nvim_open_win(state.buf_id, true, create_window_config())
 
   setup_window_display()
+
+  -- Initialize status display and cursor position
+  local window_width = vim.api.nvim_win_get_width(state.win_id)
+
+  -- Find the current working copy commit
+  local commits = buffer.get_commits()
+  local current_working_copy_id = nil
+  if commits then
+    for _, commit in ipairs(commits) do
+      if commit.current_working_copy then
+        current_working_copy_id = commit.short_change_id or commit.change_id
+        break
+      end
+    end
+  end
+
+  buffer.update_status(state.buf_id, {
+    selected_count = 0,
+    current_mode = state.mode,
+    current_commit_id = current_working_copy_id,
+    repository_info = "Repository: jj"
+  }, window_width)
+
+  -- Position cursor at first commit (after status lines)
+  -- We need to do this after the buffer is fully updated with status
+  vim.schedule(function()
+    if state.win_id and vim.api.nvim_win_is_valid(state.win_id) then
+      local status_height = buffer.get_status_height(window_width)
+      -- Position at first line after status box
+      vim.api.nvim_win_set_cursor(state.win_id, { status_height + 1, 0 })
+    end
+  end)
 end
 
 M.close = function()
   if state.win_id and vim.api.nvim_win_is_valid(state.win_id) then
     vim.api.nvim_win_close(state.win_id, false)
   end
-  
+
   -- Clear selections on window close
   state.selected_commits = {}
-  
+
   state.win_id = nil
   state.buf_id = nil
 end
@@ -178,6 +210,31 @@ M.setup_keymaps = function()
   -- Basic window controls
   vim.keymap.set('n', 'q', function() M.close() end, opts)
   vim.keymap.set('n', '<Esc>', function() M.close() end, opts)
+
+  -- Override cursor movement to prevent going into status area
+  vim.keymap.set('n', 'k', function()
+    local cursor = vim.api.nvim_win_get_cursor(state.win_id)
+    local current_line = cursor[1]
+    local window_width = vim.api.nvim_win_get_width(state.win_id)
+    local status_height = buffer.get_status_height(window_width)
+
+    -- Only move up if not at the boundary (first line after status box)
+    if current_line > status_height + 1 then
+      vim.api.nvim_win_set_cursor(state.win_id, { current_line - 1, 0 })
+    end
+  end, opts)
+
+  vim.keymap.set('n', '<Up>', function()
+    local cursor = vim.api.nvim_win_get_cursor(state.win_id)
+    local current_line = cursor[1]
+    local window_width = vim.api.nvim_win_get_width(state.win_id)
+    local status_height = buffer.get_status_height(window_width)
+
+    -- Only move up if not at the boundary (first line after status box)
+    if current_line > status_height + 1 then
+      vim.api.nvim_win_set_cursor(state.win_id, { current_line - 1, 0 })
+    end
+  end, opts)
 
   -- Smart commit navigation (replaces basic j/k)
   vim.keymap.set('n', 'j', function()
@@ -213,13 +270,17 @@ M.setup_keymaps = function()
       state.selected_commits = multi_select.toggle_commit_selection(commit, state.selected_commits)
       -- Update highlighting to reflect selection changes
       M.highlight_current_commit()
-      -- Show current selection count
-      local count = #state.selected_commits
-      if count > 0 then
-        vim.notify(string.format("Selection: %d commit%s", count, count > 1 and "s" or ""), vim.log.levels.INFO)
-      end
+      -- Update status display with current selection count only
+      local window_width = vim.api.nvim_win_get_width(state.win_id)
+      buffer.update_status(state.buf_id, {
+        selected_count = #state.selected_commits
+      }, window_width)
     else
-      vim.notify("No commit under cursor", vim.log.levels.WARN)
+      -- Update status to show selection count as 0
+      local window_width = vim.api.nvim_win_get_width(state.win_id)
+      buffer.update_status(state.buf_id, {
+        selected_count = 0
+      }, window_width)
     end
   end, opts)
 
@@ -247,6 +308,11 @@ M.setup_keymaps = function()
         state.selected_commits = {}
         -- Refresh buffer to show updated state
         buffer.refresh(state.buf_id)
+        -- Update status display to reflect cleared selections
+        local window_width = vim.api.nvim_win_get_width(state.win_id)
+        buffer.update_status(state.buf_id, {
+          selected_count = #state.selected_commits
+        }, window_width)
       end)
     else
       -- Abandon current commit
@@ -270,6 +336,11 @@ M.setup_keymaps = function()
         state.selected_commits = {}
         -- Refresh buffer to show updated state
         buffer.refresh(state.buf_id)
+        -- Update status display to reflect cleared selections
+        local window_width = vim.api.nvim_win_get_width(state.win_id)
+        buffer.update_status(state.buf_id, {
+          selected_count = #state.selected_commits
+        }, window_width)
       end)
     else
       vim.notify("No commits selected for multi-abandon", vim.log.levels.WARN)
@@ -293,6 +364,11 @@ M.setup_keymaps = function()
       state.selected_commits = multi_select.clear_all_selections()
       -- Update highlighting to reflect cleared selections
       M.highlight_current_commit()
+      -- Update status display to reflect cleared selections
+      local window_width = vim.api.nvim_win_get_width(state.win_id)
+      buffer.update_status(state.buf_id, {
+        selected_count = #state.selected_commits
+      }, window_width)
     else
       -- No selections to clear, close the window (normal Esc behavior)
       M.close()
@@ -360,16 +436,16 @@ M.setup_target_selection_keymaps = function()
   end, opts)
 
   -- Disable other actions during target selection
-  vim.keymap.set('n', 'q', function() 
+  vim.keymap.set('n', 'q', function()
     vim.notify("Press Esc to cancel target selection", vim.log.levels.INFO)
   end, opts)
-  vim.keymap.set('n', 'n', function() 
+  vim.keymap.set('n', 'n', function()
     vim.notify("Press Esc to cancel target selection", vim.log.levels.INFO)
   end, opts)
-  vim.keymap.set('n', 'e', function() 
+  vim.keymap.set('n', 'e', function()
     vim.notify("Press Esc to cancel target selection", vim.log.levels.INFO)
   end, opts)
-  vim.keymap.set('n', 'a', function() 
+  vim.keymap.set('n', 'a', function()
     vim.notify("Press Esc to cancel target selection", vim.log.levels.INFO)
   end, opts)
 end
@@ -382,7 +458,7 @@ M.setup_multi_select_keymaps = function()
   pcall(vim.keymap.del, 'n', '<CR>', { buffer = state.buf_id })
   pcall(vim.keymap.del, 'n', '<Esc>', { buffer = state.buf_id })
   pcall(vim.keymap.del, 'n', '<Space>', { buffer = state.buf_id })
-  
+
   local opts = { noremap = true, silent = true, buffer = state.buf_id }
 
   -- Space to toggle commit selection
@@ -390,7 +466,7 @@ M.setup_multi_select_keymaps = function()
 
   -- Enter to confirm selection and create merge commit
   vim.keymap.set('n', '<CR>', function() M.confirm_multi_selection() end, opts)
-  
+
   -- Escape to cancel multi-select mode
   vim.keymap.set('n', '<Esc>', function() M.cancel_multi_selection() end, opts)
 
@@ -429,16 +505,16 @@ M.setup_multi_select_keymaps = function()
   end, opts)
 
   -- Disable other actions during multi-select mode
-  vim.keymap.set('n', 'q', function() 
+  vim.keymap.set('n', 'q', function()
     vim.notify("Press Esc to cancel multi-selection, Enter to confirm", vim.log.levels.INFO)
   end, opts)
-  vim.keymap.set('n', 'n', function() 
+  vim.keymap.set('n', 'n', function()
     vim.notify("Press Esc to cancel multi-selection, Enter to confirm", vim.log.levels.INFO)
   end, opts)
-  vim.keymap.set('n', 'e', function() 
+  vim.keymap.set('n', 'e', function()
     vim.notify("Press Esc to cancel multi-selection, Enter to confirm", vim.log.levels.INFO)
   end, opts)
-  vim.keymap.set('n', 'a', function() 
+  vim.keymap.set('n', 'a', function()
     vim.notify("Press Esc to cancel multi-selection, Enter to confirm", vim.log.levels.INFO)
   end, opts)
 end
@@ -455,7 +531,7 @@ M.adjust_width = function(delta)
   -- Update the position if it's on the right side
   local position = config.get('window.position')
   local border = get_border_config()
-  
+
   if position == 'right' then
     local win_width = vim.api.nvim_get_option('columns')
     local new_col = win_width - new_width
@@ -493,17 +569,17 @@ M.highlight_current_commit = function()
 
   -- Clear both highlighting namespaces to prevent conflicts
   vim.api.nvim_buf_clear_namespace(state.buf_id, ns_id, 0, -1)
-  
+
   -- Always clear multi-select namespace - either to reapply with current selections or to clear all
   local multi_select_ns = vim.api.nvim_create_namespace('jj_multi_select')
   vim.api.nvim_buf_clear_namespace(state.buf_id, multi_select_ns, 0, -1)
 
   -- Get current cursor position
   local cursor = vim.api.nvim_win_get_cursor(state.win_id)
-  local line_number = cursor[1]
+  local display_line_number = cursor[1]
 
-  -- Get the commit at this line
-  local commit = buffer.get_commit_at_line(line_number)
+  -- Get the commit at this line (using proper offset conversion)
+  local commit = buffer.get_current_commit(state.buf_id)
   local cursor_commit_id = nil
   if commit then
     cursor_commit_id = commit.change_id or commit.short_change_id
@@ -530,7 +606,7 @@ M.highlight_current_commit = function()
 
   if commit.line_start and commit.line_end then
     local window_width = vim.api.nvim_win_get_width(state.win_id)
-    
+
     -- Check if this commit is selected
     local is_selected_commit = false
     if state.selected_commits then
@@ -541,18 +617,22 @@ M.highlight_current_commit = function()
         end
       end
     end
-    
+
     -- Choose highlight group based on current mode and selection status
     local highlight_group
     if M.is_mode(MODES.TARGET_SELECT) then
       highlight_group = 'JJTargetSelection'
     elseif is_selected_commit then
-      highlight_group = 'JJSelectedCommitCursor'  -- Special highlight for selected commit under cursor
+      highlight_group = 'JJSelectedCommitCursor' -- Special highlight for selected commit under cursor
     else
       highlight_group = 'JJCommitSelected'
     end
 
-    for line_idx = commit.line_start, commit.line_end do
+    -- Convert log line numbers to display line numbers for highlighting
+    local display_start = buffer.get_display_line_number(commit.line_start, window_width)
+    local display_end = buffer.get_display_line_number(commit.line_end, window_width)
+
+    for line_idx = display_start, display_end do
       -- Get the actual line content to see its length
       local line_content = vim.api.nvim_buf_get_lines(state.buf_id, line_idx - 1, line_idx, false)[1] or ""
       local content_length = vim.fn.strdisplaywidth(line_content)
@@ -577,9 +657,9 @@ M.setup_commit_highlighting = function()
   if not state.buf_id or not state.win_id then return end
 
   -- Define highlight groups for selected commit
-  vim.api.nvim_set_hl(0, 'JJCommitSelected', { bg = '#3c3836' }) -- Dark background for normal selection
+  vim.api.nvim_set_hl(0, 'JJCommitSelected', { bg = '#3c3836' })                               -- Dark background for normal selection
   vim.api.nvim_set_hl(0, 'JJTargetSelection', { bg = '#1d2021', fg = '#fb4934', bold = true }) -- Red background for target selection
-  vim.api.nvim_set_hl(0, 'JJSelectedCommitCursor', { bg = '#5a5a5a' }) -- Lighter background for selected commit under cursor
+  vim.api.nvim_set_hl(0, 'JJSelectedCommitCursor', { bg = '#5a5a5a' })                         -- Lighter background for selected commit under cursor
 
   -- Set up autocmd to highlight on cursor movement
   vim.api.nvim_create_autocmd({ 'CursorMoved', 'CursorMovedI' }, {
@@ -602,6 +682,14 @@ end
 M.set_mode = function(mode, data)
   state.mode = mode
   state.mode_data = data or {}
+
+  -- Update status display to reflect mode change
+  if state.win_id and vim.api.nvim_win_is_valid(state.win_id) then
+    local window_width = vim.api.nvim_win_get_width(state.win_id)
+    buffer.update_status(state.buf_id, {
+      current_mode = mode
+    }, window_width)
+  end
 end
 
 M.get_mode = function()
@@ -619,16 +707,23 @@ M.reset_mode = function()
     local old_mode = state.mode
     state.mode = MODES.NORMAL
     state.mode_data = {}
-    state.selected_commits = {}  -- Clear multi-select state
-    
+    state.selected_commits = {} -- Clear multi-select state
+
     -- If we were in multi-select mode, clear multi-select highlighting
     if old_mode == MODES.MULTI_SELECT then
       -- Clear multi-select highlighting namespace
       local multi_select_ns = vim.api.nvim_create_namespace('jj_multi_select')
       vim.api.nvim_buf_clear_namespace(state.buf_id, multi_select_ns, 0, -1)
     end
-    
-    M.setup_commit_highlighting()  -- Reset to normal highlighting
+
+    -- Update status display to reflect cleared selections
+    local window_width = vim.api.nvim_win_get_width(state.win_id)
+    buffer.update_status(state.buf_id, {
+      selected_count = #state.selected_commits,
+      current_mode = "NORMAL"
+    }, window_width)
+
+    M.setup_commit_highlighting() -- Reset to normal highlighting
   else
     -- Just reset state if window is not valid
     state.mode = MODES.NORMAL
@@ -643,21 +738,22 @@ M.enter_target_selection_mode = function(action_type)
     vim.notify("JJ window is not open", vim.log.levels.WARN)
     return
   end
-  
+
   -- Store current cursor position to return to if cancelled
   local current_line = vim.api.nvim_win_get_cursor(state.win_id)[1]
-  
+
   M.set_mode(MODES.TARGET_SELECT, {
-    action = action_type,  -- "after" or "before"
+    action = action_type, -- "after" or "before"
     original_line = current_line
   })
-  
+
   -- Update keymaps for target selection
   M.setup_target_selection_keymaps()
-  
+
   -- Show status message
   local action_desc = action_type == "after" and "after" or "before"
-  vim.notify(string.format("Select commit to insert %s (Enter to confirm, Esc to cancel)", action_desc), vim.log.levels.INFO)
+  vim.notify(string.format("Select commit to insert %s (Enter to confirm, Esc to cancel)", action_desc),
+    vim.log.levels.INFO)
 end
 
 -- Confirm target selection and execute action
@@ -665,31 +761,31 @@ M.confirm_target_selection = function()
   if not M.is_mode(MODES.TARGET_SELECT) then
     return
   end
-  
+
   local mode_data = select(2, M.get_mode())
   local target_commit = navigation.get_current_commit(state.win_id)
-  
+
   if not target_commit then
     vim.notify("No valid commit selected", vim.log.levels.WARN)
     return
   end
-  
+
   local action_type = mode_data.action
   local success = false
-  
+
   if action_type == "after" then
     success = actions.new_after(target_commit)
   elseif action_type == "before" then
     success = actions.new_before(target_commit)
   end
-  
+
   if success then
     buffer.refresh(state.buf_id)
   end
-  
+
   -- Return to normal mode
   M.reset_mode()
-  M.setup_keymaps()  -- Restore normal keymaps
+  M.setup_keymaps() -- Restore normal keymaps
 end
 
 -- Cancel target selection and return to normal mode
@@ -697,18 +793,18 @@ M.cancel_target_selection = function()
   if not M.is_mode(MODES.TARGET_SELECT) then
     return
   end
-  
+
   local mode_data = select(2, M.get_mode())
-  
+
   -- Return cursor to original position
   if mode_data.original_line and state.win_id and vim.api.nvim_win_is_valid(state.win_id) then
-    vim.api.nvim_win_set_cursor(state.win_id, {mode_data.original_line, 0})
+    vim.api.nvim_win_set_cursor(state.win_id, { mode_data.original_line, 0 })
   end
-  
+
   -- Return to normal mode
   M.reset_mode()
-  M.setup_keymaps()  -- Restore normal keymaps
-  
+  M.setup_keymaps() -- Restore normal keymaps
+
   vim.notify("Target selection cancelled", vim.log.levels.INFO)
 end
 
@@ -718,20 +814,20 @@ M.show_new_change_menu = function()
     vim.notify("JJ window is not open", vim.log.levels.WARN)
     return
   end
-  
+
   -- Check if menu is already active
   if inline_menu.is_active() then
     vim.notify("Menu is already active", vim.log.levels.INFO)
     return
   end
-  
+
   -- Get current commit for context
   local current_commit = navigation.get_current_commit(state.win_id)
   if not current_commit then
     vim.notify("No commit found at cursor position", vim.log.levels.WARN)
     return
   end
-  
+
   -- Define menu configuration
   local menu_config = {
     id = "new_change",
@@ -752,7 +848,7 @@ M.show_new_change_menu = function()
       {
         key = "e",
         description = "Create new change after (select target)",
-        action = "new_after", 
+        action = "new_after",
         data = {}
       },
       {
@@ -769,7 +865,7 @@ M.show_new_change_menu = function()
       }
     }
   }
-  
+
   -- Show the menu
   local success = inline_menu.show(state.win_id, menu_config, {
     on_select = function(selected_item)
@@ -779,7 +875,7 @@ M.show_new_change_menu = function()
       M.reset_mode()
     end
   })
-  
+
   if success then
     M.set_mode(MODES.NEW_MENU, { menu_config = menu_config })
   else
@@ -790,7 +886,7 @@ end
 -- Handle new change menu selection
 M.handle_new_change_selection = function(selected_item)
   M.reset_mode()
-  
+
   if selected_item.action == "new_child" then
     -- Simple new child creation
     if actions.new_child(selected_item.data.parent) then
@@ -828,23 +924,23 @@ M.enter_multi_select_mode = function()
     vim.notify("JJ window is not open", vim.log.levels.WARN)
     return
   end
-  
+
   -- Store current cursor position
   local current_line = vim.api.nvim_win_get_cursor(state.win_id)[1]
-  
+
   M.set_mode(MODES.MULTI_SELECT, {
     original_line = current_line
   })
-  
+
   -- Initialize selection state
   state.selected_commits = {}
-  
+
   -- Update keymaps for multi-select
   M.setup_multi_select_keymaps()
-  
+
   -- Refresh buffer to show selection highlighting
   M.refresh_buffer()
-  
+
   -- Show status message
   vim.notify("Multi-select mode: Use Space to toggle selection, Enter to confirm, Esc to cancel", vim.log.levels.INFO)
 end
@@ -854,16 +950,16 @@ M.toggle_commit_selection = function()
   if not M.is_mode(MODES.MULTI_SELECT) then
     return
   end
-  
+
   local current_commit = navigation.get_current_commit(state.win_id)
   if not current_commit then
     vim.notify("No commit at cursor position", vim.log.levels.WARN)
     return
   end
-  
+
   -- Toggle selection
   state.selected_commits = multi_select.toggle_commit_selection(current_commit, state.selected_commits)
-  
+
   -- Update display
   M.update_multi_select_display()
 end
@@ -873,7 +969,7 @@ M.update_multi_select_display = function()
   if not M.is_mode(MODES.MULTI_SELECT) or not state.buf_id then
     return
   end
-  
+
   -- Use the same highlighting logic that prevents duplicate extmarks
   M.highlight_current_commit()
 end
@@ -883,19 +979,19 @@ M.confirm_multi_selection = function()
   if not M.is_mode(MODES.MULTI_SELECT) then
     return
   end
-  
+
   local mixed_entries = buffer.get_commits(state.buf_id)
   if not mixed_entries then
     vim.notify("No commits available", vim.log.levels.WARN)
     return
   end
-  
+
   -- Simple validation: just check we have at least 2 commits selected
   if not state.selected_commits or #state.selected_commits < 2 then
     vim.notify("At least 2 commits must be selected for a multi-parent change", vim.log.levels.WARN)
     return
   end
-  
+
   -- Show selection summary and confirm (show short version of IDs for readability)
   local short_ids = {}
   for _, change_id in ipairs(state.selected_commits) do
@@ -903,22 +999,22 @@ M.confirm_multi_selection = function()
   end
   local commit_summary = table.concat(short_ids, ", ")
   local confirm_msg = string.format("Create merge commit with %d parents: %s?", #state.selected_commits, commit_summary)
-  
+
   -- Use vim.ui.select for better confirmation
-  vim.ui.select({'Yes', 'No'}, {
+  vim.ui.select({ 'Yes', 'No' }, {
     prompt = confirm_msg,
   }, function(choice)
     if choice == 'Yes' then
       -- Create the merge commit directly using the selected change IDs
       local success = actions.new_with_change_ids(state.selected_commits)
-      
+
       if success then
         buffer.refresh(state.buf_id)
       end
-      
+
       -- Return to normal mode
       M.reset_mode()
-      M.setup_keymaps()  -- Restore normal keymaps
+      M.setup_keymaps() -- Restore normal keymaps
     else
       vim.notify("Merge commit creation cancelled", vim.log.levels.INFO)
     end
@@ -930,18 +1026,18 @@ M.cancel_multi_selection = function()
   if not M.is_mode(MODES.MULTI_SELECT) then
     return
   end
-  
+
   local mode_data = select(2, M.get_mode())
-  
+
   -- Return cursor to original position
   if mode_data.original_line and state.win_id and vim.api.nvim_win_is_valid(state.win_id) then
-    vim.api.nvim_win_set_cursor(state.win_id, {mode_data.original_line, 0})
+    vim.api.nvim_win_set_cursor(state.win_id, { mode_data.original_line, 0 })
   end
-  
+
   -- Return to normal mode
   M.reset_mode()
-  M.setup_keymaps()  -- Restore normal keymaps
-  
+  M.setup_keymaps() -- Restore normal keymaps
+
   vim.notify("Multi-selection cancelled", vim.log.levels.INFO)
 end
 
@@ -950,7 +1046,7 @@ M.refresh_buffer = function()
   if not state.buf_id then
     return false
   end
-  
+
   -- Parse latest commits
   local parser = require('jj-nvim.core.parser')
   local commits, err = parser.parse_all_commits_with_separate_graph()
@@ -958,23 +1054,24 @@ M.refresh_buffer = function()
     vim.notify("Failed to refresh commits: " .. err, vim.log.levels.ERROR)
     return false
   end
-  
+
   commits = commits or {}
-  
+
   -- Update buffer content (no more selection column injection)
   local success = buffer.update_from_commits(state.buf_id, commits, buffer.get_mode())
-  
+
   -- Apply selection highlighting if in multi-select mode
   if M.is_mode(MODES.MULTI_SELECT) then
     -- Schedule highlighting to ensure buffer is fully updated
     vim.schedule(function()
       if state.buf_id and vim.api.nvim_buf_is_valid(state.buf_id) then
-        local window_width = state.win_id and vim.api.nvim_win_is_valid(state.win_id) and vim.api.nvim_win_get_width(state.win_id) or 80
+        local window_width = state.win_id and vim.api.nvim_win_is_valid(state.win_id) and
+            vim.api.nvim_win_get_width(state.win_id) or 80
         multi_select.highlight_selected_commits(state.buf_id, commits, state.selected_commits, window_width)
       end
     end)
   end
-  
+
   return success
 end
 
@@ -982,13 +1079,13 @@ end
 M.toggle_description_expansion = function()
   local commit = navigation.get_current_commit(state.win_id)
   if not commit then
-    vim.notify("No commit under cursor", vim.log.levels.WARN)
+    -- Silently do nothing if no commit under cursor - status will show this
     return
   end
 
   -- Check if this commit has expandable descriptions
   if not commit:has_expandable_description() then
-    vim.notify("Commit has no expandable description", vim.log.levels.INFO)
+    -- Silently do nothing - visual indicators already show which commits are expandable
     return
   end
 
@@ -1013,4 +1110,3 @@ M.toggle_description_expansion = function()
 end
 
 return M
-

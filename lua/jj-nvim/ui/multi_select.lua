@@ -54,11 +54,9 @@ M.toggle_commit_selection = function(commit, selected_commits)
   if found_index then
     -- Remove from selection
     table.remove(new_selected, found_index)
-    vim.notify(string.format("Removed %s from selection", commit.short_change_id or commit_id:sub(1, 8)), vim.log.levels.INFO)
   else
     -- Add to selection
     table.insert(new_selected, commit_id)
-    vim.notify(string.format("Added %s to selection", commit.short_change_id or commit_id:sub(1, 8)), vim.log.levels.INFO)
   end
   
   return new_selected
@@ -92,6 +90,9 @@ M.highlight_selected_commits = function(buf_id, mixed_entries, selected_commits,
     end
   end
   
+  -- Need buffer module for coordinate conversion
+  local buffer = require('jj-nvim.ui.buffer')
+  
   for _, entry in ipairs(mixed_entries) do
     -- Check if this is a commit object (most commits don't have .type field)
     local is_commit = (entry.change_id ~= nil or entry.short_change_id ~= nil) and entry.type ~= "elided"
@@ -101,8 +102,12 @@ M.highlight_selected_commits = function(buf_id, mixed_entries, selected_commits,
       local is_selected = is_commit_selected(commit, selected_commits)
       
       if is_selected and commit.line_start and commit.line_end then
+        -- Convert log line numbers to display line numbers for highlighting
+        local display_start = buffer.get_display_line_number(commit.line_start, window_width)
+        local display_end = buffer.get_display_line_number(commit.line_end, window_width)
+        
         -- Add background highlighting for selected commits with full window width
-        for line_idx = commit.line_start, commit.line_end do
+        for line_idx = display_start, display_end do
           -- Get the actual line content to see its length
           local line_content = vim.api.nvim_buf_get_lines(buf_id, line_idx - 1, line_idx, false)[1] or ""
           local content_length = vim.fn.strdisplaywidth(line_content)
@@ -126,7 +131,6 @@ end
 
 -- Clear all selections
 M.clear_all_selections = function()
-  vim.notify("Cleared all selections", vim.log.levels.INFO)
   return {}
 end
 

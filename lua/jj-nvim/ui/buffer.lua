@@ -3,6 +3,8 @@ local M = {}
 local ansi = require('jj-nvim.utils.ansi')
 local parser = require('jj-nvim.core.parser')
 local renderer = require('jj-nvim.core.renderer')
+local status = require('jj-nvim.ui.status')
+local config = require('jj-nvim.config')
 
 -- Constants
 local BUFFER_CONFIG = {
@@ -149,7 +151,7 @@ M.update = function(buf_id, content)
 end
 
 -- Update buffer content from commit objects
-M.update_from_commits = function(buf_id, commits, mode)
+M.update_from_commits = function(buf_id, commits, mode, window_width)
   if not vim.api.nvim_buf_is_valid(buf_id) then
     return false
   end
@@ -159,8 +161,15 @@ M.update_from_commits = function(buf_id, commits, mode)
   buffer_state.buf_id = buf_id
   buffer_state.current_mode = mode or buffer_state.current_mode or 'comfortable'
   
-  -- Render commits with highlights (window width will be retrieved from config)
-  local highlighted_lines, raw_lines = renderer.render_with_highlights(commits, buffer_state.current_mode)
+  -- Get window width (fallback to config if not provided)
+  window_width = window_width or config.get('window.width') or 80
+  
+  -- Generate status lines
+  local status_lines = status.build_status_content(window_width)
+  local status_height = #status_lines
+  
+  -- Render commits with highlights
+  local highlighted_lines, raw_lines = renderer.render_with_highlights(commits, buffer_state.current_mode, window_width)
   
   vim.api.nvim_buf_set_option(buf_id, 'modifiable', true)
   vim.api.nvim_buf_set_option(buf_id, 'readonly', false)
@@ -168,19 +177,26 @@ M.update_from_commits = function(buf_id, commits, mode)
   -- Clear existing content and highlights
   vim.api.nvim_buf_clear_namespace(buf_id, -1, 0, -1)
   
-  -- Extract clean lines and apply highlights
+  -- Build final content: status lines + commit lines
   local clean_lines = {}
   local highlights = {}
   
+  -- Add status lines (no highlights for now)
+  for _, status_line in ipairs(status_lines) do
+    table.insert(clean_lines, status_line)
+  end
+  
+  -- Add commit content with adjusted line numbers for highlights
   for line_nr, line_data in ipairs(highlighted_lines) do
     table.insert(clean_lines, line_data.text)
     
-    -- Apply highlight segments
+    -- Apply highlight segments (adjust line numbers by status height)
+    local adjusted_line_nr = line_nr + status_height - 1  -- -1 because line numbers are 0-based
     local col = 0
     for _, segment in ipairs(line_data.segments) do
       if segment.highlight and segment.text ~= '' then
         table.insert(highlights, {
-          line = line_nr - 1,
+          line = adjusted_line_nr,
           col_start = col,
           col_end = col + #segment.text,
           hl_group = segment.highlight
@@ -238,8 +254,20 @@ M.get_current_commit = function(buf_id)
   for _, win_id in ipairs(vim.api.nvim_list_wins()) do
     if vim.api.nvim_win_get_buf(win_id) == buf_id then
       local cursor = vim.api.nvim_win_get_cursor(win_id)
-      local line_number = cursor[1]
-      return M.get_commit_at_line(line_number)
+      local display_line_number = cursor[1]
+      
+      -- Get window width for status height calculation
+      local window_width = vim.api.nvim_win_get_width(win_id)
+      
+      -- Convert display line to log line (accounting for status lines)
+      local log_line_number = M.get_log_line_number(display_line_number, window_width)
+      
+      -- If cursor is in status area, return nil
+      if log_line_number <= 0 then
+        return nil
+      end
+      
+      return M.get_commit_at_line(log_line_number)
     end
   end
   
@@ -256,9 +284,18 @@ M.get_commits = function(buf_id)
   return buffer_state.commits
 end
 
--- Get all header line numbers for navigation
-M.get_header_lines = function()
-  return renderer.get_all_header_lines(buffer_state.commits)
+-- Get all header line numbers for navigation (adjusted for status display)
+M.get_header_lines = function(window_width)
+  local log_header_lines = renderer.get_all_header_lines(buffer_state.commits)
+  
+  -- Adjust all line numbers to account for status display
+  local display_header_lines = {}
+  for _, log_line in ipairs(log_header_lines) do
+    local display_line = M.get_display_line_number(log_line, window_width)
+    table.insert(display_header_lines, display_line)
+  end
+  
+  return display_header_lines
 end
 
 -- Change rendering mode and update display
@@ -274,6 +311,36 @@ end
 -- Get current rendering mode
 M.get_mode = function()
   return buffer_state.current_mode
+end
+
+-- Get the height of the status display
+M.get_status_height = function(window_width)
+  return status.calculate_status_height(window_width)
+end
+
+-- Update status information and refresh buffer
+M.update_status = function(buf_id, status_updates, window_width)
+  if not vim.api.nvim_buf_is_valid(buf_id) then
+    return false
+  end
+  
+  -- Update status state
+  status.update_status(status_updates)
+  
+  -- Refresh buffer with current commits and updated status
+  return M.update_from_commits(buf_id, buffer_state.commits, buffer_state.current_mode, window_width)
+end
+
+-- Get status-adjusted line number for navigation
+M.get_log_line_number = function(display_line_number, window_width)
+  local status_height = M.get_status_height(window_width)
+  return display_line_number - status_height  -- Convert to 1-based log line
+end
+
+-- Get display line number from log line number
+M.get_display_line_number = function(log_line_number, window_width)
+  local status_height = M.get_status_height(window_width)
+  return log_line_number + status_height  -- Convert to display line
 end
 
 return M
