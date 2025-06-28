@@ -5,6 +5,8 @@ local parser = require('jj-nvim.core.parser')
 local renderer = require('jj-nvim.core.renderer')
 local status = require('jj-nvim.ui.status')
 local config = require('jj-nvim.config')
+local validation = require('jj-nvim.utils.validation')
+local window_utils = require('jj-nvim.utils.window')
 
 -- Constants
 local BUFFER_CONFIG = {
@@ -84,19 +86,14 @@ M.set_lines_with_highlights = function(buf_id, lines)
   local clean_lines = {}
   local highlights = {}
   
-  -- Debug: Check if we have ANSI codes in the input
+  -- Check if we have ANSI codes in the input
   local has_ansi = false
-  local debug_line = ""
   for _, line in ipairs(lines) do
     if line:find('\27%[') then
       has_ansi = true
-      debug_line = line
       break
     end
   end
-  
-  -- Debug: Log what we found (remove this after testing)
-  -- vim.notify("ANSI found: " .. tostring(has_ansi), vim.log.levels.INFO)
   
   if not has_ansi then
     -- No ANSI codes found, just set lines normally
@@ -152,7 +149,7 @@ end
 
 -- Update buffer content from commit objects
 M.update_from_commits = function(buf_id, commits, mode, window_width)
-  if not vim.api.nvim_buf_is_valid(buf_id) then
+  if not validation.buffer(buf_id) then
     return false
   end
   

@@ -1,5 +1,9 @@
 local M = {}
 
+local commit_utils = require('jj-nvim.core.commit')
+local validation = require('jj-nvim.utils.validation')
+local window_utils = require('jj-nvim.utils.window')
+
 -- Check if a commit is selected
 local function is_commit_selected(commit, selected_commits)
   if not commit then
@@ -9,7 +13,7 @@ local function is_commit_selected(commit, selected_commits)
   -- Default to empty selection if not provided
   selected_commits = selected_commits or {}
   
-  local commit_id = commit.change_id or commit.short_change_id
+  local commit_id = commit_utils.get_id(commit)
   if not commit_id then
     return false
   end
@@ -30,7 +34,7 @@ M.toggle_commit_selection = function(commit, selected_commits)
     return selected_commits
   end
   
-  local commit_id = commit.change_id or commit.short_change_id
+  local commit_id = commit_utils.get_id(commit)
   if not commit_id then
     vim.notify("Invalid commit: missing ID", vim.log.levels.WARN)
     return selected_commits
@@ -70,7 +74,7 @@ end
 
 -- Highlight selected commits with background color (full window width like navigation)
 M.highlight_selected_commits = function(buf_id, mixed_entries, selected_commits, window_width)
-  if not buf_id or not vim.api.nvim_buf_is_valid(buf_id) then
+  if not validation.buffer(buf_id) then
     return
   end
   
@@ -81,13 +85,7 @@ M.highlight_selected_commits = function(buf_id, mixed_entries, selected_commits,
   
   -- Get window width if not provided
   if not window_width then
-    -- Try to get from window state, fallback to reasonable default
-    local win_id = vim.api.nvim_get_current_win()
-    if vim.api.nvim_win_is_valid(win_id) then
-      window_width = vim.api.nvim_win_get_width(win_id)
-    else
-      window_width = 80
-    end
+    window_width = window_utils.get_width(vim.api.nvim_get_current_win())
   end
   
   -- Need buffer module for coordinate conversion

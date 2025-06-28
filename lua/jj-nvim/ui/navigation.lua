@@ -1,16 +1,18 @@
 local M = {}
 
 local buffer = require('jj-nvim.ui.buffer')
+local validation = require('jj-nvim.utils.validation')
+local window_utils = require('jj-nvim.utils.window')
 
 -- Helper function to ensure cursor stays in log area (not status area)
 local function ensure_cursor_in_log_area(win_id)
-  if not win_id or not vim.api.nvim_win_is_valid(win_id) then
+  if not validation.window(win_id) then
     return
   end
   
   local cursor = vim.api.nvim_win_get_cursor(win_id)
   local current_line = cursor[1]
-  local window_width = vim.api.nvim_win_get_width(win_id)
+  local window_width = window_utils.get_width(win_id)
   local status_height = buffer.get_status_height(window_width)
   
   -- If cursor is in status area, move to first commit
@@ -53,7 +55,7 @@ end
 
 -- Navigate to the next commit
 M.next_commit = function(win_id)
-  if not win_id or not vim.api.nvim_win_is_valid(win_id) then
+  if not validation.window(win_id) then
     return false
   end
   
@@ -65,7 +67,7 @@ M.next_commit = function(win_id)
   local current_line = cursor[1]
   
   -- Get all header lines for navigation
-  local window_width = vim.api.nvim_win_get_width(win_id)
+  local window_width = window_utils.get_width(win_id)
   local header_lines = buffer.get_header_lines(window_width)
   if not header_lines or #header_lines == 0 then
     return false
@@ -92,7 +94,7 @@ end
 
 -- Navigate to the previous commit
 M.prev_commit = function(win_id)
-  if not win_id or not vim.api.nvim_win_is_valid(win_id) then
+  if not validation.window(win_id) then
     return false
   end
   
@@ -104,7 +106,7 @@ M.prev_commit = function(win_id)
   local current_line = cursor[1]
   
   -- Get all header lines for navigation
-  local window_width = vim.api.nvim_win_get_width(win_id)
+  local window_width = window_utils.get_width(win_id)
   local header_lines = buffer.get_header_lines(window_width)
   if not header_lines or #header_lines == 0 then
     return false
@@ -132,14 +134,14 @@ end
 
 -- Navigate to a specific commit by index (0-based)
 M.goto_commit = function(win_id, commit_index)
-  if not win_id or not vim.api.nvim_win_is_valid(win_id) then
+  if not validation.window(win_id) then
     return false
   end
   
   -- Collapse any expanded commits before navigating
   collapse_expanded_commits(win_id)
   
-  local window_width = vim.api.nvim_win_get_width(win_id)
+  local window_width = window_utils.get_width(win_id)
   local header_lines = buffer.get_header_lines(window_width)
   if not header_lines or commit_index < 0 or commit_index >= #header_lines then
     return false
@@ -157,7 +159,7 @@ end
 
 -- Navigate to the last commit
 M.goto_last_commit = function(win_id)
-  local window_width = vim.api.nvim_win_get_width(win_id)
+  local window_width = window_utils.get_width(win_id)
   local header_lines = buffer.get_header_lines(window_width)
   if not header_lines or #header_lines == 0 then
     return false
@@ -167,7 +169,7 @@ end
 
 -- Navigate to the current working copy commit (if visible)
 M.goto_current_commit = function(win_id)
-  if not win_id or not vim.api.nvim_win_is_valid(win_id) then
+  if not validation.window(win_id) then
     return false
   end
   

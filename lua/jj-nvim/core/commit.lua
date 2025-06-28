@@ -212,5 +212,28 @@ M.from_template_data = function(template_data)
   return Commit.new(template_data)
 end
 
+-- Utility functions for ID extraction (reduces duplication across modules)
+M.get_id = function(commit)
+  if not commit then
+    return nil
+  end
+  return commit.change_id or commit.short_change_id
+end
+
+M.get_short_id = function(commit)
+  if not commit then
+    return nil
+  end
+  return commit.short_change_id or (commit.change_id and commit.change_id:sub(1, 8))
+end
+
+M.get_display_id = function(commit)
+  if not commit then
+    return "unknown"
+  end
+  return commit.short_change_id or commit.shortest_change_id or 
+         (commit.change_id and commit.change_id:sub(1, 8)) or "unknown"
+end
+
 return M
 
