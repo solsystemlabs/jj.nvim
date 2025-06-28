@@ -11,6 +11,7 @@ local validation = require('jj-nvim.utils.validation')
 local window_utils = require('jj-nvim.utils.window')
 local keymaps = require('jj-nvim.utils.keymaps')
 local commit_utils = require('jj-nvim.core.commit')
+local help = require('jj-nvim.ui.help')
 
 -- Constants
 local WINDOW_CONSTRAINTS = {
@@ -114,9 +115,9 @@ local function setup_window_display()
   -- Set border highlight if border is enabled
   local border_enabled = config.get('window.border.enabled')
   if border_enabled then
-    vim.api.nvim_win_set_option(state.win_id, 'winhl', 'FloatBorder:JJBorder')
+    vim.api.nvim_win_set_option(state.win_id, 'winhighlight', 'FloatBorder:JJBorder')
   else
-    vim.api.nvim_win_set_option(state.win_id, 'winhl', '')
+    vim.api.nvim_win_set_option(state.win_id, 'winhighlight', '')
   end
 
   -- Ensure buffer supports colors
@@ -413,6 +414,20 @@ M.setup_keymaps = function()
   vim.keymap.set('n', '-', function() M.adjust_width(-WIDTH_ADJUSTMENTS.LARGE) end, opts)
   vim.keymap.set('n', '=', function() M.adjust_width(WIDTH_ADJUSTMENTS.SMALL) end, opts)
   vim.keymap.set('n', '_', function() M.adjust_width(-WIDTH_ADJUSTMENTS.SMALL) end, opts)
+
+  -- Git operations
+  vim.keymap.set('n', 'f', function()
+    actions.git_fetch()
+  end, opts)
+  
+  vim.keymap.set('n', 'p', function()
+    actions.git_push()
+  end, opts)
+
+  -- Help dialog
+  vim.keymap.set('n', '?', function()
+    help.show(state.win_id)
+  end, opts)
 end
 
 -- Setup keymaps for target selection mode

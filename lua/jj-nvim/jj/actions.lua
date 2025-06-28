@@ -720,4 +720,74 @@ M.show_diff_summary = function(commit, options)
   return M.show_diff(commit, 'stat', options)
 end
 
+-- Git fetch operation
+M.git_fetch = function(options)
+  options = options or {}
+  
+  vim.notify("Fetching from remote...", vim.log.levels.INFO)
+  
+  local result, err = commands.git_fetch(options)
+  if not result then
+    local error_msg = err or "Unknown error"
+    
+    -- Handle common git fetch errors
+    if error_msg:find("Could not resolve hostname") then
+      error_msg = "Network error: could not resolve hostname"
+    elseif error_msg:find("Permission denied") then
+      error_msg = "Permission denied: check your SSH keys or credentials"
+    elseif error_msg:find("not found") then
+      error_msg = "Repository not found or access denied"
+    elseif error_msg:find("timeout") then
+      error_msg = "Connection timeout"
+    end
+    
+    vim.notify(string.format("Failed to fetch: %s", error_msg), vim.log.levels.ERROR)
+    return false
+  end
+  
+  -- Check if fetch actually got new commits
+  if result:match("^%s*$") then
+    vim.notify("Fetch completed - repository is up to date", vim.log.levels.INFO)
+  else
+    vim.notify("Fetch completed successfully", vim.log.levels.INFO)
+  end
+  
+  return true
+end
+
+-- Git push operation
+M.git_push = function(options)
+  options = options or {}
+  
+  -- Get current branch for display
+  local current_branch = commands.get_current_branch()
+  local branch_info = current_branch and string.format(" (%s)", current_branch) or ""
+  
+  vim.notify(string.format("Pushing to remote%s...", branch_info), vim.log.levels.INFO)
+  
+  local result, err = commands.git_push(options)
+  if not result then
+    local error_msg = err or "Unknown error"
+    
+    -- Handle common git push errors
+    if error_msg:find("rejected") then
+      error_msg = "Push rejected: remote has newer commits (try fetching first)"
+    elseif error_msg:find("Permission denied") then
+      error_msg = "Permission denied: check your SSH keys or credentials"
+    elseif error_msg:find("not found") then
+      error_msg = "Repository not found or access denied"
+    elseif error_msg:find("timeout") then
+      error_msg = "Connection timeout"
+    elseif error_msg:find("non-fast-forward") then
+      error_msg = "Push rejected: would not be a fast-forward (use force push if intended)"
+    end
+    
+    vim.notify(string.format("Failed to push: %s", error_msg), vim.log.levels.ERROR)
+    return false
+  end
+  
+  vim.notify(string.format("Push completed successfully%s", branch_info), vim.log.levels.INFO)
+  return true
+end
+
 return M
