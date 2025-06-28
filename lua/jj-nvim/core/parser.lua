@@ -5,22 +5,24 @@ local commit_module = require('jj-nvim.core.commit')
 local ansi = require('jj-nvim.utils.ansi')
 
 -- Template to extract commit data using jj's template syntax
--- Each field is separated by | delimiter, with explicit newlines between commits
+-- Each field is separated by Unit Separator character (\x1F), with record separator between commits
+local FIELD_SEP = "\x1F"  -- Unit Separator (guaranteed not to appear in commit messages)
+local RECORD_SEP = "\x1E" -- Record Separator (for commit boundaries)
 local COMMIT_TEMPLATE =
-[[change_id ++ "|" ++ commit_id ++ "|" ++ change_id.short(8) ++ "|" ++ commit_id.short(8) ++ "|" ++ change_id.shortest() ++ "|" ++ commit_id.shortest() ++ "|" ++ author.name() ++ "|" ++ author.email() ++ "|" ++ author.timestamp() ++ "|" ++ description.first_line() ++ "|" ++ description ++ "|" ++ if(current_working_copy, "true", "false") ++ "|" ++ if(empty, "true", "false") ++ "|" ++ if(mine, "true", "false") ++ "|" ++ if(root, "true", "false") ++ "|" ++ if(conflict, "true", "false") ++ "|" ++ bookmarks.join(",") ++ "|" ++ parents.map(|p| p.commit_id().short(8)).join(",") ++ "<|>\n"]]
+[[change_id ++ "\x1F" ++ commit_id ++ "\x1F" ++ change_id.short(8) ++ "\x1F" ++ commit_id.short(8) ++ "\x1F" ++ change_id.shortest() ++ "\x1F" ++ commit_id.shortest() ++ "\x1F" ++ author.name() ++ "\x1F" ++ author.email() ++ "\x1F" ++ author.timestamp() ++ "\x1F" ++ description.first_line() ++ "\x1F" ++ description ++ "\x1F" ++ if(current_working_copy, "true", "false") ++ "\x1F" ++ if(empty, "true", "false") ++ "\x1F" ++ if(mine, "true", "false") ++ "\x1F" ++ if(root, "true", "false") ++ "\x1F" ++ if(conflict, "true", "false") ++ "\x1F" ++ bookmarks.join(",") ++ "\x1F" ++ parents.map(|p| p.commit_id().short(8)).join(",") ++ "\x1E\n"]]
 
 
 -- Helper function to parse template data into lookup map
 local function parse_template_data(data_output)
   local commit_data_by_id = {}
 
-  local commit_blocks = vim.split(data_output, '<|>', { plain = true })
+  local commit_blocks = vim.split(data_output, RECORD_SEP, { plain = true })
   
   for _, commit_block in ipairs(commit_blocks) do
     local trimmed_block = commit_block:match("^%s*(.-)%s*$") -- trim whitespace
 
     if trimmed_block ~= "" then
-      local parts = vim.split(trimmed_block, '|', { plain = true })
+      local parts = vim.split(trimmed_block, FIELD_SEP, { plain = true })
 
       if #parts >= 18 then
         local commit_data = {
