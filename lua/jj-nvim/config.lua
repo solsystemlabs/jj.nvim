@@ -9,7 +9,6 @@ M.defaults = {
     border = {
       enabled = true,
       style = 'left', -- 'none', 'single', 'double', 'rounded', 'thick', 'shadow', 'left'
-      color = 'gray', -- 'gray', 'subtle', 'accent', 'muted' or hex color like '#555555'
     },
   },
   keymaps = {
@@ -26,17 +25,14 @@ M.defaults = {
     format = 'short',
     limit = 100,
   },
-  colors = {
-    theme = 'auto', -- 'auto', 'gruvbox', 'catppuccin', 'nord', 'tokyo-night', 'onedark', 'default'
-  },
   diff = {
-    format = 'git', -- 'git', 'stat', 'color-words', 'name-only'
-    display = 'split', -- 'split', 'float'
+    format = 'git',       -- 'git', 'stat', 'color-words', 'name-only'
+    display = 'split',    -- 'split', 'float'
     split = 'horizontal', -- 'horizontal', 'vertical' (for split mode)
-    size = 50, -- Size percentage for diff window
+    size = 50,            -- Size percentage for diff window
     float = {
-      width = 0.8, -- Floating window width as percentage of screen
-      height = 0.8, -- Floating window height as percentage of screen
+      width = 0.8,        -- Floating window width as percentage of screen
+      height = 0.8,       -- Floating window height as percentage of screen
       border = 'rounded', -- 'none', 'single', 'double', 'rounded', 'solid', 'shadow'
     },
   }
@@ -95,4 +91,3 @@ M.set = function(key, value)
 end
 
 return M
-
