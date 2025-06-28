@@ -60,18 +60,6 @@ function Commit.new(data)
   self.description_graph = data.description_graph or "" -- Graph structure for description line
   self.additional_lines = data.additional_lines or {} -- Description/connector lines with graph info
 
-  -- Color information (extracted from jj's ANSI output)
-  self.colors = data.colors or {
-    change_id = "",        -- ANSI codes for change ID
-    commit_id = "",        -- ANSI codes for commit ID  
-    author = "",           -- ANSI codes for author
-    timestamp = "",        -- ANSI codes for timestamp
-    description = "",      -- ANSI codes for description
-    bookmarks = "",        -- ANSI codes for bookmarks
-    graph = "",            -- ANSI codes for graph symbols
-    empty_indicator = "",  -- ANSI codes for "(empty)" text
-    conflict_indicator = "" -- ANSI codes for "conflict" text
-  }
 
   return self
 end
@@ -158,6 +146,16 @@ function Commit:get_short_description()
   return desc_text
 end
 
+-- Get description without empty prefix (for wrapping)
+function Commit:get_description_text_only()
+  if not self.description or self.description == "" then
+    return "(no description set)"
+  else
+    local first_line = self.description:match("([^\n]*)")
+    return first_line or self.description
+  end
+end
+
 -- Check if this commit has an expandable description (multi-line)
 function Commit:has_expandable_description()
   if not self.full_description or self.full_description == "" then
@@ -207,6 +205,24 @@ function Commit:get_full_description_lines()
   end
 end
 
+-- Get full description lines without empty prefix (for wrapping)
+function Commit:get_description_lines_only()
+  if not self.full_description or self.full_description == "" then
+    -- Fallback to description text only
+    return {self:get_description_text_only()}
+  else
+    -- Split full description into lines without empty prefix
+    local lines = vim.split(self.full_description, '\n', {plain = true})
+    
+    -- If lines are empty, fallback to "(no description set)"
+    if #lines == 0 or (lines[1] and lines[1]:match("^%s*$")) then
+      return {"(no description set)"}
+    end
+    
+    return lines
+  end
+end
+
 -- Get bookmarks display string
 function Commit:get_bookmarks_display()
   if #self.bookmarks == 0 then
@@ -220,47 +236,6 @@ function Commit:is_current()
   return self.current_working_copy
 end
 
--- Get colored version of a field if color information is available
-function Commit:get_colored_field(field_name, plain_text, reset)
-  reset = reset or "\27[0m" -- Default reset code
-  local color = self.colors[field_name]
-  if color and color ~= "" then
-    return color .. plain_text .. reset
-  else
-    return plain_text
-  end
-end
-
--- Get colored change ID
-function Commit:get_colored_change_id(reset)
-  local change_id = self.short_change_id or self.change_id:sub(1, 8)
-  return self:get_colored_field("change_id", change_id, reset)
-end
-
--- Get colored commit ID  
-function Commit:get_colored_commit_id(reset)
-  return self:get_colored_field("commit_id", self.short_commit_id, reset)
-end
-
--- Get colored author
-function Commit:get_colored_author(reset)
-  return self:get_colored_field("author", self:get_author_display(), reset)
-end
-
--- Get colored timestamp
-function Commit:get_colored_timestamp(reset)
-  return self:get_colored_field("timestamp", self:get_timestamp_display(), reset)
-end
-
--- Get colored description
-function Commit:get_colored_description(reset)
-  return self:get_colored_field("description", self:get_short_description(), reset)
-end
-
--- Get colored bookmarks
-function Commit:get_colored_bookmarks(reset)
-  return self:get_colored_field("bookmarks", self:get_bookmarks_display(), reset)
-end
 
 -- Factory function to create commits from template data
 M.from_template_data = function(template_data)

@@ -336,14 +336,14 @@ local function render_commit(commit, mode_config, window_width)
   -- Always add description in comfortable/detailed mode (before connector lines)
   -- Skip description for root commits
   if mode_config.show_description and not mode_config.single_line and not commit.root then
-    -- Get description(s) based on expansion state
+    -- Get description(s) based on expansion state (without empty prefix)
     local descriptions = {}
     if commit.expanded then
-      descriptions = commit:get_full_description_lines()
+      descriptions = commit:get_description_lines_only()
     else
-      local short_desc = commit:get_short_description()
-      if short_desc and short_desc ~= "" then
-        descriptions = {short_desc}
+      local desc_text = commit:get_description_text_only()
+      if desc_text and desc_text ~= "" then
+        descriptions = {desc_text}
       end
     end
     
@@ -364,25 +364,8 @@ local function render_commit(commit, mode_config, window_width)
 
       -- Process each description line
       for i, description in ipairs(descriptions) do
-        -- Handle "(empty)" coloring separately from description
-        local formatted_desc = ""
-        if commit.empty and description:find("^%(empty%) ") then
-          -- Color "(empty)" in green and rest in description color
-          local empty_part = "(empty) "
-          local rest_part = description:sub(#empty_part + 1)
-          
-          local empty_color = (commit.colors and commit.colors.empty_indicator and commit.colors.empty_indicator ~= "") 
-                             and commit.colors.empty_indicator or COLORS.empty_indicator
-          local desc_final_color = (commit.colors and commit.colors.description and commit.colors.description ~= "") 
-                                  and commit.colors.description or desc_color
-          
-          formatted_desc = empty_color .. empty_part .. COLORS.reset_fg .. desc_final_color .. rest_part
-        else
-          -- Normal description coloring - use stored color if available
-          local desc_final_color = (commit.colors and commit.colors.description and commit.colors.description ~= "") 
-                                   and commit.colors.description or desc_color
-          formatted_desc = desc_final_color .. description
-        end
+        -- Apply description color without empty prefix
+        local formatted_desc = desc_color .. description
 
         -- Add expansion indicator for expandable descriptions (only on first line when not expanded)
         if i == 1 and not commit.expanded and commit:has_expandable_description() then
@@ -409,11 +392,62 @@ local function render_commit(commit, mode_config, window_width)
           wrap_continuation = string.rep(" ", graph_length)
         end
 
-        -- Use word-based wrapping for descriptions
+        -- Use word-based wrapping for descriptions (only the actual description text)
         local wrapped_lines = wrap_text_by_words(desc_content, line_graph, wrap_continuation, window_width)
 
-        -- Add each wrapped line
-        for _, wrapped_line in ipairs(wrapped_lines) do
+        -- Add each wrapped line, but add (empty) indicator to first line if needed
+        for j, wrapped_line in ipairs(wrapped_lines) do
+          if commit.empty and i == 1 and j == 1 then
+            -- Insert colored (empty) indicator after the graph prefix but before the description text
+            local empty_indicator = COLORS.empty_indicator .. "(empty) " .. COLORS.reset_fg
+            
+            -- Strip ANSI codes to find the graph structure more reliably
+            local clean_line = ansi.strip_ansi(wrapped_line)
+            
+            -- Find where graph ends by looking for the pattern: graph symbols followed by 2+ spaces
+            -- This handles patterns like "│  ", "├─┤  ", "╭─┤  ", etc.
+            local graph_end_match = clean_line:match("^(.*[│├─┤╭╰╮╯]  )")
+            
+            if graph_end_match then
+              -- We found the graph structure, insert empty indicator after it
+              local graph_prefix_len = #graph_end_match
+              
+              -- Find the equivalent position in the original line with ANSI codes
+              local original_pos = 1
+              local clean_pos = 1
+              local target_pos = nil
+              
+              -- Scan through the original line, tracking clean position
+              while original_pos <= #wrapped_line and clean_pos <= graph_prefix_len do
+                -- Check if we're at an ANSI sequence
+                local esc_start, esc_end = wrapped_line:find('\27%[[%d;]*m', original_pos)
+                
+                if esc_start and esc_start == original_pos then
+                  -- Skip ANSI sequence in original, don't advance clean position
+                  original_pos = esc_end + 1
+                else
+                  -- Regular character
+                  clean_pos = clean_pos + 1
+                  original_pos = original_pos + 1
+                  if clean_pos > graph_prefix_len then
+                    target_pos = original_pos
+                    break
+                  end
+                end
+              end
+              
+              if target_pos then
+                -- Insert empty indicator at the correct position
+                wrapped_line = wrapped_line:sub(1, target_pos - 1) .. empty_indicator .. wrapped_line:sub(target_pos)
+              else
+                -- Fallback: append to end
+                wrapped_line = wrapped_line .. " " .. empty_indicator
+              end
+            else
+              -- No clear graph pattern found, just prepend
+              wrapped_line = empty_indicator .. wrapped_line
+            end
+          end
           table.insert(lines, wrapped_line)
         end
       end

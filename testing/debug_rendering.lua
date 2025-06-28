@@ -34,36 +34,12 @@ end
 
 print("Testing commit: " .. (commit.short_commit_id or "unknown"))
 
--- Show stored colors
-print("\nStored colors:")
-for field, color in pairs(commit.colors or {}) do
-  if color and color ~= "" then
-    print("  " .. field .. ": '" .. color:gsub('\27', '\\27') .. "'")
-  end
-end
-
--- Test individual field coloring
-print("\nTesting field coloring:")
-
--- Test change ID
-local change_id_text = commit.short_change_id or "test"
-local change_id_colored = commit:get_colored_change_id()
-print("Change ID:")
-print("  Plain: '" .. change_id_text .. "'")
-print("  Colored: '" .. change_id_colored:gsub('\27', '\\27') .. "'")
-print("  Same? " .. (change_id_text == change_id_colored and "YES" or "NO"))
-
--- Test commit ID
-local commit_id_colored = commit:get_colored_commit_id()
-print("Commit ID:")
-print("  Plain: '" .. commit.short_commit_id .. "'")
-print("  Colored: '" .. commit_id_colored:gsub('\27', '\\27') .. "'")
-
--- Test author
-local author_colored = commit:get_colored_author()
-print("Author:")
-print("  Plain: '" .. commit:get_author_display() .. "'")
-print("  Colored: '" .. author_colored:gsub('\27', '\\27') .. "'")
+-- Test basic commit data
+print("\nCommit data:")
+print("  Change ID: " .. (commit.short_change_id or "unknown"))
+print("  Commit ID: " .. (commit.short_commit_id or "unknown"))
+print("  Author: " .. commit:get_author_display())
+print("  Current: " .. (commit:is_current() and "yes" or "no"))
 
 -- Test full rendering
 print("\nFull rendering test:")

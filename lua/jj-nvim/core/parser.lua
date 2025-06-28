@@ -11,10 +11,6 @@ local RECORD_SEP = "\x1E" -- Record Separator (for commit boundaries)
 local COMMIT_TEMPLATE =
 [[change_id ++ "\x1F" ++ commit_id ++ "\x1F" ++ change_id.short(8) ++ "\x1F" ++ commit_id.short(8) ++ "\x1F" ++ change_id.shortest() ++ "\x1F" ++ commit_id.shortest() ++ "\x1F" ++ author.name() ++ "\x1F" ++ author.email() ++ "\x1F" ++ author.timestamp() ++ "\x1F" ++ description.first_line() ++ "\x1F" ++ description ++ "\x1F" ++ if(current_working_copy, "true", "false") ++ "\x1F" ++ if(empty, "true", "false") ++ "\x1F" ++ if(mine, "true", "false") ++ "\x1F" ++ if(root, "true", "false") ++ "\x1F" ++ if(conflict, "true", "false") ++ "\x1F" ++ bookmarks.join(",") ++ "\x1F" ++ parents.map(|p| p.commit_id().short(8)).join(",") ++ "\x1E\n"]]
 
--- Colored template with field markers for color extraction
--- Each field is wrapped with unique markers to identify where colors should be extracted from
-local COLORED_TEMPLATE =
-[["CHID_START" ++ change_id.short(8) ++ "CHID_END \x1F CID_START" ++ commit_id.short(8) ++ "CID_END \x1F AUTH_START" ++ author.email() ++ "AUTH_END \x1F TIME_START" ++ author.timestamp() ++ "TIME_END \x1F DESC_START" ++ description.first_line() ++ "DESC_END \x1F BOOK_START" ++ bookmarks.join(",") ++ "BOOK_END \x1F" ++ if(current_working_copy, "true", "false") ++ "\x1F" ++ if(empty, "true", "false") ++ "\x1F" ++ if(mine, "true", "false") ++ "\x1F" ++ if(root, "true", "false") ++ "\x1F" ++ if(conflict, "true", "false") ++ "\x1F" ++ parents.map(|p| p.commit_id().short(8)).join(",") ++ "\x1E\n"]]
 
 
 -- Helper function to parse template data into lookup map
@@ -51,69 +47,6 @@ local function parse_template_data(data_output)
           conflict = parts[16] == "true",
           bookmarks = parts[17] ~= "" and vim.split(parts[17], ',', { plain = true }) or {},
           parents = parts[18] ~= "" and vim.split(parts[18], ',', { plain = true }) or {}
-        }
-
-        commit_data_by_id[commit_data.short_commit_id] = commit_data
-      end
-    end
-  end
-
-  return commit_data_by_id
-end
-
--- Helper function to parse colored template data and extract both text and color information
-local function parse_colored_template_data(colored_output)
-  local commit_data_by_id = {}
-
-  local commit_blocks = vim.split(colored_output, RECORD_SEP, { plain = true })
-  
-  for _, commit_block in ipairs(commit_blocks) do
-    local trimmed_block = commit_block:match("^%s*(.-)%s*$") -- trim whitespace
-
-    if trimmed_block ~= "" then
-      local parts = vim.split(trimmed_block, FIELD_SEP, { plain = true })
-
-      if #parts >= 12 then
-        -- Extract colors and text for each field
-        local change_id_color, change_id_text = ansi.extract_field_colors(parts[1] or "", "CHID_START", "CHID_END")
-        local commit_id_color, commit_id_text = ansi.extract_field_colors(parts[2] or "", "CID_START", "CID_END")
-        local author_color, author_text = ansi.extract_field_colors(parts[3] or "", "AUTH_START", "AUTH_END")
-        local timestamp_color, timestamp_text = ansi.extract_field_colors(parts[4] or "", "TIME_START", "TIME_END")
-        local description_color, description_text = ansi.extract_field_colors(parts[5] or "", "DESC_START", "DESC_END")
-        local bookmarks_color, bookmarks_text = ansi.extract_field_colors(parts[6] or "", "BOOK_START", "BOOK_END")
-        
-        local commit_data = {
-          change_id = "",  -- We'll get this from the regular template
-          commit_id = "",  -- We'll get this from the regular template
-          short_change_id = change_id_text,
-          short_commit_id = commit_id_text,
-          shortest_change_id = "", -- We'll get this from the regular template
-          shortest_commit_id = "", -- We'll get this from the regular template
-          author = {
-            name = "",
-            email = author_text,
-            timestamp = timestamp_text
-          },
-          description = description_text,
-          full_description = description_text, -- We'll get the full version from regular template
-          current_working_copy = (parts[7] or "") == "true",
-          empty = (parts[8] or "") == "true",
-          mine = (parts[9] or "") == "true",
-          root = (parts[10] or "") == "true",
-          conflict = (parts[11] or "") == "true",
-          bookmarks = bookmarks_text ~= "" and vim.split(bookmarks_text, ',', { plain = true }) or {},
-          parents = (parts[12] or "") ~= "" and vim.split(parts[12], ',', { plain = true }) or {},
-          colors = {
-            change_id = change_id_color,
-            commit_id = commit_id_color,
-            author = author_color,
-            timestamp = timestamp_color,
-            description = description_color,
-            bookmarks = bookmarks_color,
-            graph = "",            -- Will be extracted from graph output
-            empty_indicator = "",  -- Will be extracted if needed
-            conflict_indicator = "" -- Will be extracted if needed
-          }
         }
 
         commit_data_by_id[commit_data.short_commit_id] = commit_data
@@ -443,171 +376,6 @@ local function find_rightmost_symbol(graph_part)
   return symbol, symbol_pos
 end
 
--- Helper function to merge regular template data with colored template data
-local function merge_template_data(regular_data, colored_data)
-  local merged_data = {}
-  
-  for commit_id, regular_commit in pairs(regular_data) do
-    local colored_commit = colored_data[commit_id]
-    
-    if colored_commit then
-      -- Start with regular data and add color information
-      merged_data[commit_id] = vim.tbl_deep_extend("force", regular_commit, {
-        colors = colored_commit.colors
-      })
-    else
-      -- No color data available, use regular data with empty colors
-      merged_data[commit_id] = regular_commit
-    end
-  end
-  
-  return merged_data
-end
-
--- Simple deep copy function for older Neovim compatibility
-local function deep_copy(t)
-  if type(t) ~= 'table' then return t end
-  local copy = {}
-  for k, v in pairs(t) do
-    copy[k] = deep_copy(v)
-  end
-  return copy
-end
-
--- Find the colored segment at a specific position in the original colored text
-local function find_colored_segment_at_position(colored_text, start_pos, end_pos)
-  -- This is complex because ANSI codes shift positions
-  -- We need to map clean text positions to colored text positions
-  
-  local clean_pos = 1
-  local colored_pos = 1
-  local segment_start_colored = nil
-  local segment_end_colored = nil
-  
-  while colored_pos <= #colored_text and clean_pos <= #ansi.strip_ansi(colored_text) do
-    -- Check if we're at an ANSI escape sequence
-    local esc_start, esc_end = colored_text:find('\27%[[%d;]*m', colored_pos)
-    
-    if esc_start and esc_start == colored_pos then
-      -- Skip ANSI sequence in colored text, don't advance clean position
-      colored_pos = esc_end + 1
-    else
-      -- Regular character
-      if clean_pos == start_pos then
-        segment_start_colored = colored_pos
-      end
-      if clean_pos == end_pos then
-        segment_end_colored = colored_pos
-        break
-      end
-      
-      clean_pos = clean_pos + 1
-      colored_pos = colored_pos + 1
-    end
-  end
-  
-  if segment_start_colored and segment_end_colored then
-    return colored_text:sub(segment_start_colored, segment_end_colored)
-  elseif segment_start_colored then
-    -- Find the end by looking for the next field or end of line
-    local remaining = colored_text:sub(segment_start_colored)
-    local next_field_pos = remaining:find(" [%w%(]") -- Look for space followed by word char or (
-    if next_field_pos then
-      return remaining:sub(1, next_field_pos - 1)
-    else
-      return remaining
-    end
-  end
-  
-  return nil
-end
-
--- Extract field colors from a single log line by pattern matching
-local function extract_field_colors_from_log_line(colored_line, commit_data)
-  local colors = {}
-  local clean_line = ansi.strip_ansi(colored_line)
-  
-  -- Helper function to find a field's position and extract its color
-  local function extract_field_color(field_text, field_name)
-    if not field_text or field_text == "" then
-      return
-    end
-    
-    local start_pos, end_pos = clean_line:find(field_text, 1, true)
-    if start_pos then
-      -- Find the colored version of this text in the original line
-      local colored_segment = find_colored_segment_at_position(colored_line, start_pos, end_pos)
-      if colored_segment then
-        local field_color = ansi.get_opening_color_codes(colored_segment)
-        if field_color and field_color ~= "" then
-          colors[field_name] = field_color
-        end
-      end
-    end
-  end
-  
-  -- Extract colors for each field we care about
-  extract_field_color(commit_data.short_change_id, "change_id")
-  extract_field_color(commit_data.short_commit_id, "commit_id")
-  extract_field_color(commit_data.author.email, "author")
-  
-  -- For timestamp, try to match the format in the actual log output
-  if commit_data.author.timestamp then
-    -- Try both the full timestamp and the YYYY-MM-DD HH:MM:SS format
-    local timestamp_display = commit_data.author.timestamp:match("^([^%.]+)")
-    if timestamp_display then
-      timestamp_display = timestamp_display:gsub("%.%d+ [+-]%d+:%d+$", "") -- Remove fractional seconds and timezone
-      extract_field_color(timestamp_display, "timestamp")
-    end
-  end
-  
-  -- For description, look for common patterns
-  if commit_data.description and commit_data.description ~= "" then
-    extract_field_color(commit_data.description, "description")
-  else
-    extract_field_color("(no description set)", "description")
-  end
-  
-  -- For bookmarks
-  if commit_data.bookmarks and #commit_data.bookmarks > 0 then
-    local bookmarks_str = table.concat(commit_data.bookmarks, " ")
-    extract_field_color(bookmarks_str, "bookmarks")
-  end
-  
-  return colors
-end
-
--- Extract colors from jj's default format output by matching to structured data
-local function extract_colors_from_default_format(colored_log_output, commit_data_by_id)
-  local enhanced_data = deep_copy(commit_data_by_id)
-  
-  -- Split into lines
-  local lines = vim.split(colored_log_output, '\n', { plain = true })
-  
-  for _, line in ipairs(lines) do
-    if line and line:find("%S") then -- Skip empty lines
-      -- Extract the commit ID from this line to match it to our data
-      local clean_line = ansi.strip_ansi(line)
-      
-      -- Try to find a commit ID pattern in the clean line
-      -- Look for 8-character hex patterns that match our known commit IDs
-      for commit_id, commit_data in pairs(enhanced_data) do
-        if clean_line:find(commit_id, 1, true) then
-          -- Found a matching commit, extract colors from this line
-          local colors = extract_field_colors_from_log_line(line, commit_data)
-          if colors then
-            -- Merge the extracted colors into the commit data
-            enhanced_data[commit_id].colors = vim.tbl_deep_extend("force", 
-              enhanced_data[commit_id].colors or {}, colors)
-          end
-          break
-        end
-      end
-    end
-  end
-  
-  return enhanced_data
-end
 
 -- Helper function to merge graph structure with template data
 local function merge_graph_and_template_data(graph_entries, commit_data_by_id)
@@ -643,11 +411,6 @@ local function merge_graph_and_template_data(graph_entries, commit_data_by_id)
         commit.description_graph = graph_entry.description_graph or
             generate_fallback_description_graph(graph_entry.commit_graph)
 
-        -- Extract graph colors from the colored graph output
-        local graph_color = ansi.get_opening_color_codes(graph_entry.commit_graph)
-        if graph_color and graph_color ~= "" then
-          commit.colors.graph = graph_color
-        end
 
         -- Parse commit graph components
         local symbol, symbol_pos = find_rightmost_symbol(graph_entry.commit_graph)
@@ -716,24 +479,14 @@ M.parse_commits_with_separate_graph = function(revset, options)
     return nil, graph_err or "Failed to get graph output"
   end
 
-  -- Get structured commit data (regular template without colors)
+  -- Get structured commit data
   local data_args = build_jj_args({ 'log', '--template', COMMIT_TEMPLATE, '--no-graph' }, revset, limit)
   local data_output, data_err = commands.execute(data_args, { silent = true })
   if not data_output then
     return nil, data_err or "Failed to get commit data"
   end
 
-  -- Get colored commit data (colored template with colors)
-  local colored_args = build_jj_args({ 'log', '--template', COLORED_TEMPLATE, '--no-graph', '--color=always' }, revset, limit)
-  local colored_output, colored_err = commands.execute(colored_args, { silent = true })
-  
   local commit_data_by_id = parse_template_data(data_output)
-  
-  -- If we successfully got colored data, merge it with regular data
-  if colored_output and not colored_err then
-    local colored_data_by_id = parse_colored_template_data(colored_output)
-    commit_data_by_id = merge_template_data(commit_data_by_id, colored_data_by_id)
-  end
 
   -- Phase 1: Parse graph structure using new state machine approach
   local graph_entries = parse_graph_structure(graph_output)
