@@ -113,3 +113,7 @@ The plugin previously attempted graph-aware text wrapping but this was disabled 
 - Neovim with Lua support
 - jj (jujutsu) CLI tool installed and available in PATH
 - Must be run within a jj repository
+
+## File Management
+
+- Put all test files in the `testing/` directory for future use

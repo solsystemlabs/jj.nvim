@@ -28,6 +28,11 @@ M.defaults = {
   },
   colors = {
     theme = 'auto', -- 'auto', 'gruvbox', 'catppuccin', 'nord', 'tokyo-night', 'onedark', 'default'
+  },
+  diff = {
+    format = 'git', -- 'git', 'stat', 'color-words', 'name-only'
+    split = 'horizontal', -- 'horizontal', 'vertical'
+    size = 50, -- Size percentage for diff window
   }
 }
 

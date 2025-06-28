@@ -2,6 +2,9 @@ local M = {}
 
 local commands = require('jj-nvim.jj.commands')
 local buffer = require('jj-nvim.ui.buffer')
+local config = require('jj-nvim.config')
+local commit_utils = require('jj-nvim.core.commit')
+local ansi = require('jj-nvim.utils.ansi')
 
 -- Helper function to get change ID from commit
 local function get_change_id(commit)
@@ -9,7 +12,7 @@ local function get_change_id(commit)
     return nil, "No commit provided"
   end
   
-  local change_id = commit.change_id or commit.short_change_id
+  local change_id = commit_utils.get_id(commit)
   if not change_id or change_id == "" then
     return nil, "Invalid commit: missing change ID"
   end
@@ -19,7 +22,7 @@ end
 
 -- Helper function to get short display ID from commit
 local function get_short_display_id(commit, change_id)
-  return commit.short_change_id or change_id:sub(1, 8)
+  return commit_utils.get_display_id(commit)
 end
 
 -- Helper function to handle command execution with common error patterns
@@ -470,6 +473,197 @@ M.abandon_multiple_commits = function(selected_commit_ids, on_success)
       return false
     end
   end)
+end
+
+-- Create a diff buffer and display diff content
+local function create_diff_buffer(content, commit_id, diff_type)
+  -- Create a new buffer for the diff
+  local buf_id = vim.api.nvim_create_buf(false, true)
+  
+  -- Set buffer name and type
+  local buf_name = string.format('jj-diff-%s', commit_id or 'unknown')
+  vim.api.nvim_buf_set_name(buf_id, buf_name)
+  
+  -- Configure buffer options
+  vim.api.nvim_buf_set_option(buf_id, 'modifiable', true)
+  vim.api.nvim_buf_set_option(buf_id, 'readonly', false)
+  vim.api.nvim_buf_set_option(buf_id, 'buftype', 'nofile')
+  vim.api.nvim_buf_set_option(buf_id, 'bufhidden', 'wipe')
+  vim.api.nvim_buf_set_option(buf_id, 'swapfile', false)
+  
+  -- Set appropriate filetype for syntax highlighting
+  if diff_type == 'stat' then
+    vim.api.nvim_buf_set_option(buf_id, 'filetype', 'diff')
+  else
+    vim.api.nvim_buf_set_option(buf_id, 'filetype', 'git')
+  end
+  
+  -- Setup ANSI highlights for colored diff output
+  ansi.setup_highlights()
+  
+  -- Process content for ANSI colors and set buffer content
+  local lines = vim.split(content, '\n', { plain = true })
+  local clean_lines = {}
+  local highlights = {}
+  
+  -- Check if content has ANSI codes
+  local has_ansi = false
+  for _, line in ipairs(lines) do
+    if line:find('\27%[') then
+      has_ansi = true
+      break
+    end
+  end
+  
+  if has_ansi then
+    -- Process ANSI colors
+    for line_nr, line in ipairs(lines) do
+      local segments = ansi.parse_ansi_line(line)
+      local clean_line = ansi.strip_ansi(line)
+      
+      table.insert(clean_lines, clean_line)
+      
+      local col = 0
+      for _, segment in ipairs(segments) do
+        if segment.highlight and segment.text ~= '' then
+          table.insert(highlights, {
+            line = line_nr - 1,
+            col_start = col,
+            col_end = col + #segment.text,
+            hl_group = segment.highlight
+          })
+        end
+        col = col + #segment.text
+      end
+    end
+  else
+    clean_lines = lines
+  end
+  
+  -- Set buffer content
+  vim.api.nvim_buf_set_lines(buf_id, 0, -1, false, clean_lines)
+  
+  -- Apply ANSI color highlights
+  for _, hl in ipairs(highlights) do
+    vim.api.nvim_buf_add_highlight(buf_id, -1, hl.hl_group, hl.line, hl.col_start, hl.col_end)
+  end
+  
+  -- Make buffer readonly after setting content
+  vim.api.nvim_buf_set_option(buf_id, 'modifiable', false)
+  vim.api.nvim_buf_set_option(buf_id, 'readonly', true)
+  
+  return buf_id
+end
+
+-- Display diff buffer in a split window
+local function display_diff_buffer(buf_id, split_direction)
+  split_direction = split_direction or 'horizontal'
+  
+  -- Get current window to return focus later
+  local current_win = vim.api.nvim_get_current_win()
+  
+  -- Create split window
+  if split_direction == 'vertical' then
+    vim.cmd('vsplit')
+  else
+    vim.cmd('split')
+  end
+  
+  -- Switch to the new buffer
+  vim.api.nvim_win_set_buf(0, buf_id)
+  
+  -- Set up keymap to close diff window
+  vim.keymap.set('n', 'q', function()
+    vim.api.nvim_win_close(0, false)
+  end, { buffer = buf_id, noremap = true, silent = true })
+  
+  -- Set up keymap to return to log window
+  vim.keymap.set('n', '<Esc>', function()
+    vim.api.nvim_win_close(0, false)
+  end, { buffer = buf_id, noremap = true, silent = true })
+  
+  return vim.api.nvim_get_current_win()
+end
+
+-- Show diff for the specified commit
+M.show_diff = function(commit, format, options)
+  if not commit then
+    vim.notify("No commit selected", vim.log.levels.WARN)
+    return false
+  end
+  
+  -- Don't allow diff for root commit (usually has no changes)
+  if commit.root then
+    vim.notify("Cannot show diff for root commit", vim.log.levels.WARN)
+    return false
+  end
+  
+  local change_id, err = get_change_id(commit)
+  if not change_id then
+    vim.notify(err, vim.log.levels.ERROR)
+    return false
+  end
+  
+  local display_id = get_short_display_id(commit)
+  
+  -- Get diff format from config if not specified
+  format = format or config.get('diff.format') or 'git'
+  options = options or {}
+  
+  -- Set diff options based on format
+  local diff_options = { silent = true }
+  if format == 'git' then
+    diff_options.git = true
+  elseif format == 'stat' then
+    diff_options.stat = true
+  elseif format == 'color-words' then
+    diff_options.color_words = true
+  elseif format == 'name-only' then
+    diff_options.name_only = true
+  end
+  
+  vim.notify(string.format("Getting diff for commit %s...", display_id), vim.log.levels.INFO)
+  
+  -- Get the diff content
+  local diff_content, diff_err = commands.get_diff(change_id, diff_options)
+  if not diff_content then
+    local error_msg = diff_err or "Unknown error"
+    
+    -- Handle common error cases
+    if error_msg:find("No such revision") then
+      error_msg = "Commit not found - it may have been abandoned or modified"
+    elseif error_msg:find("not in workspace") then
+      error_msg = "Not in a jj workspace"
+    elseif error_msg:find("ambiguous") then
+      error_msg = "Ambiguous commit ID - please specify more characters"
+    end
+    
+    vim.notify(string.format("Failed to get diff: %s", error_msg), vim.log.levels.ERROR)
+    return false
+  end
+  
+  -- Check if diff is empty (common for empty commits or root)
+  if diff_content:match("^%s*$") then
+    if commit.empty then
+      vim.notify(string.format("Commit %s is empty (no changes)", display_id), vim.log.levels.INFO)
+    else
+      vim.notify(string.format("No changes in commit %s", display_id), vim.log.levels.INFO)
+    end
+    return true
+  end
+  
+  -- Create and display diff buffer
+  local buf_id = create_diff_buffer(diff_content, display_id, format)
+  local split_direction = config.get('diff.split') or 'horizontal'
+  local diff_win = display_diff_buffer(buf_id, split_direction)
+  
+  vim.notify(string.format("Showing %s diff for commit %s", format, display_id), vim.log.levels.INFO)
+  return true
+end
+
+-- Show diff summary (--stat) for the specified commit
+M.show_diff_summary = function(commit, options)
+  return M.show_diff(commit, 'stat', options)
 end
 
 return M

@@ -289,9 +289,22 @@ M.setup_keymaps = function()
   end, opts)
 
   -- Actions on commits
-  -- Override Enter key to prevent default cursor movement behavior
+  -- Show diff for current commit
   vim.keymap.set('n', '<CR>', function()
-    -- No-op: prevent default Enter behavior (moving cursor down)
+    local commit = navigation.get_current_commit(state.win_id)
+    actions.show_diff(commit)
+  end, opts)
+
+  -- Show diff (alternative binding)
+  vim.keymap.set('n', 'd', function()
+    local commit = navigation.get_current_commit(state.win_id)
+    actions.show_diff(commit, 'git')
+  end, opts)
+
+  -- Show diff summary/stats
+  vim.keymap.set('n', 'D', function()
+    local commit = navigation.get_current_commit(state.win_id)
+    actions.show_diff_summary(commit)
   end, opts)
 
   -- Edit commit
