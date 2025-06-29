@@ -50,6 +50,7 @@ local function build_help_content()
     "    f             Fetch from remote",
     "    p             Push to remote",
     "    S             Show repository status",
+    "    c             Commit working copy changes",
     "",
     "            ═══ Window Controls ═══",
     "    q             Close window",

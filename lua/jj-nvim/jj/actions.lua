@@ -973,4 +973,72 @@ M.set_description = function(commit, on_success)
   end)
 end
 
+-- Commit working copy changes
+M.commit_working_copy = function(options, on_success)
+  options = options or {}
+  
+  -- Check if there are any changes to commit
+  local status_content, status_err = commands.get_status({ silent = true })
+  if not status_content then
+    vim.notify("Failed to check repository status", vim.log.levels.ERROR)
+    return false
+  end
+  
+  -- Check if working copy has changes
+  if status_content:match("The working copy has no changes") then
+    vim.notify("No changes to commit", vim.log.levels.INFO)
+    return true
+  end
+  
+  -- If message is provided in options, use it directly
+  if options.message and options.message ~= "" then
+    local result, err = commands.commit(options.message, options)
+    if not result then
+      local error_msg = err or "Unknown error"
+      if error_msg:find("not in workspace") then
+        error_msg = "Not in a jj workspace"
+      elseif error_msg:find("empty commit") then
+        error_msg = "No changes to commit"
+      end
+      
+      vim.notify(string.format("Failed to commit: %s", error_msg), vim.log.levels.ERROR)
+      return false
+    end
+    
+    vim.notify("Committed working copy changes", vim.log.levels.INFO)
+    if on_success then on_success() end
+    return true
+  end
+  
+  -- Prompt user for commit message
+  vim.ui.input({
+    prompt = "Enter commit message:",
+    default = "",
+  }, function(message)
+    if not message or message:match("^%s*$") then
+      vim.notify("Commit cancelled - no message provided", vim.log.levels.INFO)
+      return false
+    end
+    
+    local result, err = commands.commit(message, options)
+    if not result then
+      local error_msg = err or "Unknown error"
+      if error_msg:find("not in workspace") then
+        error_msg = "Not in a jj workspace"
+      elseif error_msg:find("empty commit") then
+        error_msg = "No changes to commit"
+      elseif error_msg:find("immutable") then
+        error_msg = "Cannot modify immutable commit"
+      end
+      
+      vim.notify(string.format("Failed to commit: %s", error_msg), vim.log.levels.ERROR)
+      return false
+    end
+    
+    vim.notify("Committed working copy changes", vim.log.levels.INFO)
+    if on_success then on_success() end
+    return true
+  end)
+end
+
 return M

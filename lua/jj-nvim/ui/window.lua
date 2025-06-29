@@ -438,6 +438,14 @@ M.setup_keymaps = function()
     actions.show_status()
   end, opts)
 
+  -- Commit working copy changes
+  vim.keymap.set('n', 'c', function()
+    actions.commit_working_copy({}, function()
+      -- Refresh buffer to show new commit
+      buffer.refresh(state.buf_id)
+    end)
+  end, opts)
+
   -- Help dialog
   vim.keymap.set('n', '?', function()
     help.show(state.win_id)

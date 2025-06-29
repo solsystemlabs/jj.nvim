@@ -205,4 +205,46 @@ M.describe = function(change_id, message, options)
   return M.execute(cmd_args, { silent = options.silent })
 end
 
+-- Commit working copy changes
+M.commit = function(message, options)
+  options = options or {}
+  local cmd_args = { 'commit' }
+  
+  -- Add message if provided
+  if message and message ~= "" then
+    table.insert(cmd_args, '-m')
+    table.insert(cmd_args, message)
+  end
+  
+  -- Add interactive mode
+  if options.interactive then
+    table.insert(cmd_args, '--interactive')
+  end
+  
+  -- Add diff tool for interactive mode
+  if options.tool then
+    table.insert(cmd_args, '--tool')
+    table.insert(cmd_args, options.tool)
+  end
+  
+  -- Add author options
+  if options.reset_author then
+    table.insert(cmd_args, '--reset-author')
+  end
+  
+  if options.author then
+    table.insert(cmd_args, '--author')
+    table.insert(cmd_args, options.author)
+  end
+  
+  -- Add filesets/paths if specified
+  if options.filesets and #options.filesets > 0 then
+    for _, fileset in ipairs(options.filesets) do
+      table.insert(cmd_args, fileset)
+    end
+  end
+  
+  return M.execute(cmd_args, { silent = options.silent })
+end
+
 return M
