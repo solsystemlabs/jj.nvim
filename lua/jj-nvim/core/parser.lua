@@ -2,6 +2,7 @@ local M = {}
 
 local commands = require('jj-nvim.jj.commands')
 local commit_module = require('jj-nvim.core.commit')
+local elided_module = require('jj-nvim.core.elided')
 local ansi = require('jj-nvim.utils.ansi')
 
 -- Template to extract commit data using jj's template syntax
@@ -197,10 +198,23 @@ local function parse_graph_structure(graph_output)
       }
       state = "collecting_elided"
     elseif state == "expecting_description" then
-      -- DESCRIPTION LINE: First non-* line after commit
-      -- Extract just the graph prefix from the description line
-      current_entry.description_graph = extract_graph_prefix_from_line(line, current_entry.commit_graph)
-      state = "collecting_connectors"
+      -- Check if this is an elided line before treating as description
+      if is_elided_line(line) then
+        -- ELIDED LINE immediately after commit: Save current commit and start elided section
+        table.insert(entries, current_entry)
+        current_entry = nil
+
+        current_elided = {
+          type = "elided",
+          lines = { line } -- Start with the elided line
+        }
+        state = "collecting_elided"
+      else
+        -- DESCRIPTION LINE: First non-* line after commit
+        -- Extract just the graph prefix from the description line
+        current_entry.description_graph = extract_graph_prefix_from_line(line, current_entry.commit_graph)
+        state = "collecting_connectors"
+      end
     elseif state == "collecting_connectors" then
       -- CONNECTOR LINES: Check if this starts an elided section or leads to one
       if has_tilde_symbol(line) or has_elided_section_ahead(graph_lines, line_index) then
@@ -383,13 +397,10 @@ local function merge_graph_and_template_data(graph_entries, commit_data_by_id)
 
   for _, graph_entry in ipairs(graph_entries) do
     if graph_entry.type == "elided" then
-      -- Create elided section entry
-      local elided_entry = {
-        type = "elided",
-        lines = graph_entry.lines,
-        line_start = nil, -- Will be set during rendering
-        line_end = nil    -- Will be set during rendering
-      }
+      -- Create elided section entry using Elided class
+      local elided_entry = elided_module.new({
+        lines = graph_entry.lines
+      })
       table.insert(result, elided_entry)
     elseif graph_entry.type == "connector" then
       -- Create standalone connector entry

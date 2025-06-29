@@ -48,6 +48,7 @@ local COLORS = {
   empty_indicator = '\27[38;5;2m', -- "(empty)" indicator (green)
   bookmarks = '\27[1m\27[38;5;5m', -- Bookmarks (bold purple)
   conflict_indicator = '\27[38;5;1m', -- "conflict" indicator (red)
+  elided_revisions = '\27[38;5;8m', -- "~" and "(elided revisions)" text (dim gray)
   branch_symbol = '│', -- Branch continuation symbol
   reset = '\27[0m', -- Reset all formatting
   reset_fg = '\27[39m', -- Reset foreground only
@@ -445,12 +446,27 @@ local function render_commit(commit, mode_config, window_width)
 end
 
 
--- Render elided section
+-- Render elided section using structured parts
 local function render_elided_section(elided_entry)
   local lines = {}
-  for _, line in ipairs(elided_entry.lines) do
-    table.insert(lines, line)
+  
+  -- Get all line parts for this elided section
+  local all_line_parts = elided_entry:get_all_line_parts()
+  
+  for line_index, line_parts in ipairs(all_line_parts) do
+    local rendered_parts = {}
+    
+    for _, part in ipairs(line_parts) do
+      if part:has_content() then
+        table.insert(rendered_parts, part:get_styled_text())
+      end
+    end
+    
+    -- Combine all parts for this line
+    local rendered_line = table.concat(rendered_parts) .. COLORS.reset
+    table.insert(lines, rendered_line)
   end
+  
   return lines
 end
 

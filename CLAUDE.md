@@ -6,9 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Implementation Principles
 
+- Avoid writing new code when at all possible. Always look for existing code/workflows to leverage when adding new features.
 - Always look for opportunities to refactor repeated code as long as it doesn't change functionality
 - Ask questions liberally to clarify
 - When you have multiple questions, ask them one by one, and try to answer your own questions based on existing context
+- Keep track of what changes you're making as you go along to use when crafting a commit message.
+- Put all test files in the `tests/` directory for future use
+- Don't mention yourself in commit messages
+
+- After you've implemented work, ask if you want to commit the changes. If yes, run 'jj commit' with a message that is a good commit message for the changes made.
+
+- Don't add feedback via notifications for actions that change the UI somehow. Notifications are redundant and clutter things in these cases since the UI reflects the action taken.
 
 ## Project Overview
 
@@ -18,15 +26,15 @@ A Neovim plugin for interacting with the jujutsu (jj) version control system thr
 
 ### Core Components
 
-- **Entry Point** (`lua/jj-nvim/init.lua`): Main plugin interface with `setup()`, `toggle()`, `show_log()`, and `close()` functions
-- **Parser** (`lua/jj-nvim/core/parser.lua`): Parses jj command output using template system to extract commit data and graph structure
-- **Renderer** (`lua/jj-nvim/core/renderer.lua`): Renders parsed commits with syntax highlighting and graph visualization
-- **Commands** (`lua/jj-nvim/jj/commands.lua`): Wrapper for executing jj CLI commands via `vim.system()`
+- **Entry Point** (`lua/jj-nvim/init.lua`\): Main plugin interface with `setup()`, `toggle()`, `show_log()`, and `close()` functions
+- **Parser** (`lua/jj-nvim/core/parser.lua`\): Parses jj command output using template system to extract commit data and graph structure
+- **Renderer** (`lua/jj-nvim/core/renderer.lua`\): Renders parsed commits with syntax highlighting and graph visualization
+- **Commands** (`lua/jj-nvim/jj/commands.lua`\): Wrapper for executing jj CLI commands via `vim.system()`
 - **UI Components**:
-  - **Buffer** (`lua/jj-nvim/ui/buffer.lua`): Creates and manages the log buffer
-  - **Window** (`lua/jj-nvim/ui/window.lua`): Handles window creation and positioning
-  - **Navigation** (`lua/jj-nvim/ui/navigation.lua`): Cursor movement and selection
-- **Configuration** (`lua/jj-nvim/config.lua`): Plugin settings with persistence support
+  - **Buffer** (`lua/jj-nvim/ui/buffer.lua`\): Creates and manages the log buffer
+  - **Window** (`lua/jj-nvim/ui/window.lua`\): Handles window creation and positioning
+  - **Navigation** (`lua/jj-nvim/ui/navigation.lua`\): Cursor movement and selection
+- **Configuration** (`lua/jj-nvim/config.lua`\): Plugin settings with persistence support
 
 ### Data Flow
 
@@ -47,6 +55,7 @@ A Neovim plugin for interacting with the jujutsu (jj) version control system thr
 ## Development Commands
 
 ### Testing
+
 ```bash
 # Run basic functionality tests (requires being in a jj repository)
 lua tests/run_tests.lua
@@ -56,6 +65,7 @@ lua tests/run_tests.lua
 ```
 
 ### Plugin Installation Testing
+
 ```vim
 " Add to init.vim/init.lua for local development
 set runtimepath+=~/path/to/jj-nvim
@@ -89,14 +99,18 @@ lua/jj-nvim/
 ## Implementation Notes
 
 ### Parser Architecture
+
 The plugin uses a dual-parsing approach:
+
 1. **Template parsing** for structured commit data (ID, author, description, etc.)
 2. **Graph parsing** for ASCII graph structure preservation
 
 ### Graph Wrapping Challenge
+
 The plugin previously attempted graph-aware text wrapping but this was disabled due to complexity. See `GRAPH_WRAPPING_RESEARCH.md` for details on the technical challenges discovered.
 
 ### Testing Considerations
+
 - Tests require being run in a jj repository
 - The test runner (`tests/run_tests.lua`) includes vim API mocks for standalone execution
 - Tests validate command execution, parsing, commit structure, and rendering
@@ -116,4 +130,4 @@ The plugin previously attempted graph-aware text wrapping but this was disabled 
 
 ## File Management
 
-- Put all test files in the `testing/` directory for future use
+- Put all test files in the `tests/` directory for future use
