@@ -317,6 +317,15 @@ M.setup_keymaps = function()
     end
   end, opts)
 
+  -- Set description for commit
+  vim.keymap.set('n', 'm', function()
+    local commit = navigation.get_current_commit(state.win_id)
+    actions.set_description(commit, function()
+      -- Refresh buffer to show updated description
+      buffer.refresh(state.buf_id)
+    end)
+  end, opts)
+
   -- Abandon commit(s)
   vim.keymap.set('n', 'a', function()
     if #state.selected_commits > 0 then
@@ -422,6 +431,11 @@ M.setup_keymaps = function()
   
   vim.keymap.set('n', 'p', function()
     actions.git_push()
+  end, opts)
+
+  -- Repository status
+  vim.keymap.set('n', 'S', function()
+    actions.show_status()
   end, opts)
 
   -- Help dialog

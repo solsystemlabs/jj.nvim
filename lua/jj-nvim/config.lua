@@ -35,6 +35,16 @@ M.defaults = {
       height = 0.8,       -- Floating window height as percentage of screen
       border = 'rounded', -- 'none', 'single', 'double', 'rounded', 'solid', 'shadow'
     },
+  },
+  status = {
+    display = 'split',    -- 'split', 'float'
+    split = 'horizontal', -- 'horizontal', 'vertical' (for split mode)
+    size = 50,            -- Size percentage for status window
+    float = {
+      width = 0.8,        -- Floating window width as percentage of screen
+      height = 0.8,       -- Floating window height as percentage of screen
+      border = 'rounded', -- 'none', 'single', 'double', 'rounded', 'solid', 'shadow'
+    },
   }
 }
 

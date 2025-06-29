@@ -68,8 +68,6 @@ M.edit_commit = function(commit)
   end
 
   local display_id = get_short_display_id(commit, change_id)
-  vim.notify(string.format("Editing commit %s...", display_id), vim.log.levels.INFO)
-
   local result, exec_err = execute_with_error_handling({'edit', change_id}, "edit commit")
   if not result then
     return false
@@ -129,8 +127,6 @@ M.abandon_commit = function(commit, on_success)
     prompt = confirm_msg,
   }, function(choice)
     if choice == 'Yes' then
-      vim.notify(string.format("Abandoning commit %s...", display_id), vim.log.levels.INFO)
-
       local result, exec_err = execute_with_error_handling({'abandon', change_id}, "abandon commit")
       if not result then
         return false
@@ -480,8 +476,8 @@ local function create_diff_buffer(content, commit_id, diff_type)
   -- Create a new buffer for the diff
   local buf_id = vim.api.nvim_create_buf(false, true)
   
-  -- Set buffer name and type
-  local buf_name = string.format('jj-diff-%s', commit_id or 'unknown')
+  -- Set buffer name and type (make it unique using buffer ID)
+  local buf_name = string.format('jj-diff-%s-%s', commit_id or 'unknown', buf_id)
   vim.api.nvim_buf_set_name(buf_id, buf_name)
   
   -- Configure buffer options
@@ -556,8 +552,9 @@ local function create_diff_buffer(content, commit_id, diff_type)
 end
 
 -- Create floating window configuration
-local function create_float_config()
-  local float_config = config.get('diff.float') or {}
+local function create_float_config(config_key)
+  config_key = config_key or 'diff.float'
+  local float_config = config.get(config_key) or {}
   local width_ratio = float_config.width or 0.8
   local height_ratio = float_config.height or 0.8
   local border = float_config.border or 'rounded'
@@ -603,8 +600,8 @@ local function display_diff_buffer_split(buf_id, split_direction)
 end
 
 -- Display diff buffer in a floating window
-local function display_diff_buffer_float(buf_id)
-  local float_config = create_float_config()
+local function display_diff_buffer_float(buf_id, config_key)
+  local float_config = create_float_config(config_key)
   local win_id = vim.api.nvim_open_win(buf_id, true, float_config)
   
   -- Set window options for better appearance
@@ -619,7 +616,7 @@ local function display_diff_buffer(buf_id, display_mode, split_direction)
   local win_id
   
   if display_mode == 'float' then
-    win_id = display_diff_buffer_float(buf_id)
+    win_id = display_diff_buffer_float(buf_id, 'diff.float')
   else
     win_id = display_diff_buffer_split(buf_id, split_direction)
   end
@@ -674,8 +671,6 @@ M.show_diff = function(commit, format, options)
     diff_options.name_only = true
   end
   
-  vim.notify(string.format("Getting diff for commit %s...", display_id), vim.log.levels.INFO)
-  
   -- Get the diff content
   local diff_content, diff_err = commands.get_diff(change_id, diff_options)
   if not diff_content then
@@ -710,8 +705,6 @@ M.show_diff = function(commit, format, options)
   local split_direction = config.get('diff.split') or 'horizontal'
   local diff_win = display_diff_buffer(buf_id, display_mode, split_direction)
   
-  local display_type = display_mode == 'float' and 'floating window' or 'split window'
-  vim.notify(string.format("Showing %s diff for commit %s (%s)", format, display_id, display_type), vim.log.levels.INFO)
   return true
 end
 
@@ -788,6 +781,196 @@ M.git_push = function(options)
   
   vim.notify(string.format("Push completed successfully%s", branch_info), vim.log.levels.INFO)
   return true
+end
+
+-- Create a status buffer and display status content
+local function create_status_buffer(content)
+  -- Create a new buffer for the status
+  local buf_id = vim.api.nvim_create_buf(false, true)
+  
+  -- Set buffer name and type (make it unique using buffer ID)
+  local buf_name = 'jj-status-' .. buf_id
+  vim.api.nvim_buf_set_name(buf_id, buf_name)
+  
+  -- Configure buffer options
+  vim.api.nvim_buf_set_option(buf_id, 'modifiable', true)
+  vim.api.nvim_buf_set_option(buf_id, 'readonly', false)
+  vim.api.nvim_buf_set_option(buf_id, 'buftype', 'nofile')
+  vim.api.nvim_buf_set_option(buf_id, 'bufhidden', 'wipe')
+  vim.api.nvim_buf_set_option(buf_id, 'swapfile', false)
+  vim.api.nvim_buf_set_option(buf_id, 'filetype', 'text')
+  
+  -- Setup ANSI highlights for colored status output
+  ansi.setup_highlights()
+  
+  -- Process content for ANSI colors and set buffer content
+  local lines = vim.split(content, '\n', { plain = true })
+  local clean_lines = {}
+  local highlights = {}
+  
+  -- Check if content has ANSI codes
+  local has_ansi = false
+  for _, line in ipairs(lines) do
+    if line:find('\27%[') then
+      has_ansi = true
+      break
+    end
+  end
+  
+  if has_ansi then
+    -- Process ANSI colors
+    for line_nr, line in ipairs(lines) do
+      local segments = ansi.parse_ansi_line(line)
+      local clean_line = ansi.strip_ansi(line)
+      
+      table.insert(clean_lines, clean_line)
+      
+      local col = 0
+      for _, segment in ipairs(segments) do
+        if segment.highlight and segment.text ~= '' then
+          table.insert(highlights, {
+            line = line_nr - 1,
+            col_start = col,
+            col_end = col + #segment.text,
+            hl_group = segment.highlight
+          })
+        end
+        col = col + #segment.text
+      end
+    end
+  else
+    clean_lines = lines
+  end
+  
+  -- Set buffer content
+  vim.api.nvim_buf_set_lines(buf_id, 0, -1, false, clean_lines)
+  
+  -- Apply ANSI color highlights
+  for _, hl in ipairs(highlights) do
+    vim.api.nvim_buf_add_highlight(buf_id, -1, hl.hl_group, hl.line, hl.col_start, hl.col_end)
+  end
+  
+  -- Make buffer readonly after setting content
+  vim.api.nvim_buf_set_option(buf_id, 'modifiable', false)
+  vim.api.nvim_buf_set_option(buf_id, 'readonly', true)
+  
+  return buf_id
+end
+
+-- Display status buffer based on configuration
+local function display_status_buffer(buf_id, display_mode, split_direction)
+  local win_id
+  
+  if display_mode == 'float' then
+    win_id = display_diff_buffer_float(buf_id, 'status.float')
+  else
+    win_id = display_diff_buffer_split(buf_id, split_direction)
+  end
+  
+  -- Set up keymap to close status window (works for both split and float)
+  vim.keymap.set('n', 'q', function()
+    vim.api.nvim_win_close(win_id, false)
+  end, { buffer = buf_id, noremap = true, silent = true })
+  
+  -- Set up keymap to return to log window
+  vim.keymap.set('n', '<Esc>', function()
+    vim.api.nvim_win_close(win_id, false)
+  end, { buffer = buf_id, noremap = true, silent = true })
+  
+  return win_id
+end
+
+-- Show repository status 
+M.show_status = function(options)
+  options = options or {}
+  
+  local status_content, err = commands.get_status(options)
+  if not status_content then
+    local error_msg = err or "Unknown error"
+    
+    -- Handle common status errors
+    if error_msg:find("not in workspace") then
+      error_msg = "Not in a jj workspace"
+    elseif error_msg:find("No such file") then
+      error_msg = "Specified path not found"
+    end
+    
+    vim.notify(string.format("Failed to get status: %s", error_msg), vim.log.levels.ERROR)
+    return false
+  end
+  
+  -- Create and display status buffer  
+  local buf_id = create_status_buffer(status_content)
+  local display_mode = config.get('status.display') or 'split'
+  local split_direction = config.get('status.split') or 'horizontal'
+  local status_win = display_status_buffer(buf_id, display_mode, split_direction)
+  
+  return true
+end
+
+-- Set description for a commit
+M.set_description = function(commit, on_success)
+  if not commit then
+    vim.notify("No commit selected", vim.log.levels.WARN)
+    return false
+  end
+
+  -- Don't allow describing the root commit
+  if commit.root then
+    vim.notify("Cannot set description for root commit", vim.log.levels.WARN)
+    return false
+  end
+
+  local change_id, err = get_change_id(commit)
+  if not change_id then
+    vim.notify(err, vim.log.levels.ERROR)
+    return false
+  end
+
+  local display_id = get_short_display_id(commit, change_id)
+  local current_description = commit:get_description_text_only()
+  
+  -- Show current description if it's not the default
+  local prompt_text = "Enter description for commit " .. display_id .. ":"
+  if current_description and current_description ~= "(no description set)" then
+    prompt_text = prompt_text .. "\nCurrent: " .. current_description
+  end
+
+  -- Prompt user for new description
+  vim.ui.input({
+    prompt = prompt_text,
+    default = current_description ~= "(no description set)" and current_description or "",
+  }, function(new_description)
+    if not new_description then
+      vim.notify("Description cancelled", vim.log.levels.INFO)
+      return false
+    end
+    
+    -- Allow empty description to clear it
+    if new_description == "" then
+      new_description = "(no description set)"
+    end
+
+    local result, exec_err = commands.describe(change_id, new_description)
+    
+    if not result then
+      local error_msg = exec_err or "Unknown error"
+      if error_msg:find("No such revision") then
+        error_msg = "Commit not found - it may have been abandoned or modified"
+      elseif error_msg:find("not in workspace") then
+        error_msg = "Not in a jj workspace"
+      elseif error_msg:find("immutable") then
+        error_msg = "Cannot modify immutable commit"
+      end
+      
+      vim.notify(string.format("Failed to set description: %s", error_msg), vim.log.levels.ERROR)
+      return false
+    end
+
+    vim.notify(string.format("Updated description for commit %s", display_id), vim.log.levels.INFO)
+    if on_success then on_success() end
+    return true
+  end)
 end
 
 return M
