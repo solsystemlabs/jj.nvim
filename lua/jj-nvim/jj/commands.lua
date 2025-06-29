@@ -247,4 +247,67 @@ M.commit = function(message, options)
   return M.execute(cmd_args, { silent = options.silent })
 end
 
+-- Execute interactive command using terminal interface
+M.execute_interactive = function(cmd_args, options)
+  local interactive_terminal = require('jj-nvim.ui.interactive_terminal')
+  return interactive_terminal.run_interactive_command(cmd_args, options)
+end
+
+-- Interactive commit
+M.commit_interactive = function(options)
+  options = options or {}
+  local cmd_args = { 'commit', '--interactive' }
+  
+  -- Add diff tool if specified
+  if options.tool then
+    table.insert(cmd_args, '--tool')
+    table.insert(cmd_args, options.tool)
+  end
+  
+  -- Add author options
+  if options.reset_author then
+    table.insert(cmd_args, '--reset-author')
+  end
+  
+  if options.author then
+    table.insert(cmd_args, '--author')
+    table.insert(cmd_args, options.author)
+  end
+  
+  -- Add filesets/paths if specified
+  if options.filesets and #options.filesets > 0 then
+    for _, fileset in ipairs(options.filesets) do
+      table.insert(cmd_args, fileset)
+    end
+  end
+  
+  return M.execute_interactive(cmd_args, options)
+end
+
+-- Interactive split
+M.split_interactive = function(commit_id, options)
+  options = options or {}
+  local cmd_args = { 'split', '--interactive' }
+  
+  if commit_id and commit_id ~= "" then
+    table.insert(cmd_args, '-r')
+    table.insert(cmd_args, commit_id)
+  end
+  
+  return M.execute_interactive(cmd_args, options)
+end
+
+-- Interactive squash
+M.squash_interactive = function(commit_id, options)
+  options = options or {}
+  local cmd_args = { 'squash', '--interactive' }
+  
+  if commit_id and commit_id ~= "" then
+    table.insert(cmd_args, '-r')
+    table.insert(cmd_args, commit_id)
+  end
+  
+  return M.execute_interactive(cmd_args, options)
+end
+
 return M

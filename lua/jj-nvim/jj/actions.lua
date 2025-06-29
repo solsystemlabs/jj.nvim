@@ -1114,11 +1114,7 @@ M.handle_commit_menu_selection = function(selected_item)
     local success = commands.commit_interactive({
       on_success = function()
         vim.notify("Interactive commit completed", vim.log.levels.INFO)
-        -- Refresh buffer to show changes
-        local buffer = require('jj-nvim.ui.buffer')
-        if buffer and buffer.refresh then
-          buffer.refresh()
-        end
+        -- Buffer refresh is handled automatically by interactive terminal
       end,
       on_error = function(exit_code)
         -- Error message already shown by interactive terminal
