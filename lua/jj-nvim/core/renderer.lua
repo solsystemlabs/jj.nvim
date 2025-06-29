@@ -216,86 +216,21 @@ local function render_commit(commit, mode_config, window_width)
   local lines = {}
   local is_current = commit:is_current()
 
-  -- Build the main commit line
+  -- Build the main commit line using structured parts
+  local main_parts = commit:get_main_line_parts()
   local line_parts = {}
-
-  -- Use complete graph structure from new parsing and apply proper colors
-  local styled_graph = apply_symbol_colors(commit.complete_graph or "", commit)
-
-  table.insert(line_parts, styled_graph)
-
-  -- Change ID with proper coloring - use hardcoded colors that match jj's actual output
-  local change_id = commit.short_change_id or commit.change_id:sub(1, 8)
-  local shortest_change_id = commit.shortest_change_id or ""
-  local change_id_color = is_current and COLORS.change_id_current or COLORS.change_id_regular
-  local change_id_dim_color = COLORS.change_id_dim
-
-  -- Color the shortest unique prefix, dim the rest (keep as single part for wrapping)
-  local colored_length = #shortest_change_id
-  local colored_change_id
-  if colored_length > 0 and colored_length < #change_id then
-    colored_change_id = change_id_color .. change_id:sub(1, colored_length) .. COLORS.reset .. 
-                       change_id_dim_color .. change_id:sub(colored_length + 1) .. COLORS.reset_fg
-  else
-    colored_change_id = change_id_color .. change_id .. COLORS.reset
-  end
   
-  table.insert(line_parts, colored_change_id)
-
-  -- Author
-  local author = commit:get_author_display()
-  if author ~= "" then
-    local author_color
-    if commit.root then
-      author_color = COLORS.author_root
-    else
-      author_color = is_current and COLORS.author_current or COLORS.author_regular
+  for _, part in ipairs(main_parts) do
+    if part:has_content() then
+      table.insert(line_parts, part:get_styled_text())
     end
-    table.insert(line_parts, " " .. author_color .. author .. COLORS.reset_fg)
-  end
-
-  -- Timestamp
-  local timestamp = commit:get_timestamp_display()
-  if timestamp ~= "" then
-    local timestamp_color = is_current and COLORS.timestamp_current or COLORS.timestamp_regular
-    table.insert(line_parts, " " .. timestamp_color .. timestamp .. COLORS.reset_fg)
-  end
-
-  -- Bookmarks
-  if #commit.bookmarks > 0 then
-    local bookmarks_str = commit:get_bookmarks_display()
-    if bookmarks_str ~= "" then
-      table.insert(line_parts, " " .. COLORS.bookmarks .. bookmarks_str .. COLORS.reset_fg)
-    end
-  end
-
-  -- Commit ID with proper coloring - use hardcoded colors that match jj's actual output
-  local commit_id = commit.short_commit_id
-  if commit_id ~= "" then
-    local shortest_commit_id = commit.shortest_commit_id or ""
-    local commit_id_color = is_current and COLORS.commit_id_current or COLORS.commit_id_regular
-    local commit_id_dim_color = COLORS.commit_id_dim
-
-    -- Color the shortest unique prefix, dim the rest (keep as single part for wrapping)
-    local colored_length = #shortest_commit_id
-    local colored_commit_id
-    if colored_length > 0 and colored_length < #commit_id then
-      colored_commit_id = " " .. commit_id_color .. commit_id:sub(1, colored_length) .. COLORS.reset .. 
-                         commit_id_dim_color .. commit_id:sub(colored_length + 1) .. COLORS.reset_fg
-    else
-      colored_commit_id = " " .. commit_id_color .. commit_id .. COLORS.reset
-    end
-    
-    table.insert(line_parts, colored_commit_id)
-  end
-
-  -- Conflict indicator (last item on the line)
-  if commit.conflict then
-    table.insert(line_parts, " " .. COLORS.conflict_indicator .. "conflict" .. COLORS.reset)
   end
 
   -- Handle intelligent wrapping of main commit line
-  local graph_width = get_display_width(styled_graph)
+  -- Get the graph part for width calculation and continuation
+  local graph_part = main_parts[1]  -- Graph is always first
+  local styled_graph = graph_part:get_styled_text()
+  local graph_width = graph_part:get_width()
   local continuation_prefix = get_continuation_graph_from_commit(styled_graph)
 
   -- Build the line with intelligent wrapping
@@ -392,97 +327,85 @@ local function render_commit(commit, mode_config, window_width)
           wrap_continuation = string.rep(" ", graph_length)
         end
 
-        -- Calculate remaining width from main commit line for description wrapping
-        local main_line_used_width = 0
-        if i == 1 then -- Only for first description line
-          -- Get the width used by the last main commit line
-          local last_main_line = lines[#lines] or ""
-          if last_main_line ~= "" then
-            -- Remove the trailing reset code to get accurate width
-            if last_main_line:find(COLORS.reset, 1, true) then
-              local clean_line = last_main_line:gsub(vim.pesc(COLORS.reset) .. "$", "")
-              main_line_used_width = get_display_width(clean_line)
-            else
-              main_line_used_width = get_display_width(last_main_line)
+        -- Calculate effective window width for description wrapping
+        local effective_window_width = window_width
+        
+        -- For first description line, account for prefix parts that will be inserted
+        if i == 1 then
+          local desc_prefix_parts = commit:get_description_prefix_parts()
+          local total_prefix_width = 0
+          
+          for _, prefix_part in ipairs(desc_prefix_parts) do
+            if prefix_part:has_content() then
+              total_prefix_width = total_prefix_width + prefix_part:get_width()
             end
           end
-        end
-        
-        -- Adjust the effective window width for the first description line
-        local effective_window_width = window_width
-        if main_line_used_width > 0 and main_line_used_width < window_width then
-          -- If the main line used some width, reduce available width for description
-          effective_window_width = window_width - (main_line_used_width - get_display_width(ansi.strip_ansi(line_graph)))
-          -- Ensure we have at least some reasonable width for description
-          if effective_window_width < 30 then
-            effective_window_width = window_width
-          end
-        end
-        
-        -- If this is an empty commit and first description line, account for empty indicator width
-        if commit.empty and i == 1 then
-          -- "(empty) " is 8 characters, so reduce available width
-          effective_window_width = effective_window_width - 8
-          -- Ensure we have at least some reasonable width for description
-          if effective_window_width < 20 then
-            effective_window_width = window_width - 8
+          
+          if total_prefix_width > 0 then
+            effective_window_width = window_width - total_prefix_width
           end
         end
 
         -- Use word-based wrapping for descriptions (only the actual description text)
         local wrapped_lines = wrap_text_by_words(desc_content, line_graph, wrap_continuation, effective_window_width)
 
-        -- Add each wrapped line, but add (empty) indicator to first line if needed
+        -- Add each wrapped line, but add prefix parts to first line if needed
         for j, wrapped_line in ipairs(wrapped_lines) do
-          if commit.empty and i == 1 and j == 1 then
-            -- Insert colored (empty) indicator after the graph prefix but before the description text
-            local empty_indicator = COLORS.empty_indicator .. "(empty) " .. COLORS.reset_fg
+          if i == 1 and j == 1 then
+            -- Insert any prefix parts (like empty indicator) for first description line
+            local desc_prefix_parts = commit:get_description_prefix_parts()
             
-            -- Strip ANSI codes to find the graph structure more reliably
-            local clean_line = ansi.strip_ansi(wrapped_line)
-            
-            -- Find where graph ends by looking for the pattern: graph symbols followed by 2+ spaces
-            -- This handles patterns like "│  ", "├─┤  ", "╭─┤  ", etc.
-            local graph_end_match = clean_line:match("^(.*[│├─┤╭╰╮╯]  )")
-            
-            if graph_end_match then
-              -- We found the graph structure, insert empty indicator after it
-              local graph_prefix_len = #graph_end_match
-              
-              -- Find the equivalent position in the original line with ANSI codes
-              local original_pos = 1
-              local clean_pos = 1
-              local target_pos = nil
-              
-              -- Scan through the original line, tracking clean position
-              while original_pos <= #wrapped_line and clean_pos <= graph_prefix_len do
-                -- Check if we're at an ANSI sequence
-                local esc_start, esc_end = wrapped_line:find('\27%[[%d;]*m', original_pos)
+            for _, prefix_part in ipairs(desc_prefix_parts) do
+              if prefix_part:has_content() then
+                -- Insert prefix part after the graph prefix but before the description text
+                local prefix_styled = prefix_part:get_styled_text()
                 
-                if esc_start and esc_start == original_pos then
-                  -- Skip ANSI sequence in original, don't advance clean position
-                  original_pos = esc_end + 1
-                else
-                  -- Regular character
-                  clean_pos = clean_pos + 1
-                  original_pos = original_pos + 1
-                  if clean_pos > graph_prefix_len then
-                    target_pos = original_pos
-                    break
+                -- Strip ANSI codes to find the graph structure more reliably
+                local clean_line = ansi.strip_ansi(wrapped_line)
+                
+                -- Find where graph ends by looking for the pattern: graph symbols followed by 2+ spaces
+                local graph_end_match = clean_line:match("^(.*[│├─┤╭╰╮╯]  )")
+                
+                if graph_end_match then
+                  -- We found the graph structure, insert prefix part after it
+                  local graph_prefix_len = #graph_end_match
+                  
+                  -- Find the equivalent position in the original line with ANSI codes
+                  local original_pos = 1
+                  local clean_pos = 1
+                  local target_pos = nil
+                  
+                  -- Scan through the original line, tracking clean position
+                  while original_pos <= #wrapped_line and clean_pos <= graph_prefix_len do
+                    -- Check if we're at an ANSI sequence
+                    local esc_start, esc_end = wrapped_line:find('\27%[[%d;]*m', original_pos)
+                    
+                    if esc_start and esc_start == original_pos then
+                      -- Skip ANSI sequence in original, don't advance clean position
+                      original_pos = esc_end + 1
+                    else
+                      -- Regular character
+                      clean_pos = clean_pos + 1
+                      original_pos = original_pos + 1
+                      if clean_pos > graph_prefix_len then
+                        target_pos = original_pos
+                        break
+                      end
+                    end
                   end
+                  
+                  if target_pos then
+                    -- Insert prefix part at the correct position
+                    wrapped_line = wrapped_line:sub(1, target_pos - 1) .. prefix_styled .. wrapped_line:sub(target_pos)
+                  else
+                    -- Fallback: append to end
+                    wrapped_line = wrapped_line .. " " .. prefix_styled
+                  end
+                else
+                  -- No clear graph pattern found, just prepend
+                  wrapped_line = prefix_styled .. wrapped_line
                 end
               end
-              
-              if target_pos then
-                -- Insert empty indicator at the correct position
-                wrapped_line = wrapped_line:sub(1, target_pos - 1) .. empty_indicator .. wrapped_line:sub(target_pos)
-              else
-                -- Fallback: append to end
-                wrapped_line = wrapped_line .. " " .. empty_indicator
-              end
-            else
-              -- No clear graph pattern found, just prepend
-              wrapped_line = empty_indicator .. wrapped_line
             end
           end
           table.insert(lines, wrapped_line)
@@ -664,5 +587,14 @@ M.get_all_header_lines = function(mixed_entries)
   end
   return header_lines
 end
+
+-- Expose color definitions for use by other modules
+M.get_colors = function()
+  return COLORS
+end
+
+-- Expose helper functions for use by other modules
+M.get_display_width = get_display_width
+M.apply_symbol_colors = apply_symbol_colors
 
 return M

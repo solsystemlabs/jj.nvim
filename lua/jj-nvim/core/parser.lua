@@ -18,7 +18,7 @@ local function parse_template_data(data_output)
   local commit_data_by_id = {}
 
   local commit_blocks = vim.split(data_output, RECORD_SEP, { plain = true })
-  
+
   for _, commit_block in ipairs(commit_blocks) do
     local trimmed_block = commit_block:match("^%s*(.-)%s*$") -- trim whitespace
 

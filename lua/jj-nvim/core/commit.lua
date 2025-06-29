@@ -236,6 +236,109 @@ function Commit:is_current()
   return self.current_working_copy
 end
 
+-- Get color function for author field
+function Commit:get_author_color()
+  return function(text, COLORS)
+    if self.root then
+      return COLORS.author_root
+    else
+      return self:is_current() and COLORS.author_current or COLORS.author_regular
+    end
+  end
+end
+
+-- Get color function for timestamp field
+function Commit:get_timestamp_color()
+  return function(text, COLORS)
+    return self:is_current() and COLORS.timestamp_current or COLORS.timestamp_regular
+  end
+end
+
+-- Get color function for change ID field
+function Commit:get_change_id_color()
+  return function(text, COLORS)
+    return self:is_current() and COLORS.change_id_current or COLORS.change_id_regular
+  end
+end
+
+-- Get color function for commit ID field
+function Commit:get_commit_id_color()
+  return function(text, COLORS)
+    return self:is_current() and COLORS.commit_id_current or COLORS.commit_id_regular
+  end
+end
+
+-- Generate structured parts for the main commit line
+function Commit:get_main_line_parts()
+  local CommitPart = require('jj-nvim.core.commit_part')
+  local parts = {}
+  
+  -- Graph (always first)
+  local graph_part = CommitPart.new("graph", 
+    self.complete_graph or "", 
+    function(text, COLORS) return "" end,  -- Color function not used for graph
+    true)
+  graph_part._commit_ref = self  -- Store commit reference for symbol coloring
+  table.insert(parts, graph_part)
+  
+  -- Change ID
+  local change_id = self.short_change_id or (self.change_id and self.change_id:sub(1, 8)) or ""
+  table.insert(parts, CommitPart.new("change_id",
+    change_id,
+    self:get_change_id_color(),
+    change_id ~= ""))
+  
+  -- Author
+  local author = self:get_author_display()
+  table.insert(parts, CommitPart.new("author",
+    " " .. author,
+    self:get_author_color(),
+    author ~= ""))
+  
+  -- Timestamp
+  local timestamp = self:get_timestamp_display()
+  table.insert(parts, CommitPart.new("timestamp",
+    " " .. timestamp,
+    self:get_timestamp_color(),
+    timestamp ~= ""))
+  
+  -- Bookmarks
+  local bookmarks_str = self:get_bookmarks_display()
+  table.insert(parts, CommitPart.new("bookmarks",
+    " " .. bookmarks_str,
+    function(text, COLORS) return COLORS.bookmarks end,
+    bookmarks_str ~= ""))
+  
+  -- Commit ID
+  local commit_id = self.short_commit_id or ""
+  table.insert(parts, CommitPart.new("commit_id",
+    " " .. commit_id,
+    self:get_commit_id_color(),
+    commit_id ~= ""))
+  
+  -- Conflict indicator
+  table.insert(parts, CommitPart.new("conflict",
+    " conflict",
+    function(text, COLORS) return COLORS.conflict_indicator end,
+    self.conflict))
+  
+  return parts
+end
+
+-- Generate structured parts for description line prefixes
+function Commit:get_description_prefix_parts()
+  local CommitPart = require('jj-nvim.core.commit_part')
+  local parts = {}
+  
+  -- Empty indicator (only for empty commits)
+  table.insert(parts, CommitPart.new("empty_indicator",
+    "(empty) ",
+    function(text, COLORS) return COLORS.empty_indicator end,
+    self.empty))
+  
+  return parts
+end
+
 
 -- Factory function to create commits from template data
 M.from_template_data = function(template_data)
