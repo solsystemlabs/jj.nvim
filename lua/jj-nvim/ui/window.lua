@@ -414,7 +414,7 @@ M.setup_keymaps = function()
       if description and description ~= "" then
         options.message = description
       end
-      
+
       if actions.new_simple(options) then
         buffer.refresh(state.buf_id)
       end
@@ -442,7 +442,7 @@ M.setup_keymaps = function()
   vim.keymap.set('n', 'f', function()
     actions.git_fetch()
   end, opts)
-  
+
   vim.keymap.set('n', 'p', function()
     actions.git_push()
   end, opts)
@@ -483,7 +483,7 @@ M.setup_target_selection_keymaps = function()
 
   -- Setup common navigation keymaps
   keymaps.setup_common_navigation(state.buf_id, state.win_id, navigation, opts)
-  
+
   -- Disable other actions during target selection
   keymaps.setup_disabled_actions(state.buf_id, "Press Esc to cancel target selection", opts)
 end
@@ -508,7 +508,7 @@ M.setup_multi_select_keymaps = function()
 
   -- Setup common navigation keymaps with update callback
   keymaps.setup_common_navigation(state.buf_id, state.win_id, navigation, opts, M.update_multi_select_display)
-  
+
   -- Disable other actions during multi-select mode
   keymaps.setup_disabled_actions(state.buf_id, "Press Esc to cancel multi-selection, Enter to confirm", opts)
 end
@@ -828,19 +828,7 @@ M.show_new_change_menu = function()
     title = "Create New Change",
     items = {
       {
-        key = "c",
-        description = "Create new child change",
-        action = "new_child",
-        data = { parent = current_commit }
-      },
-      {
-        key = "d",
-        description = "Create new child with description",
-        action = "new_child_with_description",
-        data = { parent = current_commit }
-      },
-      {
-        key = "e",
+        key = "a",
         description = "Create new change after (select target)",
         action = "new_after",
         data = {}
@@ -881,12 +869,7 @@ end
 M.handle_new_change_selection = function(selected_item)
   M.reset_mode()
 
-  if selected_item.action == "new_child" then
-    -- Simple new child creation
-    if actions.new_child(selected_item.data.parent) then
-      buffer.refresh(state.buf_id)
-    end
-  elseif selected_item.action == "new_child_with_description" then
+  if selected_item.action == "new_child_with_description" then
     -- New child creation with custom message
     vim.ui.input({ prompt = "Commit description: " }, function(message)
       if message and message ~= "" then
