@@ -1156,10 +1156,7 @@ M.handle_commit_menu_selection = function(selected_item)
         vim.notify(string.format("Failed to commit: %s", error_msg), vim.log.levels.ERROR)
       else
         vim.notify("Committed with reset author", vim.log.levels.INFO)
-        local buffer = require('jj-nvim.ui.buffer')
-        if buffer and buffer.refresh then
-          buffer.refresh()
-        end
+        require('jj-nvim').refresh()
       end
     end)
   elseif selected_item.action == "custom_author_commit" then
@@ -1188,10 +1185,7 @@ M.handle_commit_menu_selection = function(selected_item)
           vim.notify(string.format("Failed to commit: %s", error_msg), vim.log.levels.ERROR)
         else
           vim.notify(string.format("Committed with author: %s", author), vim.log.levels.INFO)
-          local buffer = require('jj-nvim.ui.buffer')
-          if buffer and buffer.refresh then
-            buffer.refresh()
-          end
+          require('jj-nvim').refresh()
         end
       end)
     end)
@@ -1224,10 +1218,7 @@ M.handle_commit_menu_selection = function(selected_item)
           vim.notify(string.format("Failed to commit: %s", error_msg), vim.log.levels.ERROR)
         else
           vim.notify(string.format("Committed files: %s", filesets_str), vim.log.levels.INFO)
-          local buffer = require('jj-nvim.ui.buffer')
-          if buffer and buffer.refresh then
-            buffer.refresh()
-          end
+          require('jj-nvim').refresh()
         end
       end)
     end)

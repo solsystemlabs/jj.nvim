@@ -44,5 +44,28 @@ M.close = function()
   window.close()
 end
 
+-- Centralized refresh function that all operations should call
+-- This ensures the renderer collects fresh data every time
+M.refresh = function()
+  -- Only refresh if window is open
+  if not window.is_open() then
+    return false
+  end
+  
+  -- Collect fresh commit data and status information
+  local commits, err = parser.parse_all_commits_with_separate_graph()
+  if error_handler.handle_jj_error(err, "refresh commits") then 
+    return false 
+  end
+  
+  commits = commits or {}
+  
+  -- Update the buffer with fresh data - this will automatically collect
+  -- fresh status information including current working copy ID
+  local success = buffer.update_from_fresh_data(commits)
+  
+  return success
+end
+
 return M
 

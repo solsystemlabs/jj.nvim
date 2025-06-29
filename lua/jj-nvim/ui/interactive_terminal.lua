@@ -82,11 +82,8 @@ local function on_exit(job_id, exit_code, event)
     -- Success - auto close and run success callback
     cleanup()
     
-    -- Always refresh the log buffer after successful interactive commands
-    local buffer = require('jj-nvim.ui.buffer')
-    if buffer and buffer.refresh then
-      buffer.refresh()
-    end
+    -- Always refresh with latest data after successful interactive commands
+    require('jj-nvim').refresh()
     
     if callbacks and callbacks.on_success then
       callbacks.on_success()
@@ -101,10 +98,7 @@ local function on_exit(job_id, exit_code, event)
       vim.keymap.set('n', 'q', function()
         cleanup()
         -- Also refresh on manual close after error, in case some changes were made
-        local buffer = require('jj-nvim.ui.buffer')
-        if buffer and buffer.refresh then
-          buffer.refresh()
-        end
+        require('jj-nvim').refresh()
       end, { buffer = state.buf_id, noremap = true, silent = true })
     end
     
@@ -152,10 +146,7 @@ M.run_interactive_command = function(cmd_args, options)
   vim.keymap.set('n', '<Esc>', function()
     cleanup()
     -- Refresh on cancel in case partial changes were made
-    local buffer = require('jj-nvim.ui.buffer')
-    if buffer and buffer.refresh then
-      buffer.refresh()
-    end
+    require('jj-nvim').refresh()
     if state.callbacks and state.callbacks.on_cancel then
       state.callbacks.on_cancel()
     end

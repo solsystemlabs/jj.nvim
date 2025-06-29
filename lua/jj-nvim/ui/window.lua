@@ -313,8 +313,8 @@ M.setup_keymaps = function()
   vim.keymap.set('n', 'e', function()
     local commit = navigation.get_current_commit(state.win_id)
     if actions.edit_commit(commit) then
-      -- Refresh buffer to show updated state
-      buffer.refresh(state.buf_id)
+      -- Refresh with latest data
+      require('jj-nvim').refresh()
     end
   end, opts)
 
@@ -322,8 +322,8 @@ M.setup_keymaps = function()
   vim.keymap.set('n', 'm', function()
     local commit = navigation.get_current_commit(state.win_id)
     actions.set_description(commit, function()
-      -- Refresh buffer to show updated description
-      buffer.refresh(state.buf_id)
+      -- Refresh with latest data
+      require('jj-nvim').refresh()
     end)
   end, opts)
 
@@ -334,8 +334,8 @@ M.setup_keymaps = function()
       actions.abandon_multiple_commits(state.selected_commits, function()
         -- Clear selections after abandoning
         state.selected_commits = {}
-        -- Refresh buffer to show updated state
-        buffer.refresh(state.buf_id)
+        -- Refresh with latest data
+        require('jj-nvim').refresh()
         -- Update status display to reflect cleared selections
         local window_width = window_utils.get_width(state.win_id)
         buffer.update_status(state.buf_id, {
@@ -347,8 +347,8 @@ M.setup_keymaps = function()
       local commit = navigation.get_current_commit(state.win_id)
       if commit then
         actions.abandon_commit(commit, function()
-          -- Refresh buffer to show updated state
-          buffer.refresh(state.buf_id)
+          -- Refresh with latest data
+          require('jj-nvim').refresh()
         end)
       else
         vim.notify("No commit under cursor to abandon", vim.log.levels.WARN)
@@ -367,8 +367,8 @@ M.setup_keymaps = function()
       actions.abandon_multiple_commits(state.selected_commits, function()
         -- Clear selections after abandoning
         state.selected_commits = {}
-        -- Refresh buffer to show updated state
-        buffer.refresh(state.buf_id)
+        -- Refresh with latest data
+        require('jj-nvim').refresh()
         -- Update status display to reflect cleared selections
         local window_width = window_utils.get_width(state.win_id)
         buffer.update_status(state.buf_id, {
@@ -434,7 +434,7 @@ M.setup_keymaps = function()
       end
       
       if actions.new_child(current_commit, options) then
-        buffer.refresh(state.buf_id)
+        require('jj-nvim').refresh()
       end
     end)
   end, opts)
@@ -447,7 +447,7 @@ M.setup_keymaps = function()
   -- Buffer refresh
   vim.keymap.set('n', 'R', function()
     vim.notify("Refreshing commits...", vim.log.levels.INFO)
-    buffer.refresh(state.buf_id)
+    require('jj-nvim').refresh()
   end, opts)
 
   -- Window width adjustment keybinds
@@ -473,8 +473,8 @@ M.setup_keymaps = function()
   -- Commit working copy changes
   vim.keymap.set('n', 'c', function()
     actions.commit_working_copy({}, function()
-      -- Refresh buffer to show new commit
-      buffer.refresh(state.buf_id)
+      -- Refresh with latest data
+      require('jj-nvim').refresh()
     end)
   end, opts)
 
@@ -569,8 +569,8 @@ M.adjust_width = function(delta)
   -- Save the new width persistently
   config.set('window.width', new_width)
 
-  -- Refresh buffer content to apply new wrapping
-  buffer.refresh(state.buf_id)
+  -- Refresh with latest data to apply new wrapping
+  require('jj-nvim').refresh()
 end
 
 -- Function to highlight the current commit (extracted for reuse)
@@ -792,7 +792,7 @@ M.confirm_target_selection = function()
   end
 
   if success then
-    buffer.refresh(state.buf_id)
+    require('jj-nvim').refresh()
   end
 
   -- Return to normal mode
@@ -892,7 +892,7 @@ M.handle_new_change_selection = function(selected_item)
     vim.ui.input({ prompt = "Commit description: " }, function(message)
       if message and message ~= "" then
         if actions.new_child(selected_item.data.parent, { message = message }) then
-          buffer.refresh(state.buf_id)
+          require('jj-nvim').refresh()
         end
       else
         vim.notify("New change cancelled", vim.log.levels.INFO)
@@ -1004,7 +1004,7 @@ M.confirm_multi_selection = function()
       local success = actions.new_with_change_ids(state.selected_commits)
 
       if success then
-        buffer.refresh(state.buf_id)
+        require('jj-nvim').refresh()
       end
 
       -- Return to normal mode
@@ -1365,9 +1365,9 @@ M.handle_bookmark_menu_selection = function(selected_item)
         local revision = commit.change_id or commit.short_change_id
         
         if bookmark_commands.create_bookmark(name, revision) then
-          -- Clear cache and refresh buffer to show new bookmark
+          -- Clear cache and refresh with latest data
           bookmark_commands.clear_cache()
-          buffer.refresh(state.buf_id)
+          require('jj-nvim').refresh()
         end
       end
     end)
@@ -1386,9 +1386,9 @@ M.handle_bookmark_menu_selection = function(selected_item)
           }, function(choice)
             if choice == 'Yes' then
               if bookmark_commands.delete_bookmark(bookmark.name) then
-                -- Clear cache and refresh buffer
+                -- Clear cache and refresh with latest data
                 bookmark_commands.clear_cache()
-                buffer.refresh(state.buf_id)
+                require('jj-nvim').refresh()
               end
             end
           end)
@@ -1414,9 +1414,9 @@ M.handle_bookmark_menu_selection = function(selected_item)
           local target_revision = target_commit.change_id or target_commit.short_change_id
           
           if bookmark_commands.move_bookmark(bookmark.name, target_revision) then
-            -- Clear cache and refresh buffer
+            -- Clear cache and refresh with latest data
             bookmark_commands.clear_cache()
-            buffer.refresh(state.buf_id)
+            require('jj-nvim').refresh()
           end
         end
       })
@@ -1441,9 +1441,9 @@ M.handle_bookmark_menu_selection = function(selected_item)
             
             if new_name and new_name ~= "" and new_name ~= bookmark.name then
               if bookmark_commands.rename_bookmark(bookmark.name, new_name) then
-                -- Clear cache and refresh buffer
+                -- Clear cache and refresh with latest data
                 bookmark_commands.clear_cache()
-                buffer.refresh(state.buf_id)
+                require('jj-nvim').refresh()
               end
             end
           end)

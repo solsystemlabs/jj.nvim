@@ -340,4 +340,43 @@ M.get_display_line_number = function(log_line_number, window_width)
   return log_line_number + status_height  -- Convert to display line
 end
 
+-- Update buffer with fresh data and automatically refresh status information
+-- This is the centralized function that should be called for all data refreshes
+M.update_from_fresh_data = function(commits)
+  if not buffer_state.buf_id or not vim.api.nvim_buf_is_valid(buffer_state.buf_id) then
+    return false
+  end
+  
+  -- Update commit data
+  buffer_state.commits = commits or {}
+  
+  -- Find current working copy commit from fresh data
+  local current_working_copy_id = nil
+  for _, commit in ipairs(commits) do
+    if commit.current_working_copy then
+      current_working_copy_id = commit.short_change_id or commit.change_id
+      break
+    end
+  end
+  
+  -- Get window width for proper rendering
+  local window_width = nil
+  for _, win_id in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_get_buf(win_id) == buffer_state.buf_id then
+      window_width = vim.api.nvim_win_get_width(win_id)
+      break
+    end
+  end
+  window_width = window_width or config.get('window.width') or 80
+  
+  -- Update status with fresh working copy information
+  status.update_status({
+    current_commit_id = current_working_copy_id,
+    repository_info = "Repository: jj"
+  })
+  
+  -- Update buffer content with fresh data and status
+  return M.update_from_commits(buffer_state.buf_id, commits, buffer_state.current_mode, window_width)
+end
+
 return M
