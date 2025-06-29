@@ -1162,12 +1162,61 @@ M.show_bookmark_selection_menu = function(options)
     return false
   end
   
+  -- Get current commit to prioritize its bookmarks
+  local current_commit = navigation.get_current_commit(state.win_id)
+  local current_commit_id = nil
+  if current_commit then
+    current_commit_id = current_commit.change_id or current_commit.short_change_id
+  end
+  
+  -- Sort bookmarks: current commit bookmarks first (alphabetically), then others (alphabetically)
+  table.sort(filtered_bookmarks, function(a, b)
+    local a_is_current = false
+    local b_is_current = false
+    
+    if current_commit_id then
+      -- Check if bookmark targets current commit (using prefix matching for short IDs)
+      if a.target_commit and a.target_commit.id then
+        a_is_current = a.target_commit.id == current_commit_id or 
+                      a.target_commit.id:find("^" .. current_commit_id) or
+                      current_commit_id:find("^" .. a.target_commit.id)
+      end
+      if b.target_commit and b.target_commit.id then
+        b_is_current = b.target_commit.id == current_commit_id or 
+                      b.target_commit.id:find("^" .. current_commit_id) or
+                      current_commit_id:find("^" .. b.target_commit.id)
+      end
+    end
+    
+    -- Current commit bookmarks come first
+    if a_is_current and not b_is_current then
+      return true
+    elseif not a_is_current and b_is_current then
+      return false
+    else
+      -- Both are current or both are not current: sort alphabetically
+      return a:get_display_name() < b:get_display_name()
+    end
+  end)
+  
   -- Build menu items
   local menu_items = {}
   for i, bookmark in ipairs(filtered_bookmarks) do
+    local description = bookmark:get_display_name()
+    
+    -- Add indicator if bookmark is on current commit
+    if current_commit_id and bookmark.target_commit and bookmark.target_commit.id then
+      local is_current = bookmark.target_commit.id == current_commit_id or 
+                        bookmark.target_commit.id:find("^" .. current_commit_id) or
+                        current_commit_id:find("^" .. bookmark.target_commit.id)
+      if is_current then
+        description = "* " .. description
+      end
+    end
+    
     table.insert(menu_items, {
       key = tostring(i),
-      description = bookmark:get_display_name(),
+      description = description,
       action = "select_bookmark",
       data = { bookmark = bookmark }
     })
