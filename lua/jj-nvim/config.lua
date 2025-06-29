@@ -45,6 +45,15 @@ M.defaults = {
       height = 0.8,       -- Floating window height as percentage of screen
       border = 'rounded', -- 'none', 'single', 'double', 'rounded', 'solid', 'shadow'
     },
+  },
+  interactive = {
+    float = {
+      width = 0.9,        -- Floating terminal width as percentage of screen
+      height = 0.8,       -- Floating terminal height as percentage of screen
+      border = 'rounded', -- 'none', 'single', 'double', 'rounded', 'solid', 'shadow'
+    },
+    auto_close = true,    -- Auto-close terminal on successful command completion
+    error_persist = true, -- Keep terminal open on error for user to see output
   }
 }
 

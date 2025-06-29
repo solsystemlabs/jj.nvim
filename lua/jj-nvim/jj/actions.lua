@@ -1110,18 +1110,26 @@ M.handle_commit_menu_selection = function(selected_item)
     M.commit_working_copy({})
     
   elseif selected_item.action == "interactive_commit" then
-    -- Interactive commit - let jj handle the UI
-    local result, err = commands.commit(nil, { interactive = true })
-    if not result then
-      local error_msg = err or "Unknown error"
-      vim.notify(string.format("Failed to commit interactively: %s", error_msg), vim.log.levels.ERROR)
-    else
-      vim.notify("Interactive commit completed", vim.log.levels.INFO)
-      -- Refresh buffer to show changes
-      local buffer = require('jj-nvim.ui.buffer')
-      if buffer and buffer.refresh then
-        buffer.refresh()
+    -- Interactive commit using terminal interface
+    local success = commands.commit_interactive({
+      on_success = function()
+        vim.notify("Interactive commit completed", vim.log.levels.INFO)
+        -- Refresh buffer to show changes
+        local buffer = require('jj-nvim.ui.buffer')
+        if buffer and buffer.refresh then
+          buffer.refresh()
+        end
+      end,
+      on_error = function(exit_code)
+        -- Error message already shown by interactive terminal
+      end,
+      on_cancel = function()
+        vim.notify("Interactive commit cancelled", vim.log.levels.INFO)
       end
+    })
+    
+    if not success then
+      vim.notify("Failed to start interactive commit", vim.log.levels.ERROR)
     end
     
   elseif selected_item.action == "reset_author_commit" then
