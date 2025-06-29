@@ -31,13 +31,18 @@ function CommitPart:get_styled_text()
     local renderer = require('jj-nvim.core.renderer')
     local COLORS = renderer.get_colors()
     local reset = COLORS.reset_fg or "\27[39m"
-    local color_prefix = self.color_fn(self.text, COLORS)
+    local color_result = self.color_fn(self.text, COLORS)
     
     -- Special handling for graph parts that need symbol coloring
     if self.type == "graph" then
       return renderer.apply_symbol_colors(self.text, self._commit_ref)
+    -- Special handling for change_id and commit_id that may return pre-formatted text
+    elseif (self.type == "change_id" or self.type == "commit_id") and color_result:find(COLORS.reset, 1, true) then
+      -- Color function returned pre-formatted text with internal coloring, just add final reset
+      return color_result .. reset
     else
-      return color_prefix .. self.text .. reset
+      -- Standard coloring: prefix + text + reset
+      return color_result .. self.text .. reset
     end
   else
     return self.text

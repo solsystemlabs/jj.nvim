@@ -254,17 +254,47 @@ function Commit:get_timestamp_color()
   end
 end
 
--- Get color function for change ID field
+-- Get color function for change ID field with shortest prefix handling
 function Commit:get_change_id_color()
   return function(text, COLORS)
-    return self:is_current() and COLORS.change_id_current or COLORS.change_id_regular
+    local base_color = self:is_current() and COLORS.change_id_current or COLORS.change_id_regular
+    local dim_color = COLORS.change_id_dim
+    
+    -- Handle shortest prefix coloring
+    local shortest_change_id = self.shortest_change_id or ""
+    local colored_length = #shortest_change_id
+    
+    if colored_length > 0 and colored_length < #text then
+      -- Color the shortest unique prefix, dim the rest
+      return base_color .. text:sub(1, colored_length) .. COLORS.reset .. 
+             dim_color .. text:sub(colored_length + 1)
+    else
+      -- Use base color for entire text
+      return base_color
+    end
   end
 end
 
--- Get color function for commit ID field
+-- Get color function for commit ID field with shortest prefix handling
 function Commit:get_commit_id_color()
   return function(text, COLORS)
-    return self:is_current() and COLORS.commit_id_current or COLORS.commit_id_regular
+    local base_color = self:is_current() and COLORS.commit_id_current or COLORS.commit_id_regular
+    local dim_color = COLORS.commit_id_dim
+    
+    -- Handle shortest prefix coloring - need to account for leading space
+    local shortest_commit_id = self.shortest_commit_id or ""
+    local commit_id_text = text:match("^%s*(.*)") or text  -- Remove leading space for comparison
+    local colored_length = #shortest_commit_id
+    
+    if colored_length > 0 and colored_length < #commit_id_text then
+      -- Color the shortest unique prefix, dim the rest
+      local leading_space = text:match("^(%s*)")
+      return leading_space .. base_color .. commit_id_text:sub(1, colored_length) .. COLORS.reset .. 
+             dim_color .. commit_id_text:sub(colored_length + 1)
+    else
+      -- Use base color for entire text
+      return base_color
+    end
   end
 end
 
