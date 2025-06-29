@@ -228,7 +228,44 @@ function Commit:get_bookmarks_display()
   if #self.bookmarks == 0 then
     return ""
   end
-  return table.concat(self.bookmarks, " ")
+  
+  -- Simple display for basic bookmarks
+  local bookmark_parts = {}
+  for _, bookmark in ipairs(self.bookmarks) do
+    table.insert(bookmark_parts, bookmark)
+  end
+  
+  return table.concat(bookmark_parts, " ")
+end
+
+-- Get enhanced bookmarks display with type indicators
+function Commit:get_enhanced_bookmarks_display()
+  -- This method can be called to get bookmarks with type indicators
+  -- when detailed bookmark information is available
+  local bookmark_commands = require('jj-nvim.jj.bookmark_commands')
+  local bookmarks = bookmark_commands.get_bookmarks_for_commit(self.change_id or self.short_change_id)
+  
+  if #bookmarks == 0 then
+    return ""
+  end
+  
+  local bookmark_parts = {}
+  for _, bookmark in ipairs(bookmarks) do
+    local display_name = bookmark:get_display_name()
+    local indicator = ""
+    
+    if bookmark.type == "remote" then
+      indicator = "○"  -- Remote bookmark indicator
+    elseif bookmark:is_conflicted() then
+      indicator = "!"  -- Conflict indicator
+    else
+      indicator = "●"  -- Local bookmark indicator
+    end
+    
+    table.insert(bookmark_parts, string.format("%s%s", indicator, display_name))
+  end
+  
+  return table.concat(bookmark_parts, " ")
 end
 
 -- Check if this commit should be highlighted as current

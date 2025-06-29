@@ -5,6 +5,7 @@ local buffer = require('jj-nvim.ui.buffer')
 local navigation = require('jj-nvim.ui.navigation')
 local themes = require('jj-nvim.ui.themes')
 local actions = require('jj-nvim.jj.actions')
+local bookmark_commands = require('jj-nvim.jj.bookmark_commands')
 local inline_menu = require('jj-nvim.ui.inline_menu')
 local multi_select = require('jj-nvim.ui.multi_select')
 local validation = require('jj-nvim.utils.validation')
@@ -353,6 +354,11 @@ M.setup_keymaps = function()
         vim.notify("No commit under cursor to abandon", vim.log.levels.WARN)
       end
     end
+  end, opts)
+
+  -- Bookmark operations
+  vim.keymap.set('n', 'b', function()
+    M.show_bookmark_menu()
   end, opts)
 
   -- Explicit multi-abandon (abandon all selected commits)
@@ -1095,6 +1101,325 @@ M.toggle_description_expansion = function()
   local all_commits = buffer.get_commits()
   if all_commits then
     buffer.update_from_commits(state.buf_id, all_commits, buffer.get_mode())
+  end
+end
+
+-- Show bookmark selection menu
+M.show_bookmark_selection_menu = function(options)
+  options = options or {}
+  local filter_type = options.filter or "local"  -- "local", "remote", "all"
+  local title = options.title or "Select Bookmark"
+  local on_select = options.on_select
+  local allow_toggle = options.allow_toggle ~= false  -- Default to true
+  
+  if not on_select then
+    vim.notify("No selection callback provided", vim.log.levels.ERROR)
+    return false
+  end
+  
+  if not M.is_open() then
+    vim.notify("JJ window is not open", vim.log.levels.WARN)
+    return false
+  end
+  
+  -- Check if menu is already active
+  if inline_menu.is_active() then
+    vim.notify("Menu is already active", vim.log.levels.INFO)
+    return false
+  end
+  
+  -- Load bookmarks based on filter
+  
+  local bookmark_options = {}
+  if filter_type == "all" then
+    bookmark_options.all_remotes = true
+  elseif filter_type == "remote" then
+    bookmark_options.all_remotes = true
+  end
+  -- For "local", use default options (no flags)
+  
+  local bookmarks = bookmark_commands.get_bookmarks(bookmark_options)
+  if not bookmarks then
+    vim.notify("Failed to load bookmarks", vim.log.levels.ERROR)
+    return false
+  end
+  
+  -- Filter bookmarks by type
+  local filtered_bookmarks = {}
+  for _, bookmark in ipairs(bookmarks) do
+    if filter_type == "local" and (bookmark.type == "local" or bookmark.type == "conflicted") then
+      table.insert(filtered_bookmarks, bookmark)
+    elseif filter_type == "remote" and bookmark.type == "remote" then
+      table.insert(filtered_bookmarks, bookmark)
+    elseif filter_type == "all" then
+      table.insert(filtered_bookmarks, bookmark)
+    end
+  end
+  
+  if #filtered_bookmarks == 0 then
+    local filter_desc = filter_type == "local" and "local" or (filter_type == "remote" and "remote" or "")
+    vim.notify(string.format("No %s bookmarks found", filter_desc), vim.log.levels.INFO)
+    return false
+  end
+  
+  -- Build menu items
+  local menu_items = {}
+  for i, bookmark in ipairs(filtered_bookmarks) do
+    table.insert(menu_items, {
+      key = tostring(i),
+      description = bookmark:get_display_name(),
+      action = "select_bookmark",
+      data = { bookmark = bookmark }
+    })
+  end
+  
+  -- Add toggle option if enabled
+  if allow_toggle then
+    local toggle_desc = ""
+    if filter_type == "local" then
+      toggle_desc = "t - Show remote bookmarks"
+    elseif filter_type == "remote" then
+      toggle_desc = "t - Show local bookmarks"
+    else
+      toggle_desc = "t - Show local only"
+    end
+    
+    table.insert(menu_items, {
+      key = "t",
+      description = toggle_desc,
+      action = "toggle_filter",
+      data = { current_filter = filter_type, options = options }
+    })
+  end
+  
+  local menu_config = {
+    id = "bookmark_selection",
+    title = title,
+    items = menu_items
+  }
+  
+  -- Show the menu
+  local success = inline_menu.show(state.win_id, menu_config, {
+    on_select = function(selected_item)
+      if selected_item.action == "select_bookmark" then
+        on_select(selected_item.data.bookmark)
+      elseif selected_item.action == "toggle_filter" then
+        -- Toggle filter and re-show menu
+        local current_filter = selected_item.data.current_filter
+        local new_filter = "local"
+        if current_filter == "local" then
+          new_filter = "remote"
+        elseif current_filter == "remote" then
+          new_filter = "all"
+        else
+          new_filter = "local"
+        end
+        
+        local new_options = vim.tbl_deep_extend("force", selected_item.data.options, { filter = new_filter })
+        M.show_bookmark_selection_menu(new_options)
+      end
+    end,
+    on_cancel = function()
+      -- Menu closed without selection
+    end
+  })
+  
+  return success
+end
+
+-- Show bookmark operations menu
+M.show_bookmark_menu = function()
+  if not M.is_open() then
+    vim.notify("JJ window is not open", vim.log.levels.WARN)
+    return
+  end
+
+  -- Check if menu is already active
+  if inline_menu.is_active() then
+    vim.notify("Menu is already active", vim.log.levels.INFO)
+    return
+  end
+
+  -- Get current commit for context (used for create/move operations)
+  local current_commit = navigation.get_current_commit(state.win_id)
+
+  -- Define menu configuration
+  local menu_config = {
+    id = "bookmark_operations",
+    title = "Bookmark Operations",
+    items = {
+      {
+        key = "c",
+        description = "Create bookmark here",
+        action = "create_bookmark",
+        data = { commit = current_commit }
+      },
+      {
+        key = "d",
+        description = "Delete bookmark",
+        action = "delete_bookmark",
+        data = {}
+      },
+      {
+        key = "m", 
+        description = "Move bookmark here",
+        action = "move_bookmark",
+        data = { commit = current_commit }
+      },
+      {
+        key = "r",
+        description = "Rename bookmark", 
+        action = "rename_bookmark",
+        data = {}
+      },
+      {
+        key = "l",
+        description = "List bookmarks",
+        action = "list_bookmarks",
+        data = {}
+      }
+    }
+  }
+
+  -- Show the menu
+  local success = inline_menu.show(state.win_id, menu_config, {
+    on_select = function(selected_item)
+      M.handle_bookmark_menu_selection(selected_item)
+    end,
+    on_cancel = function()
+      -- Menu closed without selection
+    end
+  })
+
+  if not success then
+    vim.notify("Failed to show bookmark menu", vim.log.levels.ERROR)
+  end
+end
+
+-- Handle bookmark menu selection
+M.handle_bookmark_menu_selection = function(selected_item)
+  if selected_item.action == "create_bookmark" then
+    -- Create new bookmark
+    vim.ui.input({ prompt = "Enter bookmark name: " }, function(name)
+      if name == nil then
+        -- User cancelled with Esc
+        return
+      end
+      
+      if name and name ~= "" then
+        local commit = selected_item.data.commit
+        if not commit then
+          vim.notify("No commit under cursor", vim.log.levels.WARN)
+          return
+        end
+        
+        local revision = commit.change_id or commit.short_change_id
+        
+        if bookmark_commands.create_bookmark(name, revision) then
+          -- Clear cache and refresh buffer to show new bookmark
+          bookmark_commands.clear_cache()
+          buffer.refresh(state.buf_id)
+        end
+      end
+    end)
+    
+  elseif selected_item.action == "delete_bookmark" then
+    -- Show bookmark selection menu for deletion (with small delay to ensure first menu is closed)
+    vim.schedule(function()
+      M.show_bookmark_selection_menu({
+        title = "Select Bookmark to Delete",
+        filter = "local",  -- Only local bookmarks can be deleted
+        allow_toggle = false,  -- No need to toggle for delete
+        on_select = function(bookmark)
+          -- Confirm deletion
+          vim.ui.select({ 'Yes', 'No' }, {
+            prompt = string.format("Delete bookmark '%s'?", bookmark:get_display_name()),
+          }, function(choice)
+            if choice == 'Yes' then
+              if bookmark_commands.delete_bookmark(bookmark.name) then
+                -- Clear cache and refresh buffer
+                bookmark_commands.clear_cache()
+                buffer.refresh(state.buf_id)
+              end
+            end
+          end)
+        end
+      })
+    end)
+    
+  elseif selected_item.action == "move_bookmark" then
+    -- Show bookmark selection menu for moving
+    local target_commit = selected_item.data.commit
+    
+    if not target_commit then
+      vim.notify("No commit under cursor", vim.log.levels.WARN)
+      return
+    end
+    
+    vim.schedule(function()
+      M.show_bookmark_selection_menu({
+        title = "Select Bookmark to Move Here",
+        filter = "local",  -- Only local bookmarks can be moved
+        allow_toggle = false,
+        on_select = function(bookmark)
+          local target_revision = target_commit.change_id or target_commit.short_change_id
+          
+          if bookmark_commands.move_bookmark(bookmark.name, target_revision) then
+            -- Clear cache and refresh buffer
+            bookmark_commands.clear_cache()
+            buffer.refresh(state.buf_id)
+          end
+        end
+      })
+    end)
+    
+  elseif selected_item.action == "rename_bookmark" then
+    -- Show bookmark selection menu for renaming
+    vim.schedule(function()
+      M.show_bookmark_selection_menu({
+        title = "Select Bookmark to Rename",
+        filter = "local",  -- Only local bookmarks can be renamed
+        allow_toggle = false,
+        on_select = function(bookmark)
+          vim.ui.input({ 
+            prompt = string.format("Enter new name for bookmark '%s': ", bookmark:get_display_name()),
+            default = bookmark.name
+          }, function(new_name)
+            if new_name == nil then
+              -- User cancelled with Esc
+              return
+            end
+            
+            if new_name and new_name ~= "" and new_name ~= bookmark.name then
+              if bookmark_commands.rename_bookmark(bookmark.name, new_name) then
+                -- Clear cache and refresh buffer
+                bookmark_commands.clear_cache()
+                buffer.refresh(state.buf_id)
+              end
+            end
+          end)
+        end
+      })
+    end)
+    
+  elseif selected_item.action == "list_bookmarks" then
+    -- Show bookmark selection menu for listing (read-only)
+    vim.schedule(function()
+      M.show_bookmark_selection_menu({
+        title = "All Bookmarks",
+        filter = "local",  -- Start with local, allow toggle
+        allow_toggle = true,
+        on_select = function(bookmark)
+          -- Just show bookmark details
+          local details = string.format("Bookmark: %s\nType: %s\nTarget: %s\nMessage: %s",
+            bookmark:get_display_name(),
+            bookmark.type,
+            bookmark.target_commit.id:sub(1, 8),
+            bookmark.target_commit.message or "")
+          vim.notify(details, vim.log.levels.INFO)
+        end
+      })
+    end)
   end
 end
 
