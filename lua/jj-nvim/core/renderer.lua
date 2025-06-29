@@ -392,8 +392,45 @@ local function render_commit(commit, mode_config, window_width)
           wrap_continuation = string.rep(" ", graph_length)
         end
 
+        -- Calculate remaining width from main commit line for description wrapping
+        local main_line_used_width = 0
+        if i == 1 then -- Only for first description line
+          -- Get the width used by the last main commit line
+          local last_main_line = lines[#lines] or ""
+          if last_main_line ~= "" then
+            -- Remove the trailing reset code to get accurate width
+            if last_main_line:find(COLORS.reset, 1, true) then
+              local clean_line = last_main_line:gsub(vim.pesc(COLORS.reset) .. "$", "")
+              main_line_used_width = get_display_width(clean_line)
+            else
+              main_line_used_width = get_display_width(last_main_line)
+            end
+          end
+        end
+        
+        -- Adjust the effective window width for the first description line
+        local effective_window_width = window_width
+        if main_line_used_width > 0 and main_line_used_width < window_width then
+          -- If the main line used some width, reduce available width for description
+          effective_window_width = window_width - (main_line_used_width - get_display_width(ansi.strip_ansi(line_graph)))
+          -- Ensure we have at least some reasonable width for description
+          if effective_window_width < 30 then
+            effective_window_width = window_width
+          end
+        end
+        
+        -- If this is an empty commit and first description line, account for empty indicator width
+        if commit.empty and i == 1 then
+          -- "(empty) " is 8 characters, so reduce available width
+          effective_window_width = effective_window_width - 8
+          -- Ensure we have at least some reasonable width for description
+          if effective_window_width < 20 then
+            effective_window_width = window_width - 8
+          end
+        end
+
         -- Use word-based wrapping for descriptions (only the actual description text)
-        local wrapped_lines = wrap_text_by_words(desc_content, line_graph, wrap_continuation, window_width)
+        local wrapped_lines = wrap_text_by_words(desc_content, line_graph, wrap_continuation, effective_window_width)
 
         -- Add each wrapped line, but add (empty) indicator to first line if needed
         for j, wrapped_line in ipairs(wrapped_lines) do
