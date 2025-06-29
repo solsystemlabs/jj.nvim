@@ -218,10 +218,6 @@ M.get_new_child_description = function(parent_commit)
   return string.format("Create new child of %s: %s", change_id, description)
 end
 
--- Create a new child change with a custom message
-M.new_child_with_message = function(parent_commit, message)
-  return M.new_child(parent_commit, { message = message })
-end
 
 -- Create a new change after the specified commit (sibling)
 M.new_after = function(target_commit, options)
@@ -1039,6 +1035,27 @@ M.commit_working_copy = function(options, on_success)
     if on_success then on_success() end
     return true
   end)
+end
+
+-- Create a simple new change (jj new)
+M.new_simple = function(options)
+  options = options or {}
+  
+  -- Build command arguments
+  local cmd_args = {'new'}
+  
+  -- Add message if provided
+  if options.message and options.message ~= "" then
+    table.insert(cmd_args, "-m")
+    table.insert(cmd_args, options.message)
+  end
+  
+  local result, exec_err = execute_with_error_handling(cmd_args, "create new change")
+  if not result then
+    return false
+  end
+  
+  return true
 end
 
 -- Show commit options menu

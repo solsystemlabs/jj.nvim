@@ -407,8 +407,22 @@ M.setup_keymaps = function()
     M.toggle_description_expansion()
   end, opts)
 
-  -- New change creation
+  -- New change creation (simple)
   vim.keymap.set('n', 'n', function()
+    vim.ui.input({ prompt = "Change description (Enter for none): " }, function(description)
+      local options = {}
+      if description and description ~= "" then
+        options.message = description
+      end
+      
+      if actions.new_simple(options) then
+        buffer.refresh(state.buf_id)
+      end
+    end)
+  end, opts)
+
+  -- New change with options menu
+  vim.keymap.set('n', 'N', function()
     M.show_new_change_menu()
   end, opts)
 
@@ -876,7 +890,7 @@ M.handle_new_change_selection = function(selected_item)
     -- New child creation with custom message
     vim.ui.input({ prompt = "Commit description: " }, function(message)
       if message and message ~= "" then
-        if actions.new_child_with_message(selected_item.data.parent, message) then
+        if actions.new_child(selected_item.data.parent, { message = message }) then
           buffer.refresh(state.buf_id)
         end
       else
