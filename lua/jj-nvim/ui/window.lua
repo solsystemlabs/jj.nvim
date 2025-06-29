@@ -409,13 +409,25 @@ M.setup_keymaps = function()
 
   -- New change creation (simple)
   vim.keymap.set('n', 'n', function()
+    -- Get current commit for context
+    local current_commit = navigation.get_current_commit(state.win_id)
+    if not current_commit then
+      vim.notify("No commit found at cursor position", vim.log.levels.WARN)
+      return
+    end
+
     vim.ui.input({ prompt = "Change description (Enter for none): " }, function(description)
+      if description == nil then
+        -- User cancelled with Esc
+        return
+      end
+      
       local options = {}
       if description and description ~= "" then
         options.message = description
       end
-
-      if actions.new_simple(options) then
+      
+      if actions.new_child(current_commit, options) then
         buffer.refresh(state.buf_id)
       end
     end)
