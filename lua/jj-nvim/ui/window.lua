@@ -446,6 +446,11 @@ M.setup_keymaps = function()
     end)
   end, opts)
 
+  -- Commit with options menu
+  vim.keymap.set('n', 'C', function()
+    actions.show_commit_menu(state.win_id)
+  end, opts)
+
   -- Help dialog
   vim.keymap.set('n', '?', function()
     help.show(state.win_id)

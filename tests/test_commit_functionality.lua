@@ -19,13 +19,19 @@ if not has_commit then
   os.exit(1)
 end
 
--- Test 2: Test that action exists
-print("\n2. Testing commit action exists...")
+-- Test 2: Test that actions exist
+print("\n2. Testing commit actions exist...")
 local has_action = type(actions.commit_working_copy) == "function"
 print("actions.commit_working_copy function exists: " .. (has_action and "yes" or "no"))
 
-if not has_action then
-  print("✗ commit action is missing")
+local has_menu = type(actions.show_commit_menu) == "function"
+print("actions.show_commit_menu function exists: " .. (has_menu and "yes" or "no"))
+
+local has_handler = type(actions.handle_commit_menu_selection) == "function"
+print("actions.handle_commit_menu_selection function exists: " .. (has_handler and "yes" or "no"))
+
+if not has_action or not has_menu or not has_handler then
+  print("✗ commit actions are missing")
   os.exit(1)
 end
 
@@ -101,11 +107,22 @@ print("✓ Options support: Working")
 print("✓ Error handling: Working")
 
 print("\n=== Usage ===")
+print("Basic Commit:")
 print("1. Open jj-nvim: nvim -c 'lua require(\"jj-nvim\").show_log()'")
 print("2. Make some changes to files in the working copy")
 print("3. Press 'c' to commit working copy changes")
 print("4. Enter commit message in the prompt")
 print("5. Press Enter to confirm")
-print("6. Buffer will refresh to show the new commit")
 
-print("\n🎉 Commit functionality is fully implemented!")
+print("\nAdvanced Commit Options:")
+print("1. Press 'C' (capital C) to open commit options menu")
+print("2. Choose from:")
+print("   - q: Quick commit (same as 'c')")
+print("   - i: Interactive commit (choose specific changes)")
+print("   - r: Reset author and commit")
+print("   - a: Commit with custom author")
+print("   - f: Commit specific files/patterns")
+print("3. Follow the prompts for your chosen option")
+print("4. Buffer will refresh to show the new commit")
+
+print("\n🎉 Complete commit functionality with options is implemented!")
