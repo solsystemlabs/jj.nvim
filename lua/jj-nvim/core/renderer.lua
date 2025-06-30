@@ -136,9 +136,9 @@ local function apply_symbol_colors(graph_text, commit)
   if is_current then
     result = result:gsub("@", COLORS.current_symbol .. "@" .. COLORS.reset_fg)
   end
-  if commit.root then
-    result = result:gsub("◆", COLORS.root_symbol .. "◆" .. COLORS.reset_fg)
-  end
+  
+  -- Color all diamond symbols regardless of commit type
+  result = result:gsub("◆", COLORS.root_symbol .. "◆" .. COLORS.reset_fg)
 
   return result
 end
