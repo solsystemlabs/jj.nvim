@@ -3,12 +3,6 @@ local M = {}
 local commands = require('jj-nvim.jj.commands')
 local bookmark_core = require('jj-nvim.core.bookmark')
 
--- Cache for bookmark data
-local bookmark_cache = {
-  data = nil,
-  last_update = 0,
-  ttl = 5000 -- 5 seconds TTL
-}
 
 -- Helper function to execute bookmark commands with error handling
 local function execute_bookmark_command(cmd_args, error_context)
@@ -36,20 +30,12 @@ local function execute_bookmark_command(cmd_args, error_context)
     return false, err -- Return original error for move_bookmark to analyze
   end
   
-  -- Clear cache on successful modification
-  bookmark_cache.data = nil
   return result, nil
 end
 
--- Get all bookmarks with caching
+-- Get all bookmarks
 M.get_bookmarks = function(options)
   options = options or {}
-  
-  -- Check cache
-  local now = vim.loop.now()
-  if bookmark_cache.data and (now - bookmark_cache.last_update) < bookmark_cache.ttl then
-    return bookmark_cache.data
-  end
   
   -- Build command arguments
   local cmd_args = { 'bookmark', 'list' }
@@ -84,9 +70,67 @@ M.get_bookmarks = function(options)
   
   local bookmarks = bookmark_core.parse_bookmarks(result)
   
-  -- Cache the result
-  bookmark_cache.data = bookmarks
-  bookmark_cache.last_update = now
+  return bookmarks
+end
+
+-- Get simple bookmark table with all bookmark info
+M.get_all_bookmarks = function()
+  -- Simple template to get bookmark data
+  local FIELD_SEP = "\x1F"
+  local RECORD_SEP = "\x1E"
+  local template = 'self.name() ++ "' .. FIELD_SEP .. '" ++ if(self.remote(), self.remote(), "local") ++ "' .. FIELD_SEP .. '" ++ if(self.present(), "present", "absent") ++ "' .. FIELD_SEP .. '" ++ if(self.conflict(), "conflict", "clean") ++ "' .. FIELD_SEP .. '" ++ if(self.present() && self.normal_target(), self.normal_target().commit_id().short(8), "no_commit") ++ "' .. RECORD_SEP .. '"'
+  
+  local cmd_args = { 'bookmark', 'list', '-a', '-T', template }
+  
+  local result, err = commands.execute(cmd_args)
+  if not result then
+    vim.notify("Failed to get bookmarks: " .. (err or "unknown error"), vim.log.levels.ERROR)
+    return {}
+  end
+  
+  -- Parse into simple table
+  local bookmarks = {}
+  local bookmark_blocks = vim.split(result, RECORD_SEP, { plain = true })
+  
+  for _, bookmark_block in ipairs(bookmark_blocks) do
+    local trimmed_block = bookmark_block:match("^%s*(.-)%s*$")
+    
+    if trimmed_block ~= "" and not trimmed_block:match("^Hint:") then
+      local parts = vim.split(trimmed_block, FIELD_SEP, { plain = true })
+      
+      if #parts >= 5 then
+        local bookmark = {
+          name = parts[1] or "",
+          remote = parts[2] ~= "local" and parts[2] or nil,
+          present = parts[3] == "present",
+          conflict = parts[4] == "conflict", 
+          commit_id = parts[5] ~= "no_commit" and parts[5] or nil
+        }
+        
+        -- Generate display name
+        if bookmark.remote then
+          bookmark.display_name = bookmark.name .. "@" .. bookmark.remote
+        else
+          bookmark.display_name = bookmark.name
+        end
+        
+        -- Add status indicators
+        local status_parts = {}
+        if not bookmark.present then
+          table.insert(status_parts, "deleted")
+        end
+        if bookmark.conflict then
+          table.insert(status_parts, "conflict")
+        end
+        
+        if #status_parts > 0 then
+          bookmark.display_name = bookmark.display_name .. " (" .. table.concat(status_parts, ", ") .. ")"
+        end
+        
+        table.insert(bookmarks, bookmark)
+      end
+    end
+  end
   
   return bookmarks
 end
@@ -295,19 +339,62 @@ end
 
 -- Get bookmarks for a specific commit
 M.get_bookmarks_for_commit = function(commit_id)
-  local bookmarks = M.get_bookmarks({ all_remotes = true })
-  return bookmark_core.get_bookmarks_for_commit(bookmarks, commit_id)
+  local all_bookmarks = M.get_all_bookmarks()
+  local commit_bookmarks = {}
+  
+  for _, bookmark in ipairs(all_bookmarks) do
+    if bookmark.commit_id and bookmark.present then
+      -- Match exact or prefix
+      if bookmark.commit_id == commit_id or bookmark.commit_id:find("^" .. commit_id) then
+        table.insert(commit_bookmarks, bookmark)
+      end
+    end
+  end
+  
+  return commit_bookmarks
 end
 
--- Clear the bookmark cache (useful for refresh operations)
-M.clear_cache = function()
-  bookmark_cache.data = nil
+
+-- Get local bookmarks for menus
+M.get_local_bookmarks = function()
+  local all_bookmarks = M.get_all_bookmarks()
+  local local_bookmarks = {}
+  
+  for _, bookmark in ipairs(all_bookmarks) do
+    if not bookmark.remote and bookmark.present then
+      table.insert(local_bookmarks, bookmark)
+    end
+  end
+  
+  return local_bookmarks
 end
 
--- Get filtered bookmarks
-M.get_filtered_bookmarks = function(filters)
-  local bookmarks = M.get_bookmarks({ all_remotes = true })
-  return bookmark_core.filter_bookmarks(bookmarks, filters)
+-- Get remote bookmarks for menus  
+M.get_remote_bookmarks = function()
+  local all_bookmarks = M.get_all_bookmarks()
+  local remote_bookmarks = {}
+  
+  for _, bookmark in ipairs(all_bookmarks) do
+    if bookmark.remote and bookmark.present then
+      table.insert(remote_bookmarks, bookmark)
+    end
+  end
+  
+  return remote_bookmarks
+end
+
+-- Get all present bookmarks for menus
+M.get_all_present_bookmarks = function()
+  local all_bookmarks = M.get_all_bookmarks()
+  local present_bookmarks = {}
+  
+  for _, bookmark in ipairs(all_bookmarks) do
+    if bookmark.present then
+      table.insert(present_bookmarks, bookmark)
+    end
+  end
+  
+  return present_bookmarks
 end
 
 -- Get bookmark groups (local + remote variants grouped by name)

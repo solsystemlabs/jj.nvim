@@ -229,13 +229,35 @@ function Commit:get_bookmarks_display()
     return ""
   end
   
-  -- Simple display for basic bookmarks
-  local bookmark_parts = {}
-  for _, bookmark in ipairs(self.bookmarks) do
-    table.insert(bookmark_parts, bookmark)
-  end
+  -- Get bookmarks for this commit
+  local bookmark_commands = require('jj-nvim.jj.bookmark_commands')
+  local commit_bookmarks = bookmark_commands.get_bookmarks_for_commit(self.short_commit_id)
   
-  return table.concat(bookmark_parts, " ")
+  if #commit_bookmarks > 0 then
+    -- Simple deduplication: prefer local over remote for same name
+    local bookmark_map = {}
+    local display_parts = {}
+    
+    -- First pass: collect local bookmarks
+    for _, bookmark in ipairs(commit_bookmarks) do
+      if not bookmark.remote then
+        bookmark_map[bookmark.name] = true
+        table.insert(display_parts, bookmark.display_name)
+      end
+    end
+    
+    -- Second pass: add remote bookmarks only if no local exists
+    for _, bookmark in ipairs(commit_bookmarks) do
+      if bookmark.remote and not bookmark_map[bookmark.name] then
+        table.insert(display_parts, bookmark.display_name)
+      end
+    end
+    
+    return table.concat(display_parts, " ")
+  else
+    -- Fallback to simple display
+    return table.concat(self.bookmarks, " ")
+  end
 end
 
 -- Get enhanced bookmarks display with type indicators

@@ -1144,22 +1144,14 @@ M.show_bookmark_selection_menu = function(options)
   end
   -- For "local", use default options (no flags)
   
-  local bookmarks = bookmark_commands.get_bookmarks(bookmark_options)
-  if not bookmarks then
-    vim.notify("Failed to load bookmarks", vim.log.levels.ERROR)
-    return false
-  end
-  
-  -- Filter bookmarks by type
+  -- Get bookmarks using new simplified functions
   local filtered_bookmarks = {}
-  for _, bookmark in ipairs(bookmarks) do
-    if filter_type == "local" and (bookmark.type == "local" or bookmark.type == "conflicted") then
-      table.insert(filtered_bookmarks, bookmark)
-    elseif filter_type == "remote" and bookmark.type == "remote" then
-      table.insert(filtered_bookmarks, bookmark)
-    elseif filter_type == "all" then
-      table.insert(filtered_bookmarks, bookmark)
-    end
+  if filter_type == "local" then
+    filtered_bookmarks = bookmark_commands.get_local_bookmarks()
+  elseif filter_type == "remote" then
+    filtered_bookmarks = bookmark_commands.get_remote_bookmarks()
+  elseif filter_type == "all" then
+    filtered_bookmarks = bookmark_commands.get_all_present_bookmarks()
   end
   
   if #filtered_bookmarks == 0 then
@@ -1182,15 +1174,15 @@ M.show_bookmark_selection_menu = function(options)
     
     if current_commit_id then
       -- Check if bookmark targets current commit (using prefix matching for short IDs)
-      if a.target_commit and a.target_commit.id then
-        a_is_current = a.target_commit.id == current_commit_id or 
-                      a.target_commit.id:find("^" .. current_commit_id) or
-                      current_commit_id:find("^" .. a.target_commit.id)
+      if a.commit_id then
+        a_is_current = a.commit_id == current_commit_id or 
+                      a.commit_id:find("^" .. current_commit_id) or
+                      current_commit_id:find("^" .. a.commit_id)
       end
-      if b.target_commit and b.target_commit.id then
-        b_is_current = b.target_commit.id == current_commit_id or 
-                      b.target_commit.id:find("^" .. current_commit_id) or
-                      current_commit_id:find("^" .. b.target_commit.id)
+      if b.commit_id then
+        b_is_current = b.commit_id == current_commit_id or 
+                      b.commit_id:find("^" .. current_commit_id) or
+                      current_commit_id:find("^" .. b.commit_id)
       end
     end
     
@@ -1201,20 +1193,20 @@ M.show_bookmark_selection_menu = function(options)
       return false
     else
       -- Both are current or both are not current: sort alphabetically
-      return a:get_display_name() < b:get_display_name()
+      return a.display_name < b.display_name
     end
   end)
   
   -- Build menu items
   local menu_items = {}
   for i, bookmark in ipairs(filtered_bookmarks) do
-    local description = bookmark:get_display_name()
+    local description = bookmark.display_name
     
     -- Add indicator if bookmark is on current commit
-    if current_commit_id and bookmark.target_commit and bookmark.target_commit.id then
-      local is_current = bookmark.target_commit.id == current_commit_id or 
-                        bookmark.target_commit.id:find("^" .. current_commit_id) or
-                        current_commit_id:find("^" .. bookmark.target_commit.id)
+    if current_commit_id and bookmark.commit_id then
+      local is_current = bookmark.commit_id == current_commit_id or 
+                        bookmark.commit_id:find("^" .. current_commit_id) or
+                        current_commit_id:find("^" .. bookmark.commit_id)
       if is_current then
         description = "* " .. description
       end
@@ -1228,29 +1220,26 @@ M.show_bookmark_selection_menu = function(options)
     })
   end
   
-  -- Add toggle option if enabled
-  if allow_toggle then
-    local toggle_desc = ""
-    if filter_type == "local" then
-      toggle_desc = "t - Show remote bookmarks"
-    elseif filter_type == "remote" then
-      toggle_desc = "t - Show local bookmarks"
-    else
-      toggle_desc = "t - Show local only"
-    end
-    
-    table.insert(menu_items, {
-      key = "t",
-      description = toggle_desc,
-      action = "toggle_filter",
-      data = { current_filter = filter_type, options = options }
-    })
+  -- Add toggle functionality via special keymap (not as a menu item)
+  local toggle_desc = ""
+  local filter_display = ""
+  if filter_type == "local" then
+    toggle_desc = "t - Show remote bookmarks"
+    filter_display = "Local"
+  elseif filter_type == "remote" then
+    toggle_desc = "t - Show all bookmarks"
+    filter_display = "Remote"
+  else
+    toggle_desc = "t - Show local only"
+    filter_display = "All"
   end
   
   local menu_config = {
     id = "bookmark_selection",
-    title = title,
-    items = menu_items
+    title = title .. " (" .. filter_display .. ") - " .. toggle_desc,
+    items = menu_items,
+    toggle_desc = toggle_desc,
+    toggle_data = { current_filter = filter_type, options = options }
   }
   
   -- Show the menu
@@ -1270,8 +1259,15 @@ M.show_bookmark_selection_menu = function(options)
           new_filter = "local"
         end
         
-        local new_options = vim.tbl_deep_extend("force", selected_item.data.options, { filter = new_filter })
-        M.show_bookmark_selection_menu(new_options)
+        -- Close current menu first
+        inline_menu = require('jj-nvim.ui.inline_menu')
+        inline_menu.close()
+        
+        -- Schedule the new menu to open after the current one is fully closed
+        vim.schedule(function()
+          local new_options = vim.tbl_deep_extend("force", selected_item.data.options, { filter = new_filter })
+          M.show_bookmark_selection_menu(new_options)
+        end)
       end
     end,
     on_cancel = function()

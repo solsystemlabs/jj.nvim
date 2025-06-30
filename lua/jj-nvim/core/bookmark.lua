@@ -37,10 +37,35 @@ M.new_bookmark = function(name, bookmark_type, target_commit, remote_name, statu
     end,
     
     get_display_name = function(self)
+      local base_name = self.name
       if self.type == M.BOOKMARK_TYPES.REMOTE then
-        return string.format("@%s/%s", self.remote_name or "origin", self.name)
+        base_name = string.format("%s@%s", self.name, self.remote_name or "origin")
       end
-      return self.name
+      
+      -- Add status indicators
+      local status_indicators = {}
+      
+      -- Add presence indicator (for absent/deleted bookmarks)
+      if self.present == false then
+        table.insert(status_indicators, "deleted")
+      end
+      
+      -- Add conflict indicator
+      if self:is_conflicted() then
+        table.insert(status_indicators, "conflict")
+      end
+      
+      -- Add tracking indicator for remote bookmarks
+      if self.type == M.BOOKMARK_TYPES.REMOTE and self.tracking_status == "untracked" then
+        table.insert(status_indicators, "untracked")
+      end
+      
+      -- Combine base name with status indicators
+      if #status_indicators > 0 then
+        return string.format("%s (%s)", base_name, table.concat(status_indicators, ", "))
+      end
+      
+      return base_name
     end,
     
     get_full_identifier = function(self)
@@ -72,14 +97,14 @@ M.parse_bookmarks = function(bookmark_output)
     -- Check if this is a remote bookmark line (starts with whitespace and @)
     local remote_line = line:match("^%s+@(.+)$")
     if remote_line and current_bookmark then
-      -- Parse remote bookmark: @origin: commit_id commit_message
-      local remote_name, commit_id, commit_msg = remote_line:match("^([^:]+):%s*([%w%d]+)%s+(.*)$")
+      -- Parse remote bookmark: @origin: change_id commit_id commit_message
+      local remote_name, change_id, commit_id, commit_msg = remote_line:match("^([^:]+):%s*([%w%d]+)%s+([%w%d]+)%s+(.*)$")
       if remote_name and commit_id then
         -- Create remote bookmark
         local remote_bookmark = M.new_bookmark(
           current_bookmark.name,
           M.BOOKMARK_TYPES.REMOTE,
-          { id = commit_id, message = commit_msg or "" },
+          { id = commit_id, change_id = change_id, message = commit_msg or "" },
           remote_name
         )
         
@@ -97,10 +122,11 @@ M.parse_bookmarks = function(bookmark_output)
     
     -- Parse main bookmark line (local bookmark)
     -- Handle both normal bookmarks and deleted bookmarks
-    local name, status_info, commit_id, commit_msg = line:match("^([^%s:]+)%s*(%([^)]*%)):%s*([%w%d]+)%s+(.*)$")
+    -- Format: name (status): change_id commit_id description
+    local name, status_info, change_id, commit_id, commit_msg = line:match("^([^%s:]+)%s*(%([^)]*%)):%s*([%w%d]+)%s+([%w%d]+)%s+(.*)$")
     if not name then
-      -- Try without status info
-      name, commit_id, commit_msg = line:match("^([^%s:]+):%s*([%w%d]+)%s+(.*)$")
+      -- Try without status info  
+      name, change_id, commit_id, commit_msg = line:match("^([^%s:]+):%s*([%w%d]+)%s+([%w%d]+)%s+(.*)$")
       status_info = nil
     end
     
@@ -116,7 +142,7 @@ M.parse_bookmarks = function(bookmark_output)
       current_bookmark = M.new_bookmark(
         name,
         bookmark_type,
-        { id = commit_id, message = commit_msg or "" },
+        { id = commit_id, change_id = change_id, message = commit_msg or "" },
         nil,
         bookmark_status
       )

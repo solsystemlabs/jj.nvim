@@ -162,9 +162,31 @@ local function setup_menu_keymaps(buf_id, menu_config)
   for i, item in ipairs(menu_config.items) do
     vim.keymap.set('n', item.key, function()
       local callback = M.state.on_select
-      M.close()
+      -- For toggle actions, don't close the menu immediately
+      -- The callback will handle re-showing the menu
+      if item.action == "toggle_filter" then
+        if callback then
+          callback(item)
+        end
+      else
+        M.close()
+        if callback then
+          callback(item)
+        end
+      end
+    end, opts)
+  end
+  
+  -- Special toggle key for bookmark menus
+  if menu_config.toggle_data then
+    vim.keymap.set('n', 't', function()
+      local callback = M.state.on_select
       if callback then
-        callback(item)
+        local toggle_item = {
+          action = "toggle_filter",
+          data = menu_config.toggle_data
+        }
+        callback(toggle_item)
       end
     end, opts)
   end
