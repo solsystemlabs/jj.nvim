@@ -205,6 +205,23 @@ local function setup_menu_keymaps(buf_id, menu_config)
       M.state.on_cancel()
     end
   end, opts)
+  
+  vim.keymap.set('n', '<BS>', function()
+    -- Store callbacks before closing (since close() clears state)
+    local parent_callback = M.state.parent_menu_callback
+    local cancel_callback = M.state.on_cancel
+    
+    M.close()
+    
+    -- Schedule callbacks to run after menu is fully closed
+    vim.schedule(function()
+      if parent_callback then
+        parent_callback()
+      elseif cancel_callback then
+        cancel_callback()
+      end
+    end)
+  end, opts)
 end
 
 -- Show the inline menu
@@ -236,6 +253,7 @@ M.show = function(parent_win_id, menu_config, callbacks)
   M.state.selected_index = 1
   M.state.on_select = callbacks and callbacks.on_select
   M.state.on_cancel = callbacks and callbacks.on_cancel
+  M.state.parent_menu_callback = callbacks and callbacks.parent_menu_callback
   
   -- Setup keymaps
   setup_menu_keymaps(buf_id, menu_config)

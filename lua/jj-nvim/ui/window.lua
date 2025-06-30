@@ -39,7 +39,96 @@ local state = {
   mode = MODES.NORMAL,
   mode_data = {},        -- Mode-specific data storage
   selected_commits = {}, -- For multi-select mode
+  menu_stack = {}        -- Stack to track menu navigation history
 }
+
+-- Menu stack management
+local function push_menu(menu_info)
+  table.insert(state.menu_stack, menu_info)
+end
+
+local function pop_menu()
+  return table.remove(state.menu_stack)
+end
+
+local function get_previous_menu()
+  return state.menu_stack[#state.menu_stack]
+end
+
+local function clear_menu_stack()
+  state.menu_stack = {}
+end
+
+-- Central function to show bookmark selection menu with proper navigation
+local function show_bookmark_selection_with_navigation(options, parent_menu_info)
+  -- Push parent menu to stack if provided
+  if parent_menu_info then
+    push_menu(parent_menu_info)
+  end
+  
+  -- Add navigation callbacks to options
+  local enhanced_options = vim.tbl_deep_extend("force", options, {
+    parent_menu_callback = function()
+      local prev_menu = pop_menu()
+      if prev_menu then
+        vim.schedule(function()
+          if prev_menu.type == "bookmark_operations" then
+            M.show_bookmark_menu()
+          else
+            -- Default fallback - clear stack
+            clear_menu_stack()
+          end
+        end)
+      else
+        clear_menu_stack()
+      end
+    end,
+    on_cancel = function()
+      clear_menu_stack()
+    end
+  })
+  
+  return M.show_bookmark_selection_menu(enhanced_options)
+end
+
+-- Universal function to show any menu with proper navigation
+local function show_menu_with_navigation(menu_func, menu_config, callbacks, parent_menu_info)
+  -- Push parent menu to stack if provided
+  if parent_menu_info then
+    push_menu(parent_menu_info)
+  end
+  
+  -- Enhance callbacks with navigation
+  local enhanced_callbacks = vim.tbl_deep_extend("force", callbacks or {}, {
+    parent_menu_callback = function()
+      local prev_menu = pop_menu()
+      if prev_menu then
+        vim.schedule(function()
+          -- Route back to appropriate parent menu based on type
+          if prev_menu.type == "bookmark_operations" then
+            M.show_bookmark_menu()
+          elseif prev_menu.type == "bookmark_selection" then
+            M.show_bookmark_selection_menu(prev_menu.options or {})
+          else
+            -- Default fallback - clear stack
+            clear_menu_stack()
+          end
+        end)
+      else
+        clear_menu_stack()
+      end
+    end,
+    on_cancel = function()
+      -- Call original on_cancel if it exists, then clear stack
+      if callbacks and callbacks.on_cancel then
+        callbacks.on_cancel()
+      end
+      clear_menu_stack()
+    end
+  })
+  
+  return menu_func(menu_config, enhanced_callbacks)
+end
 
 -- Helper function to setup border highlight group
 local function setup_border_highlight()
@@ -1243,7 +1332,7 @@ M.show_bookmark_selection_menu = function(options)
   }
   
   -- Show the menu
-  local success = inline_menu.show(state.win_id, menu_config, {
+  local callbacks = {
     on_select = function(selected_item)
       if selected_item.action == "select_bookmark" then
         on_select(selected_item.data.bookmark)
@@ -1266,14 +1355,29 @@ M.show_bookmark_selection_menu = function(options)
         -- Schedule the new menu to open after the current one is fully closed
         vim.schedule(function()
           local new_options = vim.tbl_deep_extend("force", selected_item.data.options, { filter = new_filter })
+          -- Preserve navigation callbacks when toggling
+          if options.parent_menu_callback then
+            new_options.parent_menu_callback = options.parent_menu_callback
+          end
+          if options.on_cancel then
+            new_options.on_cancel = options.on_cancel
+          end
           M.show_bookmark_selection_menu(new_options)
         end)
       end
     end,
-    on_cancel = function()
-      -- Menu closed without selection
-    end
-  })
+  }
+  
+  -- Pass through navigation callbacks if they exist in options
+  if options.parent_menu_callback then
+    callbacks.parent_menu_callback = options.parent_menu_callback
+  end
+  
+  if options.on_cancel then
+    callbacks.on_cancel = options.on_cancel
+  end
+  
+  local success = inline_menu.show(state.win_id, menu_config, callbacks)
   
   return success
 end
@@ -1290,6 +1394,9 @@ M.show_bookmark_menu = function()
     vim.notify("Menu is already active", vim.log.levels.INFO)
     return
   end
+
+  -- Clear menu stack since this is a top-level menu
+  clear_menu_stack()
 
   -- Get current commit for context (used for create/move operations)
   local current_commit = navigation.get_current_commit(state.win_id)
@@ -1338,7 +1445,8 @@ M.show_bookmark_menu = function()
       M.handle_bookmark_menu_selection(selected_item)
     end,
     on_cancel = function()
-      -- Menu closed without selection
+      -- Top-level menu - just clear stack
+      clear_menu_stack()
     end
   })
 
@@ -1375,16 +1483,16 @@ M.handle_bookmark_menu_selection = function(selected_item)
     end)
     
   elseif selected_item.action == "delete_bookmark" then
-    -- Show bookmark selection menu for deletion (with small delay to ensure first menu is closed)
+    -- Show bookmark selection menu for deletion
     vim.schedule(function()
-      M.show_bookmark_selection_menu({
+      show_bookmark_selection_with_navigation({
         title = "Select Bookmark to Delete",
         filter = "local",  -- Only local bookmarks can be deleted
         allow_toggle = false,  -- No need to toggle for delete
         on_select = function(bookmark)
           -- Confirm deletion
           vim.ui.select({ 'Yes', 'No' }, {
-            prompt = string.format("Delete bookmark '%s'?", bookmark:get_display_name()),
+            prompt = string.format("Delete bookmark '%s'?", bookmark.display_name),
           }, function(choice)
             if choice == 'Yes' then
               if bookmark_commands.delete_bookmark(bookmark.name) then
@@ -1395,6 +1503,9 @@ M.handle_bookmark_menu_selection = function(selected_item)
             end
           end)
         end
+      }, {
+        type = "bookmark_operations",
+        title = "Bookmark Operations"
       })
     end)
     
@@ -1408,7 +1519,7 @@ M.handle_bookmark_menu_selection = function(selected_item)
     end
     
     vim.schedule(function()
-      M.show_bookmark_selection_menu({
+      show_bookmark_selection_with_navigation({
         title = "Select Bookmark to Move Here",
         filter = "local",  -- Only local bookmarks can be moved
         allow_toggle = false,
@@ -1426,19 +1537,22 @@ M.handle_bookmark_menu_selection = function(selected_item)
           
           bookmark_commands.move_bookmark(bookmark.name, target_revision, move_options)
         end
+      }, {
+        type = "bookmark_operations",
+        title = "Bookmark Operations"
       })
     end)
     
   elseif selected_item.action == "rename_bookmark" then
     -- Show bookmark selection menu for renaming
     vim.schedule(function()
-      M.show_bookmark_selection_menu({
+      show_bookmark_selection_with_navigation({
         title = "Select Bookmark to Rename",
         filter = "local",  -- Only local bookmarks can be renamed
         allow_toggle = false,
         on_select = function(bookmark)
           vim.ui.input({ 
-            prompt = string.format("Enter new name for bookmark '%s': ", bookmark:get_display_name()),
+            prompt = string.format("Enter new name for bookmark '%s': ", bookmark.display_name),
             default = bookmark.name
           }, function(new_name)
             if new_name == nil then
@@ -1455,20 +1569,28 @@ M.handle_bookmark_menu_selection = function(selected_item)
             end
           end)
         end
+      }, {
+        type = "bookmark_operations",
+        title = "Bookmark Operations"
       })
     end)
     
   elseif selected_item.action == "list_bookmarks" then
     -- Show bookmark selection menu for listing (read-only)
     vim.schedule(function()
-      M.show_bookmark_selection_menu({
+      show_bookmark_selection_with_navigation({
         title = "All Bookmarks",
         filter = "local",  -- Start with local, allow toggle
         allow_toggle = true,
         on_select = function(bookmark)
-          -- Show bookmark action menu
-          M.show_bookmark_action_menu(bookmark)
+          -- Show bookmark action menu after current menu is fully closed
+          vim.schedule(function()
+            M.show_bookmark_action_menu(bookmark)
+          end)
         end
+      }, {
+        type = "bookmark_operations",
+        title = "Bookmark Operations"
       })
     end)
   end
@@ -1481,25 +1603,19 @@ M.show_bookmark_action_menu = function(bookmark)
     return
   end
 
-  -- Check if menu is already active
-  if inline_menu.is_active() then
-    vim.notify("Menu is already active", vim.log.levels.INFO)
-    return
-  end
+  -- Push current menu info to stack
+  push_menu({
+    type = "bookmark_selection",
+    title = "All Bookmarks",
+    filter = "local",
+    allow_toggle = true
+  })
 
   local bookmark_commands = require('jj-nvim.jj.bookmark_commands')
   local current_commit = navigation.get_current_commit(state.win_id)
 
   -- Build menu items based on bookmark type and status
   local menu_items = {}
-
-  -- Go to commit
-  table.insert(menu_items, {
-    key = "g",
-    description = "Go to commit",
-    action = "go_to_commit",
-    data = { commit_id = bookmark.commit_id }
-  })
 
   -- Show details
   table.insert(menu_items, {
@@ -1519,7 +1635,7 @@ M.show_bookmark_action_menu = function(bookmark)
     })
   end
 
-  -- Delete/forget bookmark
+  -- Delete bookmark (only for local bookmarks)
   if not bookmark.remote then
     table.insert(menu_items, {
       key = "x",
@@ -1527,23 +1643,25 @@ M.show_bookmark_action_menu = function(bookmark)
       action = "delete_bookmark",
       data = { bookmark = bookmark }
     })
-  else
-    table.insert(menu_items, {
-      key = "f",
-      description = "Forget (untrack) bookmark",
-      action = "forget_bookmark",
-      data = { bookmark = bookmark }
-    })
   end
 
   -- Track/untrack for remote bookmarks
   if bookmark.remote then
-    table.insert(menu_items, {
-      key = "t",
-      description = "Track bookmark",
-      action = "track_bookmark",
-      data = { bookmark = bookmark }
-    })
+    if bookmark.tracked then
+      table.insert(menu_items, {
+        key = "u",
+        description = "Untrack bookmark",
+        action = "untrack_bookmark",
+        data = { bookmark = bookmark }
+      })
+    else
+      table.insert(menu_items, {
+        key = "t",
+        description = "Track bookmark",
+        action = "track_bookmark",
+        data = { bookmark = bookmark }
+      })
+    end
   end
 
   local menu_config = {
@@ -1557,8 +1675,27 @@ M.show_bookmark_action_menu = function(bookmark)
     on_select = function(selected_item)
       M.handle_bookmark_action(selected_item)
     end,
+    parent_menu_callback = function()
+      -- Go back to previous menu
+      local prev_menu = pop_menu()
+      if prev_menu and prev_menu.type == "bookmark_selection" then
+        vim.schedule(function()
+          M.show_bookmark_selection_menu({
+            title = prev_menu.title,
+            filter = prev_menu.filter,
+            allow_toggle = prev_menu.allow_toggle,
+            on_select = function(selected_bookmark)
+              vim.schedule(function()
+                M.show_bookmark_action_menu(selected_bookmark)
+              end)
+            end
+          })
+        end)
+      end
+    end,
     on_cancel = function()
-      -- Menu closed without selection
+      -- Clear menu stack completely on explicit cancel
+      clear_menu_stack()
     end
   })
 
@@ -1571,27 +1708,11 @@ M.handle_bookmark_action = function(selected_item)
   local action = selected_item.action
   local data = selected_item.data
 
-  if action == "go_to_commit" then
-    if data.commit_id then
-      -- Find and navigate to the commit
-      M.go_to_commit_by_id(data.commit_id)
-    end
-
-  elseif action == "show_details" then
+  if action == "show_details" then
     local bookmark = data.bookmark
-    local details = string.format("Bookmark: %s\nType: %s\nTarget: %s", 
-      bookmark.display_name,
-      bookmark.remote and ("remote@" .. bookmark.remote) or "local",
-      bookmark.commit_id and bookmark.commit_id:sub(1, 8) or "no commit")
-    
-    if bookmark.conflict then
-      details = details .. "\nStatus: conflict"
-    end
-    if not bookmark.present then
-      details = details .. "\nStatus: deleted"
-    end
-    
-    vim.notify(details, vim.log.levels.INFO)
+    vim.schedule(function()
+      M.show_bookmark_details_menu(bookmark)
+    end)
 
   elseif action == "move_bookmark" then
     local bookmark = data.bookmark
@@ -1621,21 +1742,6 @@ M.handle_bookmark_action = function(selected_item)
       end)
     end
 
-  elseif action == "forget_bookmark" then
-    local bookmark = data.bookmark
-    
-    if bookmark.name then
-      vim.ui.select({ 'Yes', 'No' }, {
-        prompt = string.format("Forget (untrack) bookmark '%s@%s'?", bookmark.name, bookmark.remote),
-      }, function(choice)
-        if choice == 'Yes' then
-          if bookmark_commands.untrack_bookmark(bookmark.name, bookmark.remote) then
-            M.refresh_log()
-          end
-        end
-      end)
-    end
-
   elseif action == "track_bookmark" then
     local bookmark = data.bookmark
     
@@ -1644,47 +1750,149 @@ M.handle_bookmark_action = function(selected_item)
         M.refresh_log()
       end
     end
+
+  elseif action == "untrack_bookmark" then
+    local bookmark = data.bookmark
+    
+    if bookmark.name and bookmark.remote then
+      if bookmark_commands.untrack_bookmark(bookmark.name, bookmark.remote) then
+        M.refresh_log()
+      end
+    end
   end
 end
 
--- Navigate to a commit by its ID
-M.go_to_commit_by_id = function(commit_id)
+-- Show bookmark details in a menu format
+M.show_bookmark_details_menu = function(bookmark)
   if not M.is_open() then
     vim.notify("JJ window is not open", vim.log.levels.WARN)
     return
   end
 
-  -- Get all commits from the buffer
-  local all_commits = buffer.get_commits()
-  if not all_commits then
-    vim.notify("No commits found", vim.log.levels.WARN)
-    return
-  end
+  -- Push current menu info to stack
+  push_menu({
+    type = "bookmark_actions",
+    bookmark = bookmark
+  })
 
-  -- Find the commit by ID (allowing prefix matching)
-  local target_commit = nil
-  local target_line = nil
+  -- Build details as menu items (read-only display)
+  local menu_items = {}
   
-  for _, commit in ipairs(all_commits) do
-    if commit.id and (commit.id == commit_id or commit.id:find("^" .. commit_id)) then
-      target_commit = commit
-      target_line = commit.line_number
-      break
+  table.insert(menu_items, {
+    key = "1",
+    description = "Name: " .. (bookmark.name or "unknown"),
+    action = "noop",
+    data = {}
+  })
+  
+  table.insert(menu_items, {
+    key = "2", 
+    description = "Type: " .. (bookmark.remote and ("remote@" .. bookmark.remote) or "local"),
+    action = "noop",
+    data = {}
+  })
+  
+  if bookmark.commit_id then
+    table.insert(menu_items, {
+      key = "3",
+      description = "Commit: " .. bookmark.commit_id,
+      action = "noop", 
+      data = {}
+    })
+  end
+  
+  if bookmark.change_id then
+    table.insert(menu_items, {
+      key = "4",
+      description = "Change: " .. bookmark.change_id,
+      action = "noop",
+      data = {}
+    })
+  end
+  
+  -- Status information
+  local status_parts = {}
+  if not bookmark.present then
+    table.insert(status_parts, "deleted")
+  end
+  if bookmark.conflict then
+    table.insert(status_parts, "conflict")
+  end
+  if bookmark.remote and bookmark.tracked then
+    table.insert(status_parts, "tracked")
+  elseif bookmark.remote then
+    table.insert(status_parts, "untracked")
+  end
+  
+  if #status_parts > 0 then
+    table.insert(menu_items, {
+      key = "5",
+      description = "Status: " .. table.concat(status_parts, ", "),
+      action = "noop",
+      data = {}
+    })
+  end
+  
+  -- Tracking information for remote bookmarks
+  if bookmark.remote and bookmark.tracked then
+    if bookmark.tracking_ahead_count > 0 or bookmark.tracking_behind_count > 0 then
+      table.insert(menu_items, {
+        key = "6",
+        description = string.format("Sync: %d ahead, %d behind", 
+          bookmark.tracking_ahead_count, bookmark.tracking_behind_count),
+        action = "noop",
+        data = {}
+      })
+    else
+      table.insert(menu_items, {
+        key = "6",
+        description = "Sync: up to date",
+        action = "noop",
+        data = {}
+      })
     end
   end
+  
+  -- Add back navigation item
+  table.insert(menu_items, {
+    key = "b",
+    description = "← Back to bookmark actions",
+    action = "back_to_actions",
+    data = { bookmark = bookmark }
+  })
 
-  if not target_commit or not target_line then
-    vim.notify(string.format("Commit %s not found in current log", commit_id:sub(1, 8)), vim.log.levels.WARN)
-    return
-  end
+  local menu_config = {
+    id = "bookmark_details",
+    title = "Details: " .. bookmark.display_name,
+    items = menu_items
+  }
 
-  -- Calculate display line number (accounting for status area)
-  local window_width = vim.api.nvim_win_get_width(state.win_id)
-  local display_line = buffer.get_display_line_number(target_line, window_width)
+  -- Show the menu
+  local success = inline_menu.show(state.win_id, menu_config, {
+    on_select = function(selected_item)
+      if selected_item.action == "back_to_actions" then
+        vim.schedule(function()
+          M.show_bookmark_action_menu(selected_item.data.bookmark)
+        end)
+      end
+      -- Other actions are noop for details display
+    end,
+    parent_menu_callback = function()
+      -- Go back to previous menu
+      local prev_menu = pop_menu()
+      if prev_menu and prev_menu.type == "bookmark_actions" then
+        vim.schedule(function()
+          M.show_bookmark_action_menu(prev_menu.bookmark)
+        end)
+      end
+    end,
+    on_cancel = function()
+      -- Clear menu stack completely on explicit cancel
+      clear_menu_stack()
+    end
+  })
 
-  -- Move cursor to the commit
-  vim.api.nvim_win_set_cursor(state.win_id, {display_line, 0})
-  vim.notify(string.format("Navigated to commit %s", commit_id:sub(1, 8)), vim.log.levels.INFO)
+  return success
 end
 
 return M

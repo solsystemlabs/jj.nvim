@@ -55,10 +55,19 @@ end
 
 -- Get simple bookmark table with all bookmark info
 M.get_all_bookmarks = function()
-  -- Simple template to get bookmark data
+  -- Enhanced template to get comprehensive bookmark data
   local FIELD_SEP = "\x1F"
   local RECORD_SEP = "\x1E"
-  local template = 'self.name() ++ "' .. FIELD_SEP .. '" ++ if(self.remote(), self.remote(), "local") ++ "' .. FIELD_SEP .. '" ++ if(self.present(), "present", "absent") ++ "' .. FIELD_SEP .. '" ++ if(self.conflict(), "conflict", "clean") ++ "' .. FIELD_SEP .. '" ++ if(self.present() && self.normal_target(), self.normal_target().commit_id().short(8), "no_commit") ++ "' .. RECORD_SEP .. '"'
+  local template = 'self.name() ++ "' .. FIELD_SEP .. '" ++ ' ..
+    'if(self.remote(), self.remote(), "local") ++ "' .. FIELD_SEP .. '" ++ ' ..
+    'if(self.present(), "present", "absent") ++ "' .. FIELD_SEP .. '" ++ ' ..
+    'if(self.conflict(), "conflict", "clean") ++ "' .. FIELD_SEP .. '" ++ ' ..
+    'if(self.present() && self.normal_target(), self.normal_target().commit_id().short(8), "no_commit") ++ "' .. FIELD_SEP .. '" ++ ' ..
+    'if(self.tracked(), "tracked", "untracked") ++ "' .. FIELD_SEP .. '" ++ ' ..
+    'if(self.tracking_present(), "tracking_present", "tracking_absent") ++ "' .. FIELD_SEP .. '" ++ ' ..
+    'if(self.tracked(), self.tracking_ahead_count().lower(), "0") ++ "' .. FIELD_SEP .. '" ++ ' ..
+    'if(self.tracked(), self.tracking_behind_count().lower(), "0") ++ "' .. FIELD_SEP .. '" ++ ' ..
+    'if(self.present() && self.normal_target(), self.normal_target().change_id().short(8), "no_change_id") ++ "' .. RECORD_SEP .. '"'
   
   local cmd_args = { 'bookmark', 'list', '-a', '-T', template }
   
@@ -78,13 +87,18 @@ M.get_all_bookmarks = function()
     if trimmed_block ~= "" and not trimmed_block:match("^Hint:") then
       local parts = vim.split(trimmed_block, FIELD_SEP, { plain = true })
       
-      if #parts >= 5 then
+      if #parts >= 10 then
         local bookmark = {
           name = parts[1] or "",
           remote = parts[2] ~= "local" and parts[2] or nil,
           present = parts[3] == "present",
           conflict = parts[4] == "conflict", 
-          commit_id = parts[5] ~= "no_commit" and parts[5] or nil
+          commit_id = parts[5] ~= "no_commit" and parts[5] or nil,
+          tracked = parts[6] == "tracked",
+          tracking_present = parts[7] == "tracking_present",
+          tracking_ahead_count = tonumber(parts[8]) or 0,
+          tracking_behind_count = tonumber(parts[9]) or 0,
+          change_id = parts[10] ~= "no_change_id" and parts[10] or nil
         }
         
         -- Generate display name
