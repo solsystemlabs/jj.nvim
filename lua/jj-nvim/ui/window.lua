@@ -1419,11 +1419,16 @@ M.handle_bookmark_menu_selection = function(selected_item)
         on_select = function(bookmark)
           local target_revision = target_commit.change_id or target_commit.short_change_id
           
-          if bookmark_commands.move_bookmark(bookmark.name, target_revision) then
-            -- Clear cache and refresh with latest data
-            bookmark_commands.clear_cache()
-            require('jj-nvim').refresh()
-          end
+          -- Create options with success callback
+          local move_options = {
+            on_success = function()
+              -- Clear cache and refresh with latest data
+              bookmark_commands.clear_cache()
+              require('jj-nvim').refresh()
+            end
+          }
+          
+          bookmark_commands.move_bookmark(bookmark.name, target_revision, move_options)
         end
       })
     end)

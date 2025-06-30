@@ -16,6 +16,9 @@ local function execute_bookmark_command(cmd_args, error_context)
   
   if not result then
     local error_msg = err or "Unknown error"
+    local is_backwards_move = error_context == "move bookmark" and 
+      (error_msg:find("would move backwards") or error_msg:find("backwards") or error_msg:find("ancestor"))
+    
     if error_msg:find("No such bookmark") then
       error_msg = "Bookmark not found"
     elseif error_msg:find("already exists") then
@@ -26,8 +29,11 @@ local function execute_bookmark_command(cmd_args, error_context)
       error_msg = "Invalid bookmark name"
     end
     
-    vim.notify(string.format("Failed to %s: %s", error_context, error_msg), vim.log.levels.ERROR)
-    return false, error_msg
+    -- Don't show generic error for backwards moves - let move_bookmark handle it with confirmation dialog
+    if not is_backwards_move then
+      vim.notify(string.format("Failed to %s: %s", error_context, error_msg), vim.log.levels.ERROR)
+    end
+    return false, err -- Return original error for move_bookmark to analyze
   end
   
   -- Clear cache on successful modification
@@ -164,7 +170,34 @@ M.move_bookmark = function(name, target_revision, options)
   
   local result, exec_err = execute_bookmark_command(cmd_args, "move bookmark")
   if not result then
+    -- Check if this is a backwards move error and offer to retry
+    if exec_err and (exec_err:find("would move backwards") or exec_err:find("backwards") or exec_err:find("ancestor")) then
+      if not options.allow_backwards then
+        -- Show confirmation dialog for backwards move
+        vim.ui.select({ 'Yes', 'No' }, {
+          prompt = string.format("Bookmark '%s' would move backwards to an ancestor commit. Allow backwards move?", name),
+        }, function(choice)
+          if choice == 'Yes' then
+            -- Retry with --allow-backwards flag
+            local retry_options = vim.tbl_extend("force", options, { allow_backwards = true })
+            M.move_bookmark(name, target_revision, retry_options)
+          else
+            vim.notify("Move bookmark cancelled", vim.log.levels.INFO)
+          end
+        end)
+        return false -- Return false for the original attempt
+      end
+    end
+    -- For other errors, execute_bookmark_command already showed the error message
     return false
+  end
+  
+  -- Success notification
+  vim.notify(string.format("Moved bookmark '%s' to %s", name, target_revision:sub(1, 8)), vim.log.levels.INFO)
+  
+  -- Call success callback if provided
+  if options.on_success then
+    options.on_success()
   end
   
   return true
