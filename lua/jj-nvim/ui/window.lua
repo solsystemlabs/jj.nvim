@@ -1466,17 +1466,225 @@ M.handle_bookmark_menu_selection = function(selected_item)
         filter = "local",  -- Start with local, allow toggle
         allow_toggle = true,
         on_select = function(bookmark)
-          -- Just show bookmark details
-          local details = string.format("Bookmark: %s\nType: %s\nTarget: %s\nMessage: %s",
-            bookmark:get_display_name(),
-            bookmark.type,
-            bookmark.target_commit.id:sub(1, 8),
-            bookmark.target_commit.message or "")
-          vim.notify(details, vim.log.levels.INFO)
+          -- Show bookmark action menu
+          M.show_bookmark_action_menu(bookmark)
         end
       })
     end)
   end
+end
+
+-- Show bookmark action menu for a selected bookmark
+M.show_bookmark_action_menu = function(bookmark)
+  if not M.is_open() then
+    vim.notify("JJ window is not open", vim.log.levels.WARN)
+    return
+  end
+
+  -- Check if menu is already active
+  if inline_menu.is_active() then
+    vim.notify("Menu is already active", vim.log.levels.INFO)
+    return
+  end
+
+  local bookmark_commands = require('jj-nvim.jj.bookmark_commands')
+  local current_commit = navigation.get_current_commit(state.win_id)
+
+  -- Build menu items based on bookmark type and status
+  local menu_items = {}
+
+  -- Go to commit
+  table.insert(menu_items, {
+    key = "g",
+    description = "Go to commit",
+    action = "go_to_commit",
+    data = { commit_id = bookmark.commit_id }
+  })
+
+  -- Show details
+  table.insert(menu_items, {
+    key = "d",
+    description = "Show details",
+    action = "show_details",
+    data = { bookmark = bookmark }
+  })
+
+  -- Move bookmark (only for local bookmarks)
+  if not bookmark.remote and current_commit then
+    table.insert(menu_items, {
+      key = "m",
+      description = "Move to current commit",
+      action = "move_bookmark",
+      data = { bookmark = bookmark, target_commit = current_commit }
+    })
+  end
+
+  -- Delete/forget bookmark
+  if not bookmark.remote then
+    table.insert(menu_items, {
+      key = "x",
+      description = "Delete bookmark",
+      action = "delete_bookmark",
+      data = { bookmark = bookmark }
+    })
+  else
+    table.insert(menu_items, {
+      key = "f",
+      description = "Forget (untrack) bookmark",
+      action = "forget_bookmark",
+      data = { bookmark = bookmark }
+    })
+  end
+
+  -- Track/untrack for remote bookmarks
+  if bookmark.remote then
+    table.insert(menu_items, {
+      key = "t",
+      description = "Track bookmark",
+      action = "track_bookmark",
+      data = { bookmark = bookmark }
+    })
+  end
+
+  local menu_config = {
+    id = "bookmark_actions",
+    title = "Bookmark: " .. bookmark.display_name,
+    items = menu_items
+  }
+
+  -- Show the menu
+  local success = inline_menu.show(state.win_id, menu_config, {
+    on_select = function(selected_item)
+      M.handle_bookmark_action(selected_item)
+    end,
+    on_cancel = function()
+      -- Menu closed without selection
+    end
+  })
+
+  return success
+end
+
+-- Handle bookmark action menu selections
+M.handle_bookmark_action = function(selected_item)
+  local bookmark_commands = require('jj-nvim.jj.bookmark_commands')
+  local action = selected_item.action
+  local data = selected_item.data
+
+  if action == "go_to_commit" then
+    if data.commit_id then
+      -- Find and navigate to the commit
+      M.go_to_commit_by_id(data.commit_id)
+    end
+
+  elseif action == "show_details" then
+    local bookmark = data.bookmark
+    local details = string.format("Bookmark: %s\nType: %s\nTarget: %s", 
+      bookmark.display_name,
+      bookmark.remote and ("remote@" .. bookmark.remote) or "local",
+      bookmark.commit_id and bookmark.commit_id:sub(1, 8) or "no commit")
+    
+    if bookmark.conflict then
+      details = details .. "\nStatus: conflict"
+    end
+    if not bookmark.present then
+      details = details .. "\nStatus: deleted"
+    end
+    
+    vim.notify(details, vim.log.levels.INFO)
+
+  elseif action == "move_bookmark" then
+    local bookmark = data.bookmark
+    local target_commit = data.target_commit
+    
+    if bookmark.name and target_commit.id then
+      bookmark_commands.move_bookmark(bookmark.name, target_commit.id, {
+        on_success = function()
+          -- Refresh the log to show updated bookmark position
+          M.refresh_log()
+        end
+      })
+    end
+
+  elseif action == "delete_bookmark" then
+    local bookmark = data.bookmark
+    
+    if bookmark.name then
+      vim.ui.select({ 'Yes', 'No' }, {
+        prompt = string.format("Delete bookmark '%s'?", bookmark.name),
+      }, function(choice)
+        if choice == 'Yes' then
+          if bookmark_commands.delete_bookmark(bookmark.name) then
+            M.refresh_log()
+          end
+        end
+      end)
+    end
+
+  elseif action == "forget_bookmark" then
+    local bookmark = data.bookmark
+    
+    if bookmark.name then
+      vim.ui.select({ 'Yes', 'No' }, {
+        prompt = string.format("Forget (untrack) bookmark '%s@%s'?", bookmark.name, bookmark.remote),
+      }, function(choice)
+        if choice == 'Yes' then
+          if bookmark_commands.untrack_bookmark(bookmark.name, bookmark.remote) then
+            M.refresh_log()
+          end
+        end
+      end)
+    end
+
+  elseif action == "track_bookmark" then
+    local bookmark = data.bookmark
+    
+    if bookmark.name and bookmark.remote then
+      if bookmark_commands.track_bookmark(bookmark.name, bookmark.remote) then
+        M.refresh_log()
+      end
+    end
+  end
+end
+
+-- Navigate to a commit by its ID
+M.go_to_commit_by_id = function(commit_id)
+  if not M.is_open() then
+    vim.notify("JJ window is not open", vim.log.levels.WARN)
+    return
+  end
+
+  -- Get all commits from the buffer
+  local all_commits = buffer.get_commits()
+  if not all_commits then
+    vim.notify("No commits found", vim.log.levels.WARN)
+    return
+  end
+
+  -- Find the commit by ID (allowing prefix matching)
+  local target_commit = nil
+  local target_line = nil
+  
+  for _, commit in ipairs(all_commits) do
+    if commit.id and (commit.id == commit_id or commit.id:find("^" .. commit_id)) then
+      target_commit = commit
+      target_line = commit.line_number
+      break
+    end
+  end
+
+  if not target_commit or not target_line then
+    vim.notify(string.format("Commit %s not found in current log", commit_id:sub(1, 8)), vim.log.levels.WARN)
+    return
+  end
+
+  -- Calculate display line number (accounting for status area)
+  local window_width = vim.api.nvim_win_get_width(state.win_id)
+  local display_line = buffer.get_display_line_number(target_line, window_width)
+
+  -- Move cursor to the commit
+  vim.api.nvim_win_set_cursor(state.win_id, {display_line, 0})
+  vim.notify(string.format("Navigated to commit %s", commit_id:sub(1, 8)), vim.log.levels.INFO)
 end
 
 return M

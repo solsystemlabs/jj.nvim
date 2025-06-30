@@ -1,8 +1,27 @@
 local M = {}
 
 local commands = require('jj-nvim.jj.commands')
-local bookmark_core = require('jj-nvim.core.bookmark')
 
+-- Validate bookmark name
+local function is_valid_bookmark_name(name)
+  if not name or name == "" then
+    return false, "Bookmark name cannot be empty"
+  end
+  
+  if name:match("^%.") or name:match("%.$") then
+    return false, "Bookmark name cannot start or end with '.'"
+  end
+  
+  if name:match("%.%.") then
+    return false, "Bookmark name cannot contain '..'"
+  end
+  
+  if name:match("[%s@:]") then
+    return false, "Bookmark name cannot contain spaces, '@', or ':'"
+  end
+  
+  return true
+end
 
 -- Helper function to execute bookmark commands with error handling
 local function execute_bookmark_command(cmd_args, error_context)
@@ -33,45 +52,6 @@ local function execute_bookmark_command(cmd_args, error_context)
   return result, nil
 end
 
--- Get all bookmarks
-M.get_bookmarks = function(options)
-  options = options or {}
-  
-  -- Build command arguments
-  local cmd_args = { 'bookmark', 'list' }
-  
-  if options.all_remotes then
-    table.insert(cmd_args, '--all-remotes')
-  end
-  
-  if options.remote then
-    table.insert(cmd_args, '--remote')
-    table.insert(cmd_args, options.remote)
-  end
-  
-  if options.tracked then
-    table.insert(cmd_args, '--tracked')
-  end
-  
-  if options.conflicted then
-    table.insert(cmd_args, '--conflicted')
-  end
-  
-  if options.revisions then
-    table.insert(cmd_args, '--revisions')
-    table.insert(cmd_args, options.revisions)
-  end
-  
-  local result, err = commands.execute(cmd_args)
-  if not result then
-    vim.notify("Failed to get bookmarks: " .. (err or "unknown error"), vim.log.levels.ERROR)
-    return {}
-  end
-  
-  local bookmarks = bookmark_core.parse_bookmarks(result)
-  
-  return bookmarks
-end
 
 -- Get simple bookmark table with all bookmark info
 M.get_all_bookmarks = function()
@@ -137,7 +117,7 @@ end
 
 -- Create a new bookmark
 M.create_bookmark = function(name, revision)
-  local valid, err = bookmark_core.is_valid_bookmark_name(name)
+  local valid, err = is_valid_bookmark_name(name)
   if not valid then
     vim.notify(err, vim.log.levels.ERROR)
     return false
@@ -254,7 +234,7 @@ M.rename_bookmark = function(old_name, new_name)
     return false
   end
   
-  local valid, err = bookmark_core.is_valid_bookmark_name(new_name)
+  local valid, err = is_valid_bookmark_name(new_name)
   if not valid then
     vim.notify(err, vim.log.levels.ERROR)
     return false
@@ -272,7 +252,7 @@ end
 
 -- Set bookmark to point to a commit
 M.set_bookmark = function(name, revision)
-  local valid, err = bookmark_core.is_valid_bookmark_name(name)
+  local valid, err = is_valid_bookmark_name(name)
   if not valid then
     vim.notify(err, vim.log.levels.ERROR)
     return false
@@ -355,52 +335,39 @@ M.get_bookmarks_for_commit = function(commit_id)
 end
 
 
+-- Filter bookmarks by criteria
+local function filter_bookmarks(bookmarks, filter_fn)
+  local filtered = {}
+  for _, bookmark in ipairs(bookmarks) do
+    if filter_fn(bookmark) then
+      table.insert(filtered, bookmark)
+    end
+  end
+  return filtered
+end
+
 -- Get local bookmarks for menus
 M.get_local_bookmarks = function()
   local all_bookmarks = M.get_all_bookmarks()
-  local local_bookmarks = {}
-  
-  for _, bookmark in ipairs(all_bookmarks) do
-    if not bookmark.remote and bookmark.present then
-      table.insert(local_bookmarks, bookmark)
-    end
-  end
-  
-  return local_bookmarks
+  return filter_bookmarks(all_bookmarks, function(bookmark)
+    return not bookmark.remote and bookmark.present
+  end)
 end
 
 -- Get remote bookmarks for menus  
 M.get_remote_bookmarks = function()
   local all_bookmarks = M.get_all_bookmarks()
-  local remote_bookmarks = {}
-  
-  for _, bookmark in ipairs(all_bookmarks) do
-    if bookmark.remote and bookmark.present then
-      table.insert(remote_bookmarks, bookmark)
-    end
-  end
-  
-  return remote_bookmarks
+  return filter_bookmarks(all_bookmarks, function(bookmark)
+    return bookmark.remote and bookmark.present
+  end)
 end
 
 -- Get all present bookmarks for menus
 M.get_all_present_bookmarks = function()
   local all_bookmarks = M.get_all_bookmarks()
-  local present_bookmarks = {}
-  
-  for _, bookmark in ipairs(all_bookmarks) do
-    if bookmark.present then
-      table.insert(present_bookmarks, bookmark)
-    end
-  end
-  
-  return present_bookmarks
-end
-
--- Get bookmark groups (local + remote variants grouped by name)
-M.get_bookmark_groups = function()
-  local bookmarks = M.get_bookmarks({ all_remotes = true })
-  return bookmark_core.group_bookmarks_by_name(bookmarks)
+  return filter_bookmarks(all_bookmarks, function(bookmark)
+    return bookmark.present
+  end)
 end
 
 return M
