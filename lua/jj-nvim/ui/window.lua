@@ -458,11 +458,17 @@ M.setup_keymaps = function()
 
   -- Git operations
   vim.keymap.set('n', 'f', function()
-    actions.git_fetch()
+    if actions.git_fetch() then
+      -- Refresh with latest data after fetch
+      require('jj-nvim').refresh()
+    end
   end, opts)
 
   vim.keymap.set('n', 'p', function()
-    actions.git_push()
+    if actions.git_push() then
+      -- Refresh with latest data after push
+      require('jj-nvim').refresh()
+    end
   end, opts)
 
   -- Repository status
