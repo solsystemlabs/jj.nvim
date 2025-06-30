@@ -152,14 +152,14 @@ end
 
 -- Helper function to configure window and buffer display options
 local function setup_window_display()
-  vim.api.nvim_win_set_option(state.win_id, 'wrap', false)  -- Disable wrapping to debug
-  vim.api.nvim_win_set_option(state.win_id, 'cursorline', true)
-  
+  vim.api.nvim_win_set_option(state.win_id, 'wrap', false) -- Disable wrapping to debug
+  vim.api.nvim_win_set_option(state.win_id, 'cursorline', false) -- Disable cursorline to prevent gutter highlighting
+
   -- Disable line numbers and gutter
   vim.api.nvim_win_set_option(state.win_id, 'number', false)
   vim.api.nvim_win_set_option(state.win_id, 'relativenumber', false)
   vim.api.nvim_win_set_option(state.win_id, 'signcolumn', 'no')
-  
+
   -- Remove tilde column for empty lines and disable whitespace dots
   vim.api.nvim_win_set_option(state.win_id, 'fillchars', 'eob: ')
   vim.api.nvim_win_set_option(state.win_id, 'list', false)
