@@ -47,7 +47,9 @@ local function collapse_expanded_commits(win_id)
     if has_changes then
       local buf_id = vim.api.nvim_win_get_buf(win_id)
       if buf_id then
-        buffer.update_from_commits(buf_id, all_commits, buffer.get_mode())
+        local window_utils = require('jj-nvim.utils.window')
+        local window_width = window_utils.get_width(win_id)
+        buffer.update_from_commits(buf_id, all_commits, buffer.get_mode(), window_width)
       end
     end
   end

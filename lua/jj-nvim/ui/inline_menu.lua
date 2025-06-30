@@ -31,23 +31,28 @@ local function create_menu_window(parent_win_id, menu_config)
   local parent_width = vim.api.nvim_win_get_width(parent_win_id)
   local parent_height = vim.api.nvim_win_get_height(parent_win_id)
   
-  -- Calculate menu dimensions
-  local menu_width = math.min(60, parent_width - 4)
+  -- Get the parent window's position in editor coordinates
+  local parent_pos = vim.api.nvim_win_get_position(parent_win_id)
+  local parent_row = parent_pos[1]
+  local parent_col = parent_pos[2]
+  
+  -- Calculate menu dimensions - account for gutter columns and border
+  local effective_width = parent_width - 4  -- Account for left gutter + right padding + border space
+  local menu_width = math.min(50, effective_width)  -- Reduced max width and use effective width
   local menu_height = math.min(#menu_config.items + 4, parent_height - 4) -- +4 for border and title
   
-  -- Center the menu in the parent window
-  local row = math.floor((parent_height - menu_height) / 2)
-  local col = math.floor((parent_width - menu_width) / 2)
+  -- Center the menu within the parent window's bounds
+  local row = parent_row + math.floor((parent_height - menu_height) / 2)
+  local col = parent_col + math.floor((parent_width - menu_width) / 2)
   
   -- Create buffer
   local buf_id = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_option(buf_id, 'bufhidden', 'wipe')
   vim.api.nvim_buf_set_option(buf_id, 'filetype', 'jj-menu')
   
-  -- Window configuration
+  -- Window configuration - use editor positioning since parent is a split, not floating
   local win_config = {
-    relative = 'win',
-    win = parent_win_id,
+    relative = 'editor',
     width = menu_width,
     height = menu_height,
     row = row,

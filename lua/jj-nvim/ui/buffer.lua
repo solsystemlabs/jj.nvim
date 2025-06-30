@@ -159,14 +159,17 @@ M.update_from_commits = function(buf_id, commits, mode, window_width)
   buffer_state.current_mode = mode or buffer_state.current_mode or 'comfortable'
   
   -- Get window width (fallback to config if not provided)
-  window_width = window_width or config.get('window.width') or 80
+  local raw_width = window_width or config.get('window.width') or 80
   
-  -- Generate status lines
-  local status_lines = status.build_status_content(window_width)
+  -- Calculate effective width for content rendering (accounting for gutter columns)
+  local effective_width = raw_width - 2  -- Account for left (1) + right (1) gutter columns
+  
+  -- Generate status lines using raw width for proper status box sizing
+  local status_lines = status.build_status_content(raw_width)
   local status_height = #status_lines
   
-  -- Render commits with highlights
-  local highlighted_lines, raw_lines = renderer.render_with_highlights(commits, buffer_state.current_mode, window_width)
+  -- Render commits with highlights using effective width for proper text wrapping
+  local highlighted_lines, raw_lines = renderer.render_with_highlights(commits, buffer_state.current_mode, effective_width)
   
   vim.api.nvim_buf_set_option(buf_id, 'modifiable', true)
   vim.api.nvim_buf_set_option(buf_id, 'readonly', false)

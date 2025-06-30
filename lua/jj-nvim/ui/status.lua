@@ -40,10 +40,14 @@ end
 function M.build_status_content(window_width)
   window_width = window_width or status_state.last_window_width
   local lines = {}
-  local content_width = window_width - 4  -- Account for "│ " and " │"
+  
+  -- Calculate effective width for rendering (accounting for gutter columns)
+  local window_utils = require('jj-nvim.utils.window')
+  local effective_width = window_width - 2  -- Account for left + right gutter columns
+  local content_width = effective_width - 4  -- Account for "│ " and " │"
   
   -- Top border (account for Unicode characters being 1 display width each)
-  local border_length = window_width - 2
+  local border_length = effective_width - 2
   local top_border = "┌" .. string.rep("─", border_length) .. "┐"
   table.insert(lines, top_border)
   

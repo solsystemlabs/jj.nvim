@@ -479,6 +479,8 @@ M.render_commits = function(mixed_entries, mode, window_width)
   if not window_width then
     window_width = config.get('window.width') or 80
   end
+  
+  -- Note: window_width here should already be the effective width passed from the caller
 
   local all_lines = {}
   local line_number = 1
@@ -550,9 +552,14 @@ M.render_with_highlights = function(commits, mode, window_width)
   for i, line in ipairs(display_lines) do
     -- Parse ANSI codes and create highlight segments
     local segments = ansi.parse_ansi_line(line)
+    local clean_text = ansi.strip_ansi(line)
+    
+    -- Add right padding space for visual balance
+    clean_text = clean_text .. " "
+    
     highlighted_lines[i] = {
-      text = ansi.strip_ansi(line), -- Plain text for buffer
-      segments = segments           -- Highlight information
+      text = clean_text,  -- Plain text for buffer with right padding
+      segments = segments -- Highlight information
     }
   end
 

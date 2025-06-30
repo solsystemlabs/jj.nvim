@@ -130,85 +130,39 @@ local function show_menu_with_navigation(menu_func, menu_config, callbacks, pare
   return menu_func(menu_config, enhanced_callbacks)
 end
 
--- Helper function to setup border highlight group
-local function setup_border_highlight()
-  local border_color = config.get('window.border.color')
-  local theme_name = config.get('colors.theme') or 'auto'
 
-  -- Auto-detect theme if set to 'auto'
-  if theme_name == 'auto' then
-    theme_name = themes.detect_theme()
-  end
-
-  local hex_color = themes.get_border_color(border_color, theme_name)
-
-  -- Create a highlight group for the border
-  vim.api.nvim_set_hl(0, 'JJBorder', { fg = hex_color })
-end
-
--- Helper function to get border configuration
-local function get_border_config()
-  local border_enabled = config.get('window.border.enabled')
-  local border_style = config.get('window.border.style')
-
-  if not border_enabled then
-    return 'none'
-  end
-
-  -- Setup the border highlight
-  setup_border_highlight()
-
-  if border_style == 'single' then
-    return 'single'
-  elseif border_style == 'double' then
-    return 'double'
-  elseif border_style == 'rounded' then
-    return 'rounded'
-  elseif border_style == 'thick' then
-    return { '█', '█', '█', '█', '█', '█', '█', '█' }
-  elseif border_style == 'shadow' then
-    return { ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ' }
-  elseif border_style == 'left' then
-    -- Left-only border: top-left, top, top-right, right, bottom-right, bottom, bottom-left, left
-    return { '', '', '', '', '', '', '', '│' }
-  else
-    return border_style -- Allow custom border styles
-  end
-end
-
--- Helper function to create window configuration
-local function create_window_config()
+-- Helper function to create window (using split instead of floating)
+local function create_window()
   local width = config.get('window.width')
   local position = config.get('window.position')
 
-  local win_width = vim.api.nvim_get_option('columns')
-  local win_height = vim.api.nvim_get_option('lines')
+  -- Create a vertical split
+  if position == 'left' then
+    vim.cmd('leftabove vsplit')
+  else
+    vim.cmd('rightbelow vsplit')
+  end
 
-  local col = position == 'left' and 0 or (win_width - width)
+  -- Get the new window and resize it
+  local win_id = vim.api.nvim_get_current_win()
+  vim.api.nvim_win_set_width(win_id, width)
 
-  return {
-    relative = 'editor',
-    width = width,
-    height = win_height - 2,
-    col = col,
-    row = 0,
-    style = 'minimal',
-    border = get_border_config(),
-  }
+  return win_id
 end
 
 -- Helper function to configure window and buffer display options
 local function setup_window_display()
-  vim.api.nvim_win_set_option(state.win_id, 'wrap', config.get('window.wrap'))
+  vim.api.nvim_win_set_option(state.win_id, 'wrap', false)  -- Disable wrapping to debug
   vim.api.nvim_win_set_option(state.win_id, 'cursorline', true)
-
-  -- Set border highlight if border is enabled
-  local border_enabled = config.get('window.border.enabled')
-  if border_enabled then
-    vim.api.nvim_win_set_option(state.win_id, 'winhighlight', 'FloatBorder:JJBorder')
-  else
-    vim.api.nvim_win_set_option(state.win_id, 'winhighlight', '')
-  end
+  
+  -- Disable line numbers and gutter
+  vim.api.nvim_win_set_option(state.win_id, 'number', false)
+  vim.api.nvim_win_set_option(state.win_id, 'relativenumber', false)
+  vim.api.nvim_win_set_option(state.win_id, 'signcolumn', 'no')
+  
+  -- Remove tilde column for empty lines and disable whitespace dots
+  vim.api.nvim_win_set_option(state.win_id, 'fillchars', 'eob: ')
+  vim.api.nvim_win_set_option(state.win_id, 'list', false)
 
   -- Ensure buffer supports colors
   vim.api.nvim_buf_set_option(state.buf_id, 'syntax', 'off')
@@ -233,7 +187,8 @@ M.open = function(content)
   state.selected_commits = {}
 
   state.buf_id = buffer.create(content)
-  state.win_id = vim.api.nvim_open_win(state.buf_id, true, create_window_config())
+  state.win_id = create_window()
+  vim.api.nvim_win_set_buf(state.win_id, state.buf_id)
 
   setup_window_display()
 end
@@ -248,7 +203,8 @@ M.open_with_buffer = function(buf_id)
   state.selected_commits = {}
 
   state.buf_id = buf_id
-  state.win_id = vim.api.nvim_open_win(state.buf_id, true, create_window_config())
+  state.win_id = create_window()
+  vim.api.nvim_win_set_buf(state.win_id, state.buf_id)
 
   setup_window_display()
 
@@ -632,34 +588,8 @@ M.adjust_width = function(delta)
   local current_width = window_utils.get_width(state.win_id)
   local new_width = math.max(WINDOW_CONSTRAINTS.MIN_WIDTH, math.min(WINDOW_CONSTRAINTS.MAX_WIDTH, current_width + delta))
 
-  -- Update the window width
+  -- Update the window width (for split windows, this is straightforward)
   vim.api.nvim_win_set_width(state.win_id, new_width)
-
-  -- Update the position if it's on the right side
-  local position = config.get('window.position')
-  local border = get_border_config()
-
-  if position == 'right' then
-    local win_width = vim.api.nvim_get_option('columns')
-    local new_col = win_width - new_width
-    vim.api.nvim_win_set_config(state.win_id, {
-      relative = 'editor',
-      width = new_width,
-      height = vim.api.nvim_win_get_height(state.win_id),
-      col = new_col,
-      row = 0,
-      border = border,
-    })
-  else
-    vim.api.nvim_win_set_config(state.win_id, {
-      relative = 'editor',
-      width = new_width,
-      height = vim.api.nvim_win_get_height(state.win_id),
-      col = 0,
-      row = 0,
-      border = border,
-    })
-  end
 
   -- Save the new width persistently
   config.set('window.width', new_width)
@@ -1148,7 +1078,8 @@ M.refresh_buffer = function()
   commits = commits or {}
 
   -- Update buffer content (no more selection column injection)
-  local success = buffer.update_from_commits(state.buf_id, commits, buffer.get_mode())
+  local window_width = window_utils.get_width(state.win_id)
+  local success = buffer.update_from_commits(state.buf_id, commits, buffer.get_mode(), window_width)
 
   -- Apply selection highlighting if in multi-select mode
   if M.is_mode(MODES.MULTI_SELECT) then
@@ -1195,7 +1126,8 @@ M.toggle_description_expansion = function()
   -- Re-render buffer with updated expansion state
   local all_commits = buffer.get_commits()
   if all_commits then
-    buffer.update_from_commits(state.buf_id, all_commits, buffer.get_mode())
+    local window_width = window_utils.get_width(state.win_id)
+    buffer.update_from_commits(state.buf_id, all_commits, buffer.get_mode(), window_width)
   end
 end
 
