@@ -152,7 +152,7 @@ end
 
 -- Helper function to configure window and buffer display options
 local function setup_window_display()
-  vim.api.nvim_win_set_option(state.win_id, 'wrap', false) -- Disable wrapping to debug
+  vim.api.nvim_win_set_option(state.win_id, 'wrap', false)       -- Disable wrapping to debug
   vim.api.nvim_win_set_option(state.win_id, 'cursorline', false) -- Disable cursorline to prevent gutter highlighting
 
   -- Disable line numbers and gutter
@@ -401,6 +401,24 @@ M.setup_keymaps = function()
     end
   end, opts)
 
+  -- Squash commit (enter target selection mode)
+  vim.keymap.set('n', 'x', function()
+    local current_commit = navigation.get_current_commit(state.win_id)
+    if not current_commit then
+      vim.notify("No commit under cursor to squash", vim.log.levels.WARN)
+      return
+    end
+
+    -- Don't allow squashing the root commit
+    if current_commit.root then
+      vim.notify("Cannot squash the root commit", vim.log.levels.WARN)
+      return
+    end
+
+    -- Enter squash target selection mode with source commit stored
+    M.enter_target_selection_mode("squash", current_commit)
+  end, opts)
+
   -- Bookmark operations
   vim.keymap.set('n', 'b', function()
     M.show_bookmark_menu()
@@ -549,6 +567,12 @@ M.setup_target_selection_keymaps = function()
   -- Override Enter and Escape for target selection
   vim.keymap.set('n', '<CR>', function() M.confirm_target_selection() end, opts)
   vim.keymap.set('n', '<Esc>', function() M.cancel_target_selection() end, opts)
+
+  -- Add bookmark selection for squash operations
+  local mode_data = select(2, M.get_mode())
+  if mode_data and mode_data.action == "squash" then
+    vim.keymap.set('n', 'b', function() M.show_squash_bookmark_selection() end, opts)
+  end
 
   -- Setup common navigation keymaps
   keymaps.setup_common_navigation(state.buf_id, state.win_id, navigation, opts)
@@ -770,7 +794,7 @@ M.reset_mode = function()
 end
 
 -- Enter target selection mode
-M.enter_target_selection_mode = function(action_type)
+M.enter_target_selection_mode = function(action_type, source_commit)
   if not M.is_open() then
     vim.notify("JJ window is not open", vim.log.levels.WARN)
     return
@@ -779,18 +803,35 @@ M.enter_target_selection_mode = function(action_type)
   -- Store current cursor position to return to if cancelled
   local current_line = vim.api.nvim_win_get_cursor(state.win_id)[1]
 
-  M.set_mode(MODES.TARGET_SELECT, {
-    action = action_type, -- "after" or "before"
+  local mode_data = {
+    action = action_type, -- "after", "before", or "squash"
     original_line = current_line
-  })
+  }
+
+  -- Store source commit for squash operations
+  if action_type == "squash" and source_commit then
+    mode_data.source_commit = source_commit
+  end
+
+  M.set_mode(MODES.TARGET_SELECT, mode_data)
 
   -- Update keymaps for target selection
   M.setup_target_selection_keymaps()
 
   -- Show status message
-  local action_desc = action_type == "after" and "after" or "before"
-  vim.notify(string.format("Select commit to insert %s (Enter to confirm, Esc to cancel)", action_desc),
-    vim.log.levels.INFO)
+  local action_desc
+  if action_type == "after" then
+    action_desc = "after"
+    vim.notify(string.format("Select commit to insert %s (Enter to confirm, Esc to cancel)", action_desc),
+      vim.log.levels.INFO)
+  elseif action_type == "before" then
+    action_desc = "before"
+    vim.notify(string.format("Select commit to insert %s (Enter to confirm, Esc to cancel)", action_desc),
+      vim.log.levels.INFO)
+  elseif action_type == "squash" then
+    vim.notify("Select target to squash into (Enter to confirm, b for bookmark, Esc to cancel)",
+      vim.log.levels.INFO)
+  end
 end
 
 -- Confirm target selection and execute action
@@ -812,17 +853,29 @@ M.confirm_target_selection = function()
 
   if action_type == "after" then
     success = actions.new_after(target_commit)
+    if success then
+      require('jj-nvim').refresh()
+    end
+    -- Return to normal mode
+    M.reset_mode()
+    M.setup_keymaps() -- Restore normal keymaps
   elseif action_type == "before" then
     success = actions.new_before(target_commit)
-  end
+    if success then
+      require('jj-nvim').refresh()
+    end
+    -- Return to normal mode
+    M.reset_mode()
+    M.setup_keymaps() -- Restore normal keymaps
+  elseif action_type == "squash" then
+    -- For squash, don't execute immediately - show options menu first
+    local source_commit = mode_data.source_commit
+    M.reset_mode()
+    M.setup_keymaps() -- Restore normal keymaps
 
-  if success then
-    require('jj-nvim').refresh()
+    -- Show squash options menu with source commit information
+    actions.show_squash_options_menu(target_commit, "commit", state.win_id, source_commit)
   end
-
-  -- Return to normal mode
-  M.reset_mode()
-  M.setup_keymaps() -- Restore normal keymaps
 end
 
 -- Cancel target selection and return to normal mode
@@ -1816,6 +1869,42 @@ M.show_bookmark_details_menu = function(bookmark)
   })
 
   return success
+end
+
+-- Show bookmark selection for squash target selection
+M.show_squash_bookmark_selection = function()
+  if not M.is_mode(MODES.TARGET_SELECT) then
+    vim.notify("Not in target selection mode", vim.log.levels.WARN)
+    return
+  end
+
+  local mode_data = select(2, M.get_mode())
+  if not mode_data or mode_data.action ~= "squash" then
+    vim.notify("Not in squash target selection mode", vim.log.levels.WARN)
+    return
+  end
+
+  -- Store source commit before resetting mode
+  local source_commit = mode_data.source_commit
+
+  -- Reset mode and keymaps before showing bookmark menu
+  M.reset_mode()
+  M.setup_keymaps()
+
+  -- Show bookmark selection menu
+  M.show_bookmark_selection_menu({
+    title = "Select Bookmark to Squash Into",
+    filter = "local", -- Start with local bookmarks
+    allow_toggle = true,
+    on_select = function(bookmark)
+      -- Show squash options menu for the selected bookmark with source commit
+      actions.show_squash_options_menu(bookmark, "bookmark", state.win_id, source_commit)
+    end,
+    on_cancel = function()
+      -- Return to target selection mode if bookmark selection is cancelled
+      M.enter_target_selection_mode("squash", source_commit)
+    end
+  })
 end
 
 return M

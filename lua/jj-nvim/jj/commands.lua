@@ -310,4 +310,72 @@ M.squash_interactive = function(commit_id, options)
   return M.execute_interactive(cmd_args, options)
 end
 
+-- Squash source revision into target revision
+M.squash = function(target_revision, options)
+  if not target_revision or target_revision == "" then
+    return nil, "No target revision provided"
+  end
+  
+  options = options or {}
+  local cmd_args = { 'squash' }
+  
+  -- Add source revision if provided, otherwise defaults to working copy
+  if options.from_revision then
+    table.insert(cmd_args, '--from')
+    table.insert(cmd_args, options.from_revision)
+  end
+  
+  -- Add target revision
+  table.insert(cmd_args, '--into')
+  table.insert(cmd_args, target_revision)
+  
+  -- Add message if provided
+  if options.message and options.message ~= "" then
+    table.insert(cmd_args, '-m')
+    table.insert(cmd_args, options.message)
+  end
+  
+  -- Add interactive mode
+  if options.interactive then
+    table.insert(cmd_args, '--interactive')
+  end
+  
+  -- Add diff tool for interactive mode
+  if options.tool then
+    table.insert(cmd_args, '--tool')
+    table.insert(cmd_args, options.tool)
+  end
+  
+  -- Use destination message
+  if options.use_destination_message then
+    table.insert(cmd_args, '--use-destination-message')
+  end
+  
+  -- Keep emptied source
+  if options.keep_emptied then
+    table.insert(cmd_args, '--keep-emptied')
+  end
+  
+  -- Add filesets/paths if specified
+  if options.filesets and #options.filesets > 0 then
+    for _, fileset in ipairs(options.filesets) do
+      table.insert(cmd_args, fileset)
+    end
+  end
+  
+  -- Use interactive execution for interactive mode
+  if options.interactive then
+    -- Pass through callback options for interactive terminal
+    local interactive_options = {
+      on_success = options.on_success,
+      on_error = options.on_error,
+      on_cancel = options.on_cancel,
+      cwd = options.cwd,
+    }
+    return M.execute_interactive(cmd_args, interactive_options)
+  else
+    return M.execute(cmd_args, { silent = options.silent })
+  end
+end
+
 return M

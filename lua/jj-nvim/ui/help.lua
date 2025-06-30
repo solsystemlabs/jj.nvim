@@ -38,6 +38,7 @@ local function build_help_content()
     "    m             Set commit description",
     "    a             Abandon commit(s)",
     "    A             Abandon selected commits",
+    "    x             Squash commit (select target)",
     "    n             New change menu",
     "",
     "              ═══ Selection ═══",
