@@ -12,6 +12,7 @@ local edit = require('jj-nvim.jj.edit')
 local abandon = require('jj-nvim.jj.abandon')
 local new = require('jj-nvim.jj.new')
 local describe = require('jj-nvim.jj.describe')
+local undo = require('jj-nvim.jj.undo')
 
 -- Common utilities
 local buffer = require('jj-nvim.ui.buffer')
@@ -656,5 +657,15 @@ M.show_rebase_options_menu = rebase.show_rebase_options_menu
 
 -- Handle rebase options menu selection
 M.handle_rebase_options_selection = rebase.handle_rebase_options_selection
+
+-- ============================================================================
+-- Undo Operations
+-- ============================================================================
+
+-- Undo the last operation
+M.undo_last = undo.undo_last
+
+-- Undo a specific operation
+M.undo_operation = undo.undo_operation
 
 return M

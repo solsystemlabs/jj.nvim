@@ -405,6 +405,15 @@ M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, m
     actions.show_commit_menu(win_id)
   end, opts)
 
+  -- Undo last operation
+  vim.keymap.set('n', 'u', function()
+    if actions.undo_last(function()
+      require('jj-nvim').refresh()
+    end) then
+      require('jj-nvim').refresh()
+    end
+  end, opts)
+
   -- Close window
   vim.keymap.set('n', 'q', function()
     local window_module = require('jj-nvim.ui.window')
