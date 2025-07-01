@@ -240,6 +240,62 @@ local function setup_menu_keymaps(buf_id, menu_config)
       end
     end)
   end, opts)
+  
+  -- Block all other keys to prevent conflicts with other plugins
+  -- Create a list of allowed keys
+  local allowed_keys = {
+    'j', 'k', '<Down>', '<Up>', '<CR>', '<Esc>', 'q', '<BS>'
+  }
+  
+  -- Add menu item keys to allowed list
+  for _, item in ipairs(menu_config.items) do
+    table.insert(allowed_keys, item.key)
+  end
+  
+  -- Add toggle key if present
+  if menu_config.toggle_data then
+    table.insert(allowed_keys, 't')
+  end
+  
+  -- Block all printable ASCII chars and common keys that aren't in our allowed list
+  local all_keys = {}
+  
+  -- Add letters a-z (excluding allowed ones)
+  for i = string.byte('a'), string.byte('z') do
+    local key = string.char(i)
+    if not vim.tbl_contains(allowed_keys, key) then
+      table.insert(all_keys, key)
+    end
+  end
+  
+  -- Add numbers 0-9 (excluding allowed ones)
+  for i = string.byte('0'), string.byte('9') do
+    local key = string.char(i)
+    if not vim.tbl_contains(allowed_keys, key) then
+      table.insert(all_keys, key)
+    end
+  end
+  
+  -- Add common special keys (excluding allowed ones)
+  local special_keys = {
+    '<Space>', '<Tab>', '<S-Tab>', '<C-c>', '<C-d>', '<C-u>', '<C-f>', '<C-b>',
+    '<PageUp>', '<PageDown>', '<Home>', '<End>', '<Left>', '<Right>',
+    '<C-w>', '<C-o>', '<C-i>', '<C-r>', '<C-z>', '<C-x>', '<C-v>',
+    '<F1>', '<F2>', '<F3>', '<F4>', '<F5>', '<F6>', '<F7>', '<F8>', '<F9>', '<F10>', '<F11>', '<F12>',
+    ':', ';', '/', '?', '.', ',', '<', '>', '[', ']', '{', '}', '(', ')', '=', '+', '-', '_',
+    '!', '@', '#', '$', '%', '^', '&', '*', '|', '\\', '~', '`', '"', "'"
+  }
+  
+  for _, key in ipairs(special_keys) do
+    if not vim.tbl_contains(allowed_keys, key) then
+      table.insert(all_keys, key)
+    end
+  end
+  
+  -- Set no-op keymaps for all blocked keys
+  for _, key in ipairs(all_keys) do
+    vim.keymap.set('n', key, function() end, opts)
+  end
 end
 
 -- Show the inline menu
@@ -313,9 +369,9 @@ M.close = function()
     vim.api.nvim_buf_delete(M.state.buf_id, { force = true })
   end
   
-  -- Return focus to parent window
+  -- Return focus to parent window (with error protection)
   if M.state.parent_win_id and vim.api.nvim_win_is_valid(M.state.parent_win_id) then
-    vim.api.nvim_set_current_win(M.state.parent_win_id)
+    pcall(vim.api.nvim_set_current_win, M.state.parent_win_id)
   end
   
   -- Reset state
