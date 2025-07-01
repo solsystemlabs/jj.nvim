@@ -41,7 +41,7 @@ M.commit = function(message, options)
     end
   end
 
-  return commands.execute(cmd_args, { silent = options.silent })
+  return commands.execute_with_immutable_prompt(cmd_args, { silent = options.silent })
 end
 
 -- Interactive commit
@@ -72,7 +72,7 @@ M.commit_interactive = function(options)
     end
   end
 
-  return commands.execute_interactive(cmd_args, options)
+  return commands.execute_interactive_with_immutable_prompt(cmd_args, options)
 end
 
 -- Commit working copy changes (action wrapper)
@@ -130,8 +130,6 @@ M.commit_working_copy = function(options, on_success)
         error_msg = "Not in a jj workspace"
       elseif error_msg:find("empty commit") then
         error_msg = "No changes to commit"
-      elseif error_msg:find("immutable") then
-        error_msg = "Cannot modify immutable commit"
       end
 
       vim.notify(string.format("Failed to commit: %s", error_msg), vim.log.levels.ERROR)

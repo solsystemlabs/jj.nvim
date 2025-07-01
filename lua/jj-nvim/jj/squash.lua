@@ -32,7 +32,7 @@ M.squash_interactive = function(commit_id, options)
     table.insert(cmd_args, commit_id)
   end
 
-  return commands.execute_interactive(cmd_args, options)
+  return commands.execute_interactive_with_immutable_prompt(cmd_args, options)
 end
 
 -- Squash source revision into target revision
@@ -102,9 +102,9 @@ M.squash = function(target_revision, options)
       on_cancel = options.on_cancel,
       cwd = options.cwd,
     }
-    return commands.execute_interactive(cmd_args, interactive_options)
+    return commands.execute_interactive_with_immutable_prompt(cmd_args, interactive_options)
   else
-    return commands.execute(cmd_args, { silent = options.silent })
+    return commands.execute_with_immutable_prompt(cmd_args, { silent = options.silent })
   end
 end
 

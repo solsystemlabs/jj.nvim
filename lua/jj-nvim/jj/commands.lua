@@ -12,6 +12,11 @@ M.execute = function(args, opts)
     table.insert(cmd, arg)
   end
 
+  -- Add --ignore-immutable flag if requested
+  if opts.ignore_immutable then
+    table.insert(cmd, '--ignore-immutable')
+  end
+
   local result = vim.system(cmd, { text = true }):wait(3000) -- 3 second timeout
 
   -- Handle timeout case where result is nil
@@ -57,6 +62,93 @@ end
 M.execute_interactive = function(cmd_args, options)
   local interactive_terminal = require('jj-nvim.ui.interactive_terminal')
   return interactive_terminal.run_interactive_command(cmd_args, options)
+end
+
+-- Helper function to check if error is immutable-related
+local function is_immutable_error(error_msg)
+  return error_msg and error_msg:find("immutable") ~= nil
+end
+
+-- Execute command with automatic immutable error handling and user prompt
+M.execute_with_immutable_prompt = function(args, opts)
+  opts = opts or {}
+  
+  -- First attempt - execute normally
+  local result, error_msg = M.execute(args, opts)
+  
+  -- If successful or not an immutable error, return as normal
+  if result or not is_immutable_error(error_msg) then
+    return result, error_msg
+  end
+  
+  -- Check if user wants to skip prompting (for programmatic use)
+  if opts.no_immutable_prompt then
+    return result, error_msg
+  end
+  
+  -- Immutable error detected - prompt user
+  local choice = vim.fn.confirm(
+    "This commit has been pushed to remote and is marked immutable.\n" ..
+    "Do you want to override the immutable state?",
+    "&Yes\n&No",
+    2 -- Default to No
+  )
+  
+  if choice == 1 then
+    -- User chose Yes - retry with --ignore-immutable
+    local retry_opts = vim.tbl_deep_extend("force", opts, { ignore_immutable = true })
+    return M.execute(args, retry_opts)
+  else
+    -- User chose No - return original error
+    return result, error_msg
+  end
+end
+
+-- Execute interactive command with immutable error handling
+M.execute_interactive_with_immutable_prompt = function(cmd_args, options)
+  options = options or {}
+  
+  -- For interactive commands, we need to modify the command args directly
+  -- since interactive terminal doesn't go through our execute function
+  local function retry_with_immutable_override()
+    local modified_args = vim.deepcopy(cmd_args)
+    table.insert(modified_args, '--ignore-immutable')
+    return M.execute_interactive(modified_args, options)
+  end
+  
+  -- Set up error callback to handle immutable errors
+  local original_on_error = options.on_error
+  options.on_error = function(exit_code)
+    -- For interactive commands, we can't easily detect immutable errors
+    -- So we'll ask the user if they want to try with --ignore-immutable
+    if exit_code ~= 0 then
+      vim.schedule(function()
+        local choice = vim.fn.confirm(
+          "Command failed. This might be due to immutable commits.\n" ..
+          "Do you want to retry ignoring immutable state?",
+          "&Yes\n&No",
+          2 -- Default to No
+        )
+        
+        if choice == 1 then
+          -- Retry with --ignore-immutable
+          retry_with_immutable_override()
+        else
+          -- Call original error handler if it exists
+          if original_on_error then
+            original_on_error(exit_code)
+          end
+        end
+      end)
+    else
+      -- Call original error handler for other errors
+      if original_on_error then
+        original_on_error(exit_code)
+      end
+    end
+  end
+  
+  return M.execute_interactive(cmd_args, options)
 end
 
 return M

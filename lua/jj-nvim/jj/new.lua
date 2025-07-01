@@ -24,7 +24,7 @@ end
 
 -- Helper function to handle command execution with common error patterns
 local function execute_with_error_handling(cmd_args, error_context)
-  local result, err = commands.execute(cmd_args)
+  local result, err = commands.execute_with_immutable_prompt(cmd_args)
 
   if not result then
     local error_msg = err or "Unknown error"

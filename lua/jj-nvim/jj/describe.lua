@@ -25,7 +25,7 @@ M.describe = function(change_id, message, options)
     table.insert(cmd_args, options.author)
   end
 
-  return commands.execute(cmd_args, { silent = options.silent })
+  return commands.execute_with_immutable_prompt(cmd_args, { silent = options.silent })
 end
 
 return M

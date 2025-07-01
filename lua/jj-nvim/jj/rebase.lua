@@ -101,7 +101,7 @@ M.rebase = function(options)
     table.insert(cmd_args, '--keep-divergent')
   end
 
-  return commands.execute(cmd_args, { silent = options.silent })
+  return commands.execute_with_immutable_prompt(cmd_args, { silent = options.silent })
 end
 
 -- Rebase multiple commits (for revisions mode)
@@ -202,8 +202,6 @@ M.rebase_multiple_commits = function(selected_commit_ids, options)
       error_msg = "Cannot rebase - would create a cycle in commit graph"
     elseif error_msg:find("not in workspace") then
       error_msg = "Not in a jj workspace"
-    elseif error_msg:find("immutable") then
-      error_msg = "Cannot rebase immutable commit(s)"
     end
 
     vim.notify(string.format("Failed to rebase commits: %s", error_msg), vim.log.levels.ERROR)
@@ -280,8 +278,6 @@ M.rebase_commit = function(source_commit, options)
       error_msg = "Cannot rebase - would create a cycle in commit graph"
     elseif error_msg:find("not in workspace") then
       error_msg = "Not in a jj workspace"
-    elseif error_msg:find("immutable") then
-      error_msg = "Cannot rebase immutable commit"
     end
 
     vim.notify(string.format("Failed to rebase commit: %s", error_msg), vim.log.levels.ERROR)

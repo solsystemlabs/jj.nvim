@@ -583,8 +583,6 @@ M.set_description = function(commit, on_success)
         error_msg = "Commit not found - it may have been abandoned or modified"
       elseif error_msg:find("not in workspace") then
         error_msg = "Not in a jj workspace"
-      elseif error_msg:find("immutable") then
-        error_msg = "Cannot modify immutable commit"
       end
 
       vim.notify(string.format("Failed to set description: %s", error_msg), vim.log.levels.ERROR)
