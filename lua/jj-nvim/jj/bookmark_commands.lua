@@ -387,4 +387,3 @@ M.get_all_present_bookmarks = function()
 end
 
 return M
-

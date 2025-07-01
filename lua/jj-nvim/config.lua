@@ -23,7 +23,7 @@ M.defaults = {
   log = {
     format = 'short',
     limit = 100,
-    default_revset = 'all()',
+    default_revset = 'all()',  -- Default revset when opening jj log (e.g., 'all()', '::@', 'mine()')
     show_revset_in_title = true,
     revset_presets = {
       { name = 'All commits', revset = 'all()' },
