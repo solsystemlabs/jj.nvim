@@ -7,31 +7,31 @@ local function is_valid_bookmark_name(name)
   if not name or name == "" then
     return false, "Bookmark name cannot be empty"
   end
-  
+
   if name:match("^%.") or name:match("%.$") then
     return false, "Bookmark name cannot start or end with '.'"
   end
-  
+
   if name:match("%.%.") then
     return false, "Bookmark name cannot contain '..'"
   end
-  
+
   if name:match("[%s@:]") then
     return false, "Bookmark name cannot contain spaces, '@', or ':'"
   end
-  
+
   return true
 end
 
 -- Helper function to execute bookmark commands with error handling
 local function execute_bookmark_command(cmd_args, error_context)
   local result, err = commands.execute(cmd_args)
-  
+
   if not result then
     local error_msg = err or "Unknown error"
-    local is_backwards_move = error_context == "move bookmark" and 
-      (error_msg:find("would move backwards") or error_msg:find("backwards") or error_msg:find("ancestor"))
-    
+    local is_backwards_move = error_context == "move bookmark" and
+        (error_msg:find("would move backwards") or error_msg:find("backwards") or error_msg:find("ancestor"))
+
     if error_msg:find("No such bookmark") then
       error_msg = "Bookmark not found"
     elseif error_msg:find("already exists") then
@@ -41,14 +41,14 @@ local function execute_bookmark_command(cmd_args, error_context)
     elseif error_msg:find("Invalid bookmark name") then
       error_msg = "Invalid bookmark name"
     end
-    
+
     -- Don't show generic error for backwards moves - let move_bookmark handle it with confirmation dialog
     if not is_backwards_move then
       vim.notify(string.format("Failed to %s: %s", error_context, error_msg), vim.log.levels.ERROR)
     end
     return false, err -- Return original error for move_bookmark to analyze
   end
-  
+
   return result, nil
 end
 
@@ -59,40 +59,42 @@ M.get_all_bookmarks = function()
   local FIELD_SEP = "\x1F"
   local RECORD_SEP = "\x1E"
   local template = 'self.name() ++ "' .. FIELD_SEP .. '" ++ ' ..
-    'if(self.remote(), self.remote(), "local") ++ "' .. FIELD_SEP .. '" ++ ' ..
-    'if(self.present(), "present", "absent") ++ "' .. FIELD_SEP .. '" ++ ' ..
-    'if(self.conflict(), "conflict", "clean") ++ "' .. FIELD_SEP .. '" ++ ' ..
-    'if(self.present() && self.normal_target(), self.normal_target().commit_id().short(8), "no_commit") ++ "' .. FIELD_SEP .. '" ++ ' ..
-    'if(self.tracked(), "tracked", "untracked") ++ "' .. FIELD_SEP .. '" ++ ' ..
-    'if(self.tracking_present(), "tracking_present", "tracking_absent") ++ "' .. FIELD_SEP .. '" ++ ' ..
-    'if(self.tracked(), self.tracking_ahead_count().lower(), "0") ++ "' .. FIELD_SEP .. '" ++ ' ..
-    'if(self.tracked(), self.tracking_behind_count().lower(), "0") ++ "' .. FIELD_SEP .. '" ++ ' ..
-    'if(self.present() && self.normal_target(), self.normal_target().change_id().short(8), "no_change_id") ++ "' .. RECORD_SEP .. '"'
-  
+      'if(self.remote(), self.remote(), "local") ++ "' .. FIELD_SEP .. '" ++ ' ..
+      'if(self.present(), "present", "absent") ++ "' .. FIELD_SEP .. '" ++ ' ..
+      'if(self.conflict(), "conflict", "clean") ++ "' .. FIELD_SEP .. '" ++ ' ..
+      'if(self.present() && self.normal_target(), self.normal_target().commit_id().short(8), "no_commit") ++ "' ..
+      FIELD_SEP .. '" ++ ' ..
+      'if(self.tracked(), "tracked", "untracked") ++ "' .. FIELD_SEP .. '" ++ ' ..
+      'if(self.tracking_present(), "tracking_present", "tracking_absent") ++ "' .. FIELD_SEP .. '" ++ ' ..
+      'if(self.tracked(), self.tracking_ahead_count().lower(), "0") ++ "' .. FIELD_SEP .. '" ++ ' ..
+      'if(self.tracked(), self.tracking_behind_count().lower(), "0") ++ "' .. FIELD_SEP .. '" ++ ' ..
+      'if(self.present() && self.normal_target(), self.normal_target().change_id().short(8), "no_change_id") ++ "' ..
+      RECORD_SEP .. '"'
+
   local cmd_args = { 'bookmark', 'list', '-a', '-T', template }
-  
+
   local result, err = commands.execute(cmd_args)
   if not result then
     vim.notify("Failed to get bookmarks: " .. (err or "unknown error"), vim.log.levels.ERROR)
     return {}
   end
-  
+
   -- Parse into simple table
   local bookmarks = {}
   local bookmark_blocks = vim.split(result, RECORD_SEP, { plain = true })
-  
+
   for _, bookmark_block in ipairs(bookmark_blocks) do
     local trimmed_block = bookmark_block:match("^%s*(.-)%s*$")
-    
+
     if trimmed_block ~= "" and not trimmed_block:match("^Hint:") then
       local parts = vim.split(trimmed_block, FIELD_SEP, { plain = true })
-      
+
       if #parts >= 10 then
         local bookmark = {
           name = parts[1] or "",
           remote = parts[2] ~= "local" and parts[2] or nil,
           present = parts[3] == "present",
-          conflict = parts[4] == "conflict", 
+          conflict = parts[4] == "conflict",
           commit_id = parts[5] ~= "no_commit" and parts[5] or nil,
           tracked = parts[6] == "tracked",
           tracking_present = parts[7] == "tracking_present",
@@ -100,14 +102,14 @@ M.get_all_bookmarks = function()
           tracking_behind_count = tonumber(parts[9]) or 0,
           change_id = parts[10] ~= "no_change_id" and parts[10] or nil
         }
-        
+
         -- Generate display name
         if bookmark.remote then
           bookmark.display_name = bookmark.name .. "@" .. bookmark.remote
         else
           bookmark.display_name = bookmark.name
         end
-        
+
         -- Add status indicators
         local status_parts = {}
         if not bookmark.present then
@@ -116,16 +118,16 @@ M.get_all_bookmarks = function()
         if bookmark.conflict then
           table.insert(status_parts, "conflict")
         end
-        
+
         if #status_parts > 0 then
           bookmark.display_name = bookmark.display_name .. " (" .. table.concat(status_parts, ", ") .. ")"
         end
-        
+
         table.insert(bookmarks, bookmark)
       end
     end
   end
-  
+
   return bookmarks
 end
 
@@ -136,19 +138,19 @@ M.create_bookmark = function(name, revision)
     vim.notify(err, vim.log.levels.ERROR)
     return false
   end
-  
+
   local cmd_args = { 'bookmark', 'create', name }
-  
+
   if revision then
     table.insert(cmd_args, '--revision')
     table.insert(cmd_args, revision)
   end
-  
+
   local result, exec_err = execute_bookmark_command(cmd_args, "create bookmark")
   if not result then
     return false
   end
-  
+
   return true
 end
 
@@ -158,14 +160,14 @@ M.delete_bookmark = function(name)
     vim.notify("Bookmark name required", vim.log.levels.ERROR)
     return false
   end
-  
+
   local cmd_args = { 'bookmark', 'delete', name }
-  
+
   local result, exec_err = execute_bookmark_command(cmd_args, "delete bookmark")
   if not result then
     return false
   end
-  
+
   return true
 end
 
@@ -175,14 +177,14 @@ M.forget_bookmark = function(name)
     vim.notify("Bookmark name required", vim.log.levels.ERROR)
     return false
   end
-  
+
   local cmd_args = { 'bookmark', 'forget', name }
-  
+
   local result, exec_err = execute_bookmark_command(cmd_args, "forget bookmark")
   if not result then
     return false
   end
-  
+
   return true
 end
 
@@ -192,20 +194,20 @@ M.move_bookmark = function(name, target_revision, options)
     vim.notify("Bookmark name required", vim.log.levels.ERROR)
     return false
   end
-  
+
   if not target_revision or target_revision == "" then
     vim.notify("Target revision required", vim.log.levels.ERROR)
     return false
   end
-  
+
   options = options or {}
-  
+
   local cmd_args = { 'bookmark', 'move', name, '--to', target_revision }
-  
+
   if options.allow_backwards then
     table.insert(cmd_args, '--allow-backwards')
   end
-  
+
   local result, exec_err = execute_bookmark_command(cmd_args, "move bookmark")
   if not result then
     -- Check if this is a backwards move error and offer to retry
@@ -229,15 +231,15 @@ M.move_bookmark = function(name, target_revision, options)
     -- For other errors, execute_bookmark_command already showed the error message
     return false
   end
-  
+
   -- Success notification
   vim.notify(string.format("Moved bookmark '%s' to %s", name, target_revision:sub(1, 8)), vim.log.levels.INFO)
-  
+
   -- Call success callback if provided
   if options.on_success then
     options.on_success()
   end
-  
+
   return true
 end
 
@@ -247,20 +249,20 @@ M.rename_bookmark = function(old_name, new_name)
     vim.notify("Old bookmark name required", vim.log.levels.ERROR)
     return false
   end
-  
+
   local valid, err = is_valid_bookmark_name(new_name)
   if not valid then
     vim.notify(err, vim.log.levels.ERROR)
     return false
   end
-  
+
   local cmd_args = { 'bookmark', 'rename', old_name, new_name }
-  
+
   local result, exec_err = execute_bookmark_command(cmd_args, "rename bookmark")
   if not result then
     return false
   end
-  
+
   return true
 end
 
@@ -271,19 +273,19 @@ M.set_bookmark = function(name, revision)
     vim.notify(err, vim.log.levels.ERROR)
     return false
   end
-  
+
   local cmd_args = { 'bookmark', 'set', name }
-  
+
   if revision then
     table.insert(cmd_args, '--revision')
     table.insert(cmd_args, revision)
   end
-  
+
   local result, exec_err = execute_bookmark_command(cmd_args, "set bookmark")
   if not result then
     return false
   end
-  
+
   return true
 end
 
@@ -293,19 +295,19 @@ M.track_bookmark = function(bookmark_name, remote_name)
     vim.notify("Bookmark name required", vim.log.levels.ERROR)
     return false
   end
-  
+
   local bookmark_ref = bookmark_name
   if remote_name then
     bookmark_ref = string.format("%s@%s", bookmark_name, remote_name)
   end
-  
+
   local cmd_args = { 'bookmark', 'track', bookmark_ref }
-  
+
   local result, exec_err = execute_bookmark_command(cmd_args, "track bookmark")
   if not result then
     return false
   end
-  
+
   return true
 end
 
@@ -315,19 +317,19 @@ M.untrack_bookmark = function(bookmark_name, remote_name)
     vim.notify("Bookmark name required", vim.log.levels.ERROR)
     return false
   end
-  
+
   local bookmark_ref = bookmark_name
   if remote_name then
     bookmark_ref = string.format("%s@%s", bookmark_name, remote_name)
   end
-  
+
   local cmd_args = { 'bookmark', 'untrack', bookmark_ref }
-  
+
   local result, exec_err = execute_bookmark_command(cmd_args, "untrack bookmark")
   if not result then
     return false
   end
-  
+
   return true
 end
 
@@ -335,7 +337,7 @@ end
 M.get_bookmarks_for_commit = function(commit_id)
   local all_bookmarks = M.get_all_bookmarks()
   local commit_bookmarks = {}
-  
+
   for _, bookmark in ipairs(all_bookmarks) do
     if bookmark.commit_id and bookmark.present then
       -- Match exact or prefix
@@ -344,7 +346,7 @@ M.get_bookmarks_for_commit = function(commit_id)
       end
     end
   end
-  
+
   return commit_bookmarks
 end
 
@@ -368,7 +370,7 @@ M.get_local_bookmarks = function()
   end)
 end
 
--- Get remote bookmarks for menus  
+-- Get remote bookmarks for menus
 M.get_remote_bookmarks = function()
   local all_bookmarks = M.get_all_bookmarks()
   return filter_bookmarks(all_bookmarks, function(bookmark)
@@ -385,3 +387,4 @@ M.get_all_present_bookmarks = function()
 end
 
 return M
+

@@ -133,7 +133,7 @@ end
 
 -- Helper function to create window (using split instead of floating)
 local function create_window()
-  local width = config.get('window.width')
+  local width = config.get_window_width()
   local position = config.get('window.position')
 
   -- Create a vertical split
@@ -297,7 +297,7 @@ M.adjust_width = function(delta)
   vim.api.nvim_win_set_width(state.win_id, new_width)
 
   -- Save the new width persistently
-  config.set('window.width', new_width)
+  config.persist_window_width(new_width)
 
   -- Refresh with latest data to apply new wrapping
   require('jj-nvim').refresh()
@@ -416,10 +416,10 @@ M.setup_commit_highlighting = function()
       -- Only handle resize for our window
       if state.win_id and vim.api.nvim_win_is_valid(state.win_id) then
         local current_width = vim.api.nvim_win_get_width(state.win_id)
-        local config_width = config.get('window.width')
+        local persisted_width = config.get_window_width()
         
         -- Only persist if width actually changed
-        if current_width ~= config_width then
+        if current_width ~= persisted_width then
           config.persist_window_width(current_width)
         end
       end
