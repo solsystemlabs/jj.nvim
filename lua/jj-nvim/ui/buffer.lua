@@ -50,6 +50,24 @@ M.create_from_commits = function(commits, revset)
   buffer_state.buf_id = buf_id
   buffer_state.current_revset = revset
   
+  -- Find current working copy commit and update status
+  local current_working_copy_id = nil
+  local current_working_copy_description = nil
+  for _, commit in ipairs(commits) do
+    if commit.current_working_copy then
+      current_working_copy_id = commit.short_change_id or commit.change_id
+      current_working_copy_description = commit.description
+      break
+    end
+  end
+  
+  -- Update status with working copy information
+  status.update_status({
+    current_commit_id = current_working_copy_id,
+    current_commit_description = current_working_copy_description,
+    repository_info = ""
+  })
+  
   -- Render commits and set buffer content
   M.update_from_commits(buf_id, commits)
   
