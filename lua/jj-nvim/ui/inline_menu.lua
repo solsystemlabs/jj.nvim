@@ -63,8 +63,12 @@ local function create_menu_window(parent_win_id, menu_config)
     zindex = 1000,
   }
   
-  -- Create window
+  -- Create window and explicitly focus it
   local win_id = vim.api.nvim_open_win(buf_id, true, win_config)
+  
+  -- Ensure window and buffer are focused
+  vim.api.nvim_set_current_win(win_id)
+  vim.api.nvim_set_current_buf(buf_id)
   
   -- Set window options
   vim.api.nvim_win_set_option(win_id, 'winhl', 'Normal:Normal,FloatBorder:JJMenuBorder')
@@ -132,26 +136,35 @@ end
 local function setup_menu_keymaps(buf_id, menu_config)
   local opts = { buffer = buf_id, noremap = true, silent = true }
   
-  -- Navigation keymaps
-  vim.keymap.set('n', 'j', function()
-    M.state.selected_index = math.min(M.state.selected_index + 1, #menu_config.items)
-    render_menu(buf_id, menu_config, M.state.selected_index)
-  end, opts)
+  -- Store keymap IDs for cleanup
+  M.state.menu_keymaps = {}
   
-  vim.keymap.set('n', 'k', function()
-    M.state.selected_index = math.max(M.state.selected_index - 1, 1)
-    render_menu(buf_id, menu_config, M.state.selected_index)
-  end, opts)
+  -- Navigation keymaps - use more unique function definitions to avoid conflicts
+  local function menu_nav_down()
+    if M.state.active and vim.api.nvim_get_current_buf() == buf_id then
+      M.state.selected_index = math.min(M.state.selected_index + 1, #menu_config.items)
+      render_menu(buf_id, menu_config, M.state.selected_index)
+    end
+  end
   
-  vim.keymap.set('n', '<Down>', function()
-    M.state.selected_index = math.min(M.state.selected_index + 1, #menu_config.items)
-    render_menu(buf_id, menu_config, M.state.selected_index)
-  end, opts)
+  local function menu_nav_up()
+    if M.state.active and vim.api.nvim_get_current_buf() == buf_id then
+      M.state.selected_index = math.max(M.state.selected_index - 1, 1)
+      render_menu(buf_id, menu_config, M.state.selected_index)
+    end
+  end
   
-  vim.keymap.set('n', '<Up>', function()
-    M.state.selected_index = math.max(M.state.selected_index - 1, 1)
-    render_menu(buf_id, menu_config, M.state.selected_index)
-  end, opts)
+  -- Clear any existing navigation keymaps first
+  pcall(vim.keymap.del, 'n', 'j', { buffer = buf_id })
+  pcall(vim.keymap.del, 'n', 'k', { buffer = buf_id })
+  pcall(vim.keymap.del, 'n', '<Down>', { buffer = buf_id })
+  pcall(vim.keymap.del, 'n', '<Up>', { buffer = buf_id })
+  
+  -- Set navigation keymaps
+  vim.keymap.set('n', 'j', menu_nav_down, opts)
+  vim.keymap.set('n', 'k', menu_nav_up, opts)
+  vim.keymap.set('n', '<Down>', menu_nav_down, opts)
+  vim.keymap.set('n', '<Up>', menu_nav_up, opts)
   
   -- Selection keymaps
   vim.keymap.set('n', '<CR>', function()

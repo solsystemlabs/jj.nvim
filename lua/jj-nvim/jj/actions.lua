@@ -1247,7 +1247,7 @@ M.squash_into_commit = function(target_commit, options)
   end
 
   local target_display_id = get_short_display_id(target_commit, target_change_id)
-  
+
   -- Handle interactive mode with callbacks
   if options.interactive then
     -- Add callbacks for interactive mode
@@ -1261,7 +1261,7 @@ M.squash_into_commit = function(target_commit, options)
     options.on_cancel = function()
       vim.notify("Interactive squash cancelled", vim.log.levels.INFO)
     end
-    
+
     -- Execute interactive squash
     local success = commands.squash(target_change_id, options)
     if not success then
@@ -1308,7 +1308,7 @@ M.squash_into_bookmark = function(bookmark, options)
   end
 
   local bookmark_display = bookmark.display_name or bookmark.name
-  
+
   -- Handle interactive mode with callbacks
   if options.interactive then
     -- Add callbacks for interactive mode
@@ -1322,7 +1322,7 @@ M.squash_into_bookmark = function(bookmark, options)
     options.on_cancel = function()
       vim.notify("Interactive squash cancelled", vim.log.levels.INFO)
     end
-    
+
     -- Execute interactive squash
     local success = commands.squash(target_revision, options)
     if not success then
@@ -1355,7 +1355,7 @@ end
 -- Show squash options menu after target selection
 M.show_squash_options_menu = function(target, target_type, parent_win_id, source_commit)
   local inline_menu = require('jj-nvim.ui.inline_menu')
-  
+
   -- Determine target display name
   local target_display = ""
   if target_type == "commit" then
@@ -1410,7 +1410,7 @@ end
 -- Handle squash options menu selection
 M.handle_squash_options_selection = function(selected_item, target, target_type, source_commit)
   local options = {}
-  
+
   -- Configure options based on selection
   if selected_item.action == "interactive_squash" then
     options.interactive = true
@@ -1436,7 +1436,7 @@ M.handle_squash_options_selection = function(selected_item, target, target_type,
   end
 
   local success = false
-  
+
   -- Execute squash based on target type
   if target_type == "commit" then
     success = M.squash_into_commit(target, options)
@@ -1472,7 +1472,7 @@ M.split_commit = function(commit, options)
   end
 
   local display_id = get_short_display_id(commit, change_id)
-  
+
   -- Handle interactive mode with callbacks
   if options.interactive then
     -- Add callbacks for interactive mode
@@ -1486,7 +1486,7 @@ M.split_commit = function(commit, options)
     options.on_cancel = function()
       vim.notify("Interactive split cancelled", vim.log.levels.INFO)
     end
-    
+
     -- Execute interactive split
     local success = commands.split(change_id, options)
     if not success then
@@ -1521,7 +1521,7 @@ end
 -- Show split options menu
 M.show_split_options_menu = function(target_commit, parent_win_id)
   local inline_menu = require('jj-nvim.ui.inline_menu')
-  
+
   -- Determine target display name
   local target_display = ""
   if target_commit then
@@ -1588,7 +1588,7 @@ end
 -- Handle split options menu selection
 M.handle_split_options_selection = function(selected_item, target_commit)
   local options = {}
-  
+
   -- Configure options based on selection
   if selected_item.action == "interactive_split" then
     options.interactive = true
@@ -1610,7 +1610,7 @@ M.handle_split_options_selection = function(selected_item, target_commit)
       local filesets = vim.split(filesets_str, "%s+")
       options.filesets = filesets
       options.interactive = true -- Fileset splits are typically interactive
-      
+
       local success = M.split_commit(target_commit, options)
       if success then
         -- Refresh buffer to show changes
@@ -1698,7 +1698,7 @@ M.rebase_multiple_commits = function(selected_commit_ids, options)
 
   -- Build rebase options for multiple revisions
   local rebase_options = { silent = options.silent }
-  
+
   -- Extract change IDs for all valid commits
   local change_ids = {}
   for _, commit in ipairs(commits_to_rebase) do
@@ -1781,7 +1781,7 @@ M.rebase_commit = function(source_commit, options)
 
   -- Build rebase options, defaulting to branch mode if none specified
   local rebase_options = { silent = options.silent }
-  
+
   -- Add source specification
   if options.mode == "source" then
     rebase_options.source = source_change_id
@@ -1836,7 +1836,7 @@ end
 -- Show rebase options menu
 M.show_rebase_options_menu = function(source_commit, parent_win_id)
   local inline_menu = require('jj-nvim.ui.inline_menu')
-  
+
   -- Determine source display name
   local source_display = ""
   if source_commit then
@@ -1855,7 +1855,7 @@ M.show_rebase_options_menu = function(source_commit, parent_win_id)
         action = "rebase_branch",
       },
       {
-        key = "s", 
+        key = "s",
         description = "Rebase source and descendants (-s)",
         action = "rebase_source",
       },
@@ -1884,11 +1884,11 @@ M.show_rebase_options_menu = function(source_commit, parent_win_id)
         description = "Skip emptied commits",
         action = "toggle_skip_emptied",
       },
-      {
-        key = "k",
-        description = "Keep divergent commits",
-        action = "toggle_keep_divergent",
-      },
+      -- {
+      --   key = "k",
+      --   description = "Keep divergent commits",
+      --   action = "toggle_keep_divergent",
+      -- },
     }
   }
 
@@ -1908,7 +1908,7 @@ end
 -- Handle rebase options menu selection
 M.handle_rebase_options_selection = function(selected_item, source_commit)
   local action = selected_item.action
-  
+
   if action == "rebase_branch" or action == "rebase_source" then
     -- Enter target selection mode for rebase with the specified mode
     local mode = action:gsub("rebase_", "") -- Extract "branch" or "source"
@@ -1916,7 +1916,8 @@ M.handle_rebase_options_selection = function(selected_item, source_commit)
     window.enter_rebase_target_selection_mode("destination", source_commit, mode)
   elseif action == "rebase_revisions" then
     -- For revisions mode, allow multi-commit selection first
-    vim.notify("Select multiple commits for rebase (Space to select, Enter when done, Esc to cancel)", vim.log.levels.INFO)
+    vim.notify("Select multiple commits for rebase (Space to select, Enter when done, Esc to cancel)",
+      vim.log.levels.INFO)
     local window = require('jj-nvim.ui.window')
     window.enter_rebase_multi_select_mode(source_commit)
   elseif action == "select_destination" then
@@ -1934,11 +1935,10 @@ M.handle_rebase_options_selection = function(selected_item, source_commit)
   elseif action == "toggle_skip_emptied" then
     vim.notify("Skip emptied commits option will be applied to next rebase", vim.log.levels.INFO)
     -- Note: This could be enhanced to store state for the next rebase operation
-  elseif action == "toggle_keep_divergent" then
-    vim.notify("Keep divergent commits option will be applied to next rebase", vim.log.levels.INFO)
-    -- Note: This could be enhanced to store state for the next rebase operation
+    -- elseif action == "toggle_keep_divergent" then
+    --   vim.notify("Keep divergent commits option will be applied to next rebase", vim.log.levels.INFO)
+    --   -- Note: This could be enhanced to store state for the next rebase operation
   end
 end
 
 return M
-
