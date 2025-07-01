@@ -1,0 +1,319 @@
+local M = {}
+
+local commands = require('jj-nvim.jj.commands')
+
+-- Commit working copy changes
+M.commit = function(message, options)
+  options = options or {}
+  local cmd_args = { 'commit' }
+
+  -- Add message if provided
+  if message and message ~= "" then
+    table.insert(cmd_args, '-m')
+    table.insert(cmd_args, message)
+  end
+
+  -- Add interactive mode
+  if options.interactive then
+    table.insert(cmd_args, '--interactive')
+  end
+
+  -- Add diff tool for interactive mode
+  if options.tool then
+    table.insert(cmd_args, '--tool')
+    table.insert(cmd_args, options.tool)
+  end
+
+  -- Add author options
+  if options.reset_author then
+    table.insert(cmd_args, '--reset-author')
+  end
+
+  if options.author then
+    table.insert(cmd_args, '--author')
+    table.insert(cmd_args, options.author)
+  end
+
+  -- Add filesets/paths if specified
+  if options.filesets and #options.filesets > 0 then
+    for _, fileset in ipairs(options.filesets) do
+      table.insert(cmd_args, fileset)
+    end
+  end
+
+  return commands.execute(cmd_args, { silent = options.silent })
+end
+
+-- Interactive commit
+M.commit_interactive = function(options)
+  options = options or {}
+  local cmd_args = { 'commit', '--interactive' }
+
+  -- Add diff tool if specified
+  if options.tool then
+    table.insert(cmd_args, '--tool')
+    table.insert(cmd_args, options.tool)
+  end
+
+  -- Add author options
+  if options.reset_author then
+    table.insert(cmd_args, '--reset-author')
+  end
+
+  if options.author then
+    table.insert(cmd_args, '--author')
+    table.insert(cmd_args, options.author)
+  end
+
+  -- Add filesets/paths if specified
+  if options.filesets and #options.filesets > 0 then
+    for _, fileset in ipairs(options.filesets) do
+      table.insert(cmd_args, fileset)
+    end
+  end
+
+  return commands.execute_interactive(cmd_args, options)
+end
+
+-- Commit working copy changes (action wrapper)
+M.commit_working_copy = function(options, on_success)
+  options = options or {}
+
+  -- Check if there are any changes to commit
+  local status = require('jj-nvim.jj.status')
+  local status_content, status_err = status.get_status({ silent = true })
+  if not status_content then
+    vim.notify("Failed to check repository status", vim.log.levels.ERROR)
+    return false
+  end
+
+  -- Check if working copy has changes
+  if status_content:match("The working copy has no changes") then
+    vim.notify("No changes to commit", vim.log.levels.INFO)
+    return true
+  end
+
+  -- If message is provided in options, use it directly
+  if options.message and options.message ~= "" then
+    local result, err = M.commit(options.message, options)
+    if not result then
+      local error_msg = err or "Unknown error"
+      if error_msg:find("not in workspace") then
+        error_msg = "Not in a jj workspace"
+      elseif error_msg:find("empty commit") then
+        error_msg = "No changes to commit"
+      end
+
+      vim.notify(string.format("Failed to commit: %s", error_msg), vim.log.levels.ERROR)
+      return false
+    end
+
+    vim.notify("Committed working copy changes", vim.log.levels.INFO)
+    if on_success then on_success() end
+    return true
+  end
+
+  -- Prompt user for commit message
+  vim.ui.input({
+    prompt = "Enter commit message:",
+    default = "",
+  }, function(message)
+    if not message or message:match("^%s*$") then
+      vim.notify("Commit cancelled - no message provided", vim.log.levels.INFO)
+      return false
+    end
+
+    local result, err = M.commit(message, options)
+    if not result then
+      local error_msg = err or "Unknown error"
+      if error_msg:find("not in workspace") then
+        error_msg = "Not in a jj workspace"
+      elseif error_msg:find("empty commit") then
+        error_msg = "No changes to commit"
+      elseif error_msg:find("immutable") then
+        error_msg = "Cannot modify immutable commit"
+      end
+
+      vim.notify(string.format("Failed to commit: %s", error_msg), vim.log.levels.ERROR)
+      return false
+    end
+
+    vim.notify("Committed working copy changes", vim.log.levels.INFO)
+    if on_success then on_success() end
+    return true
+  end)
+end
+
+-- Show commit options menu
+M.show_commit_menu = function(parent_win_id)
+  local inline_menu = require('jj-nvim.ui.inline_menu')
+
+  -- Check if there are any changes to commit
+  local status = require('jj-nvim.jj.status')
+  local status_content, status_err = status.get_status({ silent = true })
+  if not status_content then
+    vim.notify("Failed to check repository status", vim.log.levels.ERROR)
+    return false
+  end
+
+  -- Check if working copy has changes
+  if status_content:match("The working copy has no changes") then
+    vim.notify("No changes to commit", vim.log.levels.INFO)
+    return true
+  end
+
+  -- Define menu configuration
+  local menu_config = {
+    title = "Commit Options",
+    items = {
+      {
+        key = "q",
+        description = "Quick commit (prompt for message)",
+        action = "quick_commit",
+      },
+      {
+        key = "i",
+        description = "Interactive commit (choose changes)",
+        action = "interactive_commit",
+      },
+      {
+        key = "r",
+        description = "Reset author and commit",
+        action = "reset_author_commit",
+      },
+      {
+        key = "a",
+        description = "Commit with custom author",
+        action = "custom_author_commit",
+      },
+      {
+        key = "f",
+        description = "Commit specific files (filesets)",
+        action = "fileset_commit",
+      },
+    }
+  }
+
+  -- Show the menu
+  parent_win_id = parent_win_id or vim.api.nvim_get_current_win()
+
+  inline_menu.show(parent_win_id, menu_config, {
+    on_select = function(selected_item)
+      M.handle_commit_menu_selection(selected_item)
+    end,
+    on_cancel = function()
+      -- Menu cancelled - do nothing
+    end
+  })
+end
+
+-- Handle commit menu selection
+M.handle_commit_menu_selection = function(selected_item)
+  if selected_item.action == "quick_commit" then
+    -- Quick commit with message prompt
+    M.commit_working_copy({})
+  elseif selected_item.action == "interactive_commit" then
+    -- Interactive commit using terminal interface
+    local success = M.commit_interactive({
+      on_success = function()
+        vim.notify("Interactive commit completed", vim.log.levels.INFO)
+        -- Buffer refresh is handled automatically by interactive terminal
+      end,
+      on_error = function(exit_code)
+        -- Error message already shown by interactive terminal
+      end,
+      on_cancel = function()
+        vim.notify("Interactive commit cancelled", vim.log.levels.INFO)
+      end
+    })
+
+    if not success then
+      vim.notify("Failed to start interactive commit", vim.log.levels.ERROR)
+    end
+  elseif selected_item.action == "reset_author_commit" then
+    -- Commit with reset author
+    vim.ui.input({
+      prompt = "Enter commit message (author will be reset):",
+      default = "",
+    }, function(message)
+      if not message or message:match("^%s*$") then
+        vim.notify("Commit cancelled - no message provided", vim.log.levels.INFO)
+        return
+      end
+
+      local result, err = M.commit(message, { reset_author = true })
+      if not result then
+        local error_msg = err or "Unknown error"
+        vim.notify(string.format("Failed to commit: %s", error_msg), vim.log.levels.ERROR)
+      else
+        vim.notify("Committed with reset author", vim.log.levels.INFO)
+        require('jj-nvim').refresh()
+      end
+    end)
+  elseif selected_item.action == "custom_author_commit" then
+    -- Commit with custom author - two-step process
+    vim.ui.input({
+      prompt = "Enter author (Name <email@example.com>):",
+      default = "",
+    }, function(author)
+      if not author or author:match("^%s*$") then
+        vim.notify("Commit cancelled - no author provided", vim.log.levels.INFO)
+        return
+      end
+
+      vim.ui.input({
+        prompt = "Enter commit message:",
+        default = "",
+      }, function(message)
+        if not message or message:match("^%s*$") then
+          vim.notify("Commit cancelled - no message provided", vim.log.levels.INFO)
+          return
+        end
+
+        local result, err = M.commit(message, { author = author })
+        if not result then
+          local error_msg = err or "Unknown error"
+          vim.notify(string.format("Failed to commit: %s", error_msg), vim.log.levels.ERROR)
+        else
+          vim.notify(string.format("Committed with author: %s", author), vim.log.levels.INFO)
+          require('jj-nvim').refresh()
+        end
+      end)
+    end)
+  elseif selected_item.action == "fileset_commit" then
+    -- Commit specific files
+    vim.ui.input({
+      prompt = "Enter file patterns (e.g., '*.lua src/'):",
+      default = "",
+    }, function(filesets_str)
+      if not filesets_str or filesets_str:match("^%s*$") then
+        vim.notify("Commit cancelled - no file patterns provided", vim.log.levels.INFO)
+        return
+      end
+
+      -- Split filesets by spaces
+      local filesets = vim.split(filesets_str, "%s+")
+
+      vim.ui.input({
+        prompt = "Enter commit message:",
+        default = "",
+      }, function(message)
+        if not message or message:match("^%s*$") then
+          vim.notify("Commit cancelled - no message provided", vim.log.levels.INFO)
+          return
+        end
+
+        local result, err = M.commit(message, { filesets = filesets })
+        if not result then
+          local error_msg = err or "Unknown error"
+          vim.notify(string.format("Failed to commit: %s", error_msg), vim.log.levels.ERROR)
+        else
+          vim.notify(string.format("Committed files: %s", filesets_str), vim.log.levels.INFO)
+          require('jj-nvim').refresh()
+        end
+      end)
+    end)
+  end
+end
+
+return M
