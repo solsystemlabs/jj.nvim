@@ -100,9 +100,9 @@ M.next_commit = function(win_id)
     end
   end
   
-  -- If no next commit found, wrap to first commit
+  -- If no next commit found, don't wrap (stay at current position)
   if not next_line then
-    next_line = header_lines[1]
+    return false
   end
   
   -- Validate the line number before setting cursor
@@ -150,9 +150,9 @@ M.prev_commit = function(win_id)
     end
   end
   
-  -- If no previous commit found, wrap to last commit
+  -- If no previous commit found, don't wrap (stay at current position)
   if not prev_line then
-    prev_line = header_lines[#header_lines]
+    return false
   end
   
   -- Validate the line number before setting cursor
