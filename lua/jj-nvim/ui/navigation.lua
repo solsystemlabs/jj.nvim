@@ -15,13 +15,29 @@ local function ensure_cursor_in_log_area(win_id)
   local window_width = window_utils.get_width(win_id)
   local status_height = buffer.get_status_height(window_width)
   
+  -- Get buffer info for validation
+  local buf_id = vim.api.nvim_win_get_buf(win_id)
+  local line_count = vim.api.nvim_buf_line_count(buf_id)
+  
   -- If cursor is in status area, move to first commit
   if current_line <= status_height then
     local header_lines = buffer.get_header_lines(window_width)
     if header_lines and #header_lines > 0 then
-      vim.api.nvim_win_set_cursor(win_id, {header_lines[1], 0})
+      local target_line = header_lines[1]
+      if target_line > 0 and target_line <= line_count then
+        vim.api.nvim_win_set_cursor(win_id, {target_line, 0})
+      end
     else
-      vim.api.nvim_win_set_cursor(win_id, {status_height + 1, 0})
+      local safe_line = math.min(status_height + 1, line_count)
+      if safe_line > 0 then
+        vim.api.nvim_win_set_cursor(win_id, {safe_line, 0})
+      end
+    end
+  else
+    -- Ensure current cursor position is still valid
+    if current_line > line_count then
+      local safe_line = math.max(status_height + 1, math.min(line_count, 1))
+      vim.api.nvim_win_set_cursor(win_id, {safe_line, 0})
     end
   end
 end
@@ -89,9 +105,19 @@ M.next_commit = function(win_id)
     next_line = header_lines[1]
   end
   
-  -- Move cursor to the next commit header
-  vim.api.nvim_win_set_cursor(win_id, {next_line, 0})
-  return true
+  -- Validate the line number before setting cursor
+  if next_line then
+    local buf_id = vim.api.nvim_win_get_buf(win_id)
+    local line_count = vim.api.nvim_buf_line_count(buf_id)
+    if next_line > 0 and next_line <= line_count then
+      vim.api.nvim_win_set_cursor(win_id, {next_line, 0})
+      return true
+    end
+  end
+  
+  -- If we can't navigate, ensure cursor is in a valid position
+  ensure_cursor_in_log_area(win_id)
+  return false
 end
 
 -- Navigate to the previous commit
@@ -129,9 +155,19 @@ M.prev_commit = function(win_id)
     prev_line = header_lines[#header_lines]
   end
   
-  -- Move cursor to the previous commit header
-  vim.api.nvim_win_set_cursor(win_id, {prev_line, 0})
-  return true
+  -- Validate the line number before setting cursor
+  if prev_line then
+    local buf_id = vim.api.nvim_win_get_buf(win_id)
+    local line_count = vim.api.nvim_buf_line_count(buf_id)
+    if prev_line > 0 and prev_line <= line_count then
+      vim.api.nvim_win_set_cursor(win_id, {prev_line, 0})
+      return true
+    end
+  end
+  
+  -- If we can't navigate, ensure cursor is in a valid position
+  ensure_cursor_in_log_area(win_id)
+  return false
 end
 
 -- Navigate to a specific commit by index (0-based)
@@ -150,8 +186,20 @@ M.goto_commit = function(win_id, commit_index)
   end
   
   local target_line = header_lines[commit_index + 1] -- Convert to 1-based
-  vim.api.nvim_win_set_cursor(win_id, {target_line, 0})
-  return true
+  
+  -- Validate the line number before setting cursor
+  if target_line then
+    local buf_id = vim.api.nvim_win_get_buf(win_id)
+    local line_count = vim.api.nvim_buf_line_count(buf_id)
+    if target_line > 0 and target_line <= line_count then
+      vim.api.nvim_win_set_cursor(win_id, {target_line, 0})
+      return true
+    end
+  end
+  
+  -- If we can't navigate, ensure cursor is in a valid position
+  ensure_cursor_in_log_area(win_id)
+  return false
 end
 
 -- Navigate to the first commit
@@ -307,9 +355,19 @@ M.snap_to_commit_header = function(win_id)
     end
   end
   
-  -- Move to the nearest header
-  vim.api.nvim_win_set_cursor(win_id, {nearest_line, 0})
-  return true
+  -- Validate the line number before setting cursor
+  if nearest_line then
+    local buf_id = vim.api.nvim_win_get_buf(win_id)
+    local line_count = vim.api.nvim_buf_line_count(buf_id)
+    if nearest_line > 0 and nearest_line <= line_count then
+      vim.api.nvim_win_set_cursor(win_id, {nearest_line, 0})
+      return true
+    end
+  end
+  
+  -- If we can't navigate, ensure cursor is in a valid position
+  ensure_cursor_in_log_area(win_id)
+  return false
 end
 
 return M

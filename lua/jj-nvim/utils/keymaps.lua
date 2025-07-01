@@ -424,6 +424,18 @@ M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, m
   vim.keymap.set('n', '?', function()
     help.show(win_id)
   end, opts)
+
+  -- Revset operations
+  vim.keymap.set('n', 'rs', function()
+    require('jj-nvim').show_revset_menu()
+  end, opts)
+
+  vim.keymap.set('n', 'rr', function()
+    local input = vim.fn.input('Enter revset: ', require('jj-nvim').get_current_revset())
+    if input and input ~= '' then
+      require('jj-nvim').set_revset(input)
+    end
+  end, opts)
 end
 
 -- Setup target selection mode keymaps

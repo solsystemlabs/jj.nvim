@@ -23,6 +23,20 @@ M.defaults = {
   log = {
     format = 'short',
     limit = 100,
+    default_revset = 'all()',
+    show_revset_in_title = true,
+    revset_presets = {
+      { name = 'All commits', revset = 'all()' },
+      { name = 'Ancestors of current', revset = '::@' },
+      { name = 'Parent of current', revset = '@-' },
+      { name = 'Last 50 commits', revset = 'latest(all(), 50)' },
+      { name = 'Since main branch', revset = 'trunk()..' },
+      { name = 'My commits', revset = 'mine()' },
+      { name = 'Commits with bookmarks', revset = 'bookmarks()' },
+      { name = 'Merge commits', revset = 'merges()' },
+      { name = 'Recent (last week)', revset = 'author_date(after:"1 week ago")' },
+      { name = 'Conflicts', revset = 'conflicts()' },
+    },
   },
   diff = {
     format = 'git',       -- 'git', 'stat', 'color-words', 'name-only'

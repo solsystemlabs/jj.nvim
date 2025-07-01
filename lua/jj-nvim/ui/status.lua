@@ -94,12 +94,12 @@ function M.build_status_content(window_width)
     table.insert(content_lines, line2_content)
   end
   
-  -- Line 3: Help hints
-  local help_text = "Tab: expand │ Space: select │ a: abandon │ e: edit │ ?: help"
+  -- Line 3: Help hints (log-window specific)
+  local help_text = "Tab: expand │ Space: select │ rs: revsets │ rr: custom │ ?: help"
   if #help_text > content_width then
     -- Split into multiple lines if too long
-    table.insert(content_lines, "Tab: expand │ Space: select │ a: abandon")
-    table.insert(content_lines, "e: edit │ ?: help")
+    table.insert(content_lines, "Tab: expand │ Space: select │ rs: revsets")
+    table.insert(content_lines, "rr: custom │ ?: help")
   else
     table.insert(content_lines, help_text)
   end

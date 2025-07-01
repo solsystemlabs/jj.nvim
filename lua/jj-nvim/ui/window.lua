@@ -2082,4 +2082,9 @@ M.show_squash_bookmark_selection = function()
   })
 end
 
+-- Get current window ID for external use
+M.get_current_win_id = function()
+  return state.win_id
+end
+
 return M

@@ -33,20 +33,25 @@ local buffer_state = {
 }
 
 -- Create buffer using commit-based rendering (new method)
-M.create_from_commits = function(commits, mode)
+M.create_from_commits = function(commits, revset)
   local buf_id = vim.api.nvim_create_buf(false, true)
   
-  vim.api.nvim_buf_set_name(buf_id, 'JJ Log')
+  -- Set buffer name with revset info if enabled
+  local buffer_name = 'JJ Log'
+  if config.get('log.show_revset_in_title') and revset and revset ~= 'all()' then
+    buffer_name = buffer_name .. ' (' .. revset .. ')'
+  end
+  vim.api.nvim_buf_set_name(buf_id, buffer_name)
   
   ansi.setup_highlights()
   
   -- Store state
   buffer_state.commits = commits or {}
   buffer_state.buf_id = buf_id
-  buffer_state.current_mode = mode or 'comfortable'
+  buffer_state.current_revset = revset
   
   -- Render commits and set buffer content
-  M.update_from_commits(buf_id, commits, mode)
+  M.update_from_commits(buf_id, commits)
   
   configure_buffer(buf_id)
   
@@ -345,13 +350,23 @@ end
 
 -- Update buffer with fresh data and automatically refresh status information
 -- This is the centralized function that should be called for all data refreshes
-M.update_from_fresh_data = function(commits)
+M.update_from_fresh_data = function(commits, revset)
   if not buffer_state.buf_id or not vim.api.nvim_buf_is_valid(buffer_state.buf_id) then
     return false
   end
   
-  -- Update commit data
+  -- Update commit data and revset
   buffer_state.commits = commits or {}
+  if revset then
+    buffer_state.current_revset = revset
+    
+    -- Update buffer name if revset display is enabled
+    local buffer_name = 'JJ Log'
+    if config.get('log.show_revset_in_title') and revset and revset ~= 'all()' then
+      buffer_name = buffer_name .. ' (' .. revset .. ')'
+    end
+    vim.api.nvim_buf_set_name(buffer_state.buf_id, buffer_name)
+  end
   
   -- Find current working copy commit from fresh data
   local current_working_copy_id = nil
