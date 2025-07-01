@@ -8,6 +8,19 @@ local STATUS_CONFIG = {
   MAX_LINE_LENGTH = 120,    -- Maximum line length before wrapping
 }
 
+-- Color highlight groups for status window
+local STATUS_HIGHLIGHTS = {
+  border = 'JJStatusBorder',
+  selection_count = 'JJStatusSelection',
+  mode = 'JJStatusMode',
+  working_copy_label = 'JJStatusWorkingCopyLabel',
+  commit_id = 'JJStatusCommitId',
+  commit_description = 'JJStatusCommitDescription',
+  help_key = 'JJStatusHelpKey',
+  help_desc = 'JJStatusHelpDesc',
+  separator = 'JJStatusSeparator',
+}
+
 -- Current status state
 local status_state = {
   selected_count = 0,
@@ -81,6 +94,117 @@ local function wrap_text_intelligently(text_segments, content_width)
   end
   
   return wrapped_lines
+end
+
+-- Setup color highlights for status window
+function M.setup_highlights()
+  local themes = require('jj-nvim.ui.themes')
+  local theme = themes.get_theme('auto') -- Auto-detect theme
+  
+  -- Define highlight groups with theme colors
+  vim.api.nvim_set_hl(0, STATUS_HIGHLIGHTS.border, { fg = theme.colors.bright_black })
+  vim.api.nvim_set_hl(0, STATUS_HIGHLIGHTS.selection_count, { fg = theme.colors.cyan })
+  vim.api.nvim_set_hl(0, STATUS_HIGHLIGHTS.mode, { fg = theme.colors.yellow })
+  vim.api.nvim_set_hl(0, STATUS_HIGHLIGHTS.working_copy_label, { fg = theme.colors.green })
+  vim.api.nvim_set_hl(0, STATUS_HIGHLIGHTS.commit_id, { fg = theme.colors.bright_blue })
+  vim.api.nvim_set_hl(0, STATUS_HIGHLIGHTS.commit_description, { fg = theme.colors.white })
+  vim.api.nvim_set_hl(0, STATUS_HIGHLIGHTS.help_key, { fg = theme.colors.magenta })
+  vim.api.nvim_set_hl(0, STATUS_HIGHLIGHTS.help_desc, { fg = theme.colors.bright_black })
+  vim.api.nvim_set_hl(0, STATUS_HIGHLIGHTS.separator, { fg = theme.colors.bright_black })
+end
+
+-- Apply highlighting to status area using buffer highlights (not syntax)
+function M.apply_status_highlighting(bufnr, status_height)
+  if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+    return
+  end
+  
+  M.setup_highlights()
+  
+  -- Get buffer content for the status area only
+  local status_lines = vim.api.nvim_buf_get_lines(bufnr, 0, status_height, false)
+  
+  -- Apply highlights line by line for just the status area
+  for line_nr = 0, status_height - 1 do
+    if line_nr < #status_lines then
+      local line = status_lines[line_nr + 1]
+      M.apply_line_highlights(bufnr, line_nr, line)
+    end
+  end
+end
+
+-- Apply highlights to a specific line
+function M.apply_line_highlights(bufnr, line_nr, line_content)
+  -- Border characters
+  local start_col = 1
+  while start_col <= #line_content do
+    local border_start, border_end = line_content:find('[┌┐└┘│─]', start_col)
+    if border_start then
+      vim.api.nvim_buf_add_highlight(bufnr, -1, STATUS_HIGHLIGHTS.border, line_nr, border_start - 1, border_end)
+      start_col = border_end + 1
+    else
+      break
+    end
+  end
+  
+  -- Selection count
+  local sel_start, sel_end = line_content:find('Selected: %d+ commits?')
+  if sel_start then
+    vim.api.nvim_buf_add_highlight(bufnr, -1, STATUS_HIGHLIGHTS.selection_count, line_nr, sel_start - 1, sel_end)
+  end
+  
+  local no_sel_start, no_sel_end = line_content:find('No commits selected')
+  if no_sel_start then
+    vim.api.nvim_buf_add_highlight(bufnr, -1, STATUS_HIGHLIGHTS.selection_count, line_nr, no_sel_start - 1, no_sel_end)
+  end
+  
+  -- Mode
+  local mode_start, mode_end = line_content:find('Mode: %w+')
+  if mode_start then
+    vim.api.nvim_buf_add_highlight(bufnr, -1, STATUS_HIGHLIGHTS.mode, line_nr, mode_start - 1, mode_end)
+  end
+  
+  -- Working copy label and commit ID
+  local wc_start, wc_end = line_content:find('Working Copy:')
+  if wc_start then
+    vim.api.nvim_buf_add_highlight(bufnr, -1, STATUS_HIGHLIGHTS.working_copy_label, line_nr, wc_start - 1, wc_end)
+    
+    -- Commit ID after "Working Copy: "
+    local commit_start, commit_end = line_content:find('[a-f0-9]+', wc_end + 1)
+    if commit_start then
+      vim.api.nvim_buf_add_highlight(bufnr, -1, STATUS_HIGHLIGHTS.commit_id, line_nr, commit_start - 1, commit_end)
+    end
+  end
+  
+  -- Help key bindings
+  local help_patterns = {'Tab:', 'Space:', 'rs:', 'rr:', '%?:'}
+  for _, pattern in ipairs(help_patterns) do
+    local help_start, help_end = line_content:find(pattern)
+    if help_start then
+      vim.api.nvim_buf_add_highlight(bufnr, -1, STATUS_HIGHLIGHTS.help_key, line_nr, help_start - 1, help_end)
+    end
+  end
+  
+  -- Help descriptions
+  local desc_patterns = {'expand', 'select', 'revsets', 'custom', 'help'}
+  for _, pattern in ipairs(desc_patterns) do
+    local desc_start, desc_end = line_content:find('%f[%w]' .. pattern .. '%f[%W]')
+    if desc_start then
+      vim.api.nvim_buf_add_highlight(bufnr, -1, STATUS_HIGHLIGHTS.help_desc, line_nr, desc_start - 1, desc_end)
+    end
+  end
+  
+  -- Separators
+  start_col = 1
+  while start_col <= #line_content do
+    local sep_start, sep_end = line_content:find(' │ ', start_col)
+    if sep_start then
+      vim.api.nvim_buf_add_highlight(bufnr, -1, STATUS_HIGHLIGHTS.separator, line_nr, sep_start - 1, sep_end)
+      start_col = sep_end + 1
+    else
+      break
+    end
+  end
 end
 
 -- Build the actual status content lines
@@ -206,6 +330,11 @@ function M.reset_status()
   status_state.current_commit_id = nil
   status_state.current_commit_description = nil
   status_state.repository_info = ""
+end
+
+-- Get available status highlight groups (for debugging/testing)
+function M.get_highlight_groups()
+  return STATUS_HIGHLIGHTS
 end
 
 return M

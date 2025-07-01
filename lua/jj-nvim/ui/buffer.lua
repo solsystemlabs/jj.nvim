@@ -186,7 +186,7 @@ M.update_from_commits = function(buf_id, commits, mode, window_width)
   local clean_lines = {}
   local highlights = {}
   
-  -- Add status lines (no highlights for now)
+  -- Add status lines
   for _, status_line in ipairs(status_lines) do
     table.insert(clean_lines, status_line)
   end
@@ -218,6 +218,9 @@ M.update_from_commits = function(buf_id, commits, mode, window_width)
   for _, hl in ipairs(highlights) do
     vim.api.nvim_buf_add_highlight(buf_id, -1, hl.hl_group, hl.line, hl.col_start, hl.col_end)
   end
+  
+  -- Apply status window highlighting (only to status area)
+  status.apply_status_highlighting(buf_id, status_height)
   
   vim.api.nvim_buf_set_option(buf_id, 'modifiable', false)
   vim.api.nvim_buf_set_option(buf_id, 'readonly', true)
