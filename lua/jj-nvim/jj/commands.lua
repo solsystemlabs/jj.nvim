@@ -294,7 +294,99 @@ M.split_interactive = function(commit_id, options)
     table.insert(cmd_args, commit_id)
   end
   
+  -- Add diff tool if specified
+  if options.tool then
+    table.insert(cmd_args, '--tool')
+    table.insert(cmd_args, options.tool)
+  end
+  
+  -- Add filesets/paths if specified
+  if options.filesets and #options.filesets > 0 then
+    for _, fileset in ipairs(options.filesets) do
+      table.insert(cmd_args, fileset)
+    end
+  end
+  
   return M.execute_interactive(cmd_args, options)
+end
+
+-- Split source revision 
+M.split = function(source_revision, options)
+  options = options or {}
+  local cmd_args = { 'split' }
+  
+  -- Add source revision if provided, otherwise defaults to @
+  if source_revision and source_revision ~= "" then
+    table.insert(cmd_args, '-r')
+    table.insert(cmd_args, source_revision)
+  end
+  
+  -- Add message if provided
+  if options.message and options.message ~= "" then
+    table.insert(cmd_args, '-m')
+    table.insert(cmd_args, options.message)
+  end
+  
+  -- Add destination revisions if provided
+  if options.destination and #options.destination > 0 then
+    table.insert(cmd_args, '-d')
+    for _, dest in ipairs(options.destination) do
+      table.insert(cmd_args, dest)
+    end
+  end
+  
+  -- Add insert-after revisions if provided
+  if options.insert_after and #options.insert_after > 0 then
+    table.insert(cmd_args, '-A')
+    for _, after in ipairs(options.insert_after) do
+      table.insert(cmd_args, after)
+    end
+  end
+  
+  -- Add insert-before revisions if provided
+  if options.insert_before and #options.insert_before > 0 then
+    table.insert(cmd_args, '-B')
+    for _, before in ipairs(options.insert_before) do
+      table.insert(cmd_args, before)
+    end
+  end
+  
+  -- Add parallel flag if specified
+  if options.parallel then
+    table.insert(cmd_args, '--parallel')
+  end
+  
+  -- Add interactive mode
+  if options.interactive then
+    table.insert(cmd_args, '--interactive')
+  end
+  
+  -- Add diff tool for interactive mode
+  if options.tool then
+    table.insert(cmd_args, '--tool')
+    table.insert(cmd_args, options.tool)
+  end
+  
+  -- Add filesets/paths if specified
+  if options.filesets and #options.filesets > 0 then
+    for _, fileset in ipairs(options.filesets) do
+      table.insert(cmd_args, fileset)
+    end
+  end
+  
+  -- Use interactive execution for interactive mode
+  if options.interactive then
+    -- Pass through callback options for interactive terminal
+    local interactive_options = {
+      on_success = options.on_success,
+      on_error = options.on_error,
+      on_cancel = options.on_cancel,
+      cwd = options.cwd,
+    }
+    return M.execute_interactive(cmd_args, interactive_options)
+  else
+    return M.execute(cmd_args, { silent = options.silent })
+  end
 end
 
 -- Interactive squash

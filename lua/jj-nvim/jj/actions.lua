@@ -1450,5 +1450,200 @@ M.handle_squash_options_selection = function(selected_item, target, target_type,
   end
 end
 
+-- Split the specified commit
+M.split_commit = function(commit, options)
+  if not commit then
+    vim.notify("No commit selected", vim.log.levels.WARN)
+    return false
+  end
+
+  options = options or {}
+
+  -- Don't allow splitting the root commit
+  if commit.root then
+    vim.notify("Cannot split the root commit", vim.log.levels.WARN)
+    return false
+  end
+
+  local change_id, err = get_change_id(commit)
+  if not change_id then
+    vim.notify(err, vim.log.levels.ERROR)
+    return false
+  end
+
+  local display_id = get_short_display_id(commit, change_id)
+  
+  -- Handle interactive mode with callbacks
+  if options.interactive then
+    -- Add callbacks for interactive mode
+    options.on_success = function()
+      vim.notify(string.format("Interactive split of %s completed", display_id), vim.log.levels.INFO)
+      -- Buffer refresh is handled automatically by interactive terminal
+    end
+    options.on_error = function(exit_code)
+      -- Error message already shown by interactive terminal
+    end
+    options.on_cancel = function()
+      vim.notify("Interactive split cancelled", vim.log.levels.INFO)
+    end
+    
+    -- Execute interactive split
+    local success = commands.split(change_id, options)
+    if not success then
+      vim.notify("Failed to start interactive split", vim.log.levels.ERROR)
+      return false
+    end
+    return true -- Interactive command started successfully
+  else
+    -- Non-interactive split
+    local result, exec_err = commands.split(change_id, options)
+    if not result then
+      local error_msg = exec_err or "Unknown error"
+      if error_msg:find("No such revision") then
+        error_msg = "Commit not found - it may have been abandoned or modified"
+      elseif error_msg:find("would create a cycle") then
+        error_msg = "Cannot split - would create a cycle in commit graph"
+      elseif error_msg:find("not in workspace") then
+        error_msg = "Not in a jj workspace"
+      elseif error_msg:find("empty commit") then
+        error_msg = "Cannot split empty commit - use 'jj new' instead"
+      end
+
+      vim.notify(string.format("Failed to split commit: %s", error_msg), vim.log.levels.ERROR)
+      return false
+    end
+
+    vim.notify(string.format("Split commit %s", display_id), vim.log.levels.INFO)
+    return true
+  end
+end
+
+-- Show split options menu
+M.show_split_options_menu = function(target_commit, parent_win_id)
+  local inline_menu = require('jj-nvim.ui.inline_menu')
+  
+  -- Determine target display name
+  local target_display = ""
+  if target_commit then
+    target_display = target_commit.short_change_id or target_commit.change_id:sub(1, 8)
+  else
+    target_display = "@"
+  end
+
+  -- Define menu configuration
+  local menu_config = {
+    title = "Split " .. target_display,
+    items = {
+      {
+        key = "q",
+        description = "Quick split (interactive diff editor)",
+        action = "quick_split",
+      },
+      {
+        key = "i",
+        description = "Interactive split (choose parts)",
+        action = "interactive_split",
+      },
+      {
+        key = "p",
+        description = "Parallel split (side-by-side)",
+        action = "parallel_split",
+      },
+      {
+        key = "f",
+        description = "Split specific files (filesets)",
+        action = "fileset_split",
+      },
+      {
+        key = "a",
+        description = "Split with insert-after (select target)",
+        action = "insert_after_split",
+      },
+      {
+        key = "b",
+        description = "Split with insert-before (select target)",
+        action = "insert_before_split",
+      },
+      {
+        key = "d",
+        description = "Split with destination (select target)",
+        action = "destination_split",
+      },
+    }
+  }
+
+  -- Show the menu
+  parent_win_id = parent_win_id or vim.api.nvim_get_current_win()
+
+  inline_menu.show(parent_win_id, menu_config, {
+    on_select = function(selected_item)
+      M.handle_split_options_selection(selected_item, target_commit)
+    end,
+    on_cancel = function()
+      vim.notify("Split cancelled", vim.log.levels.INFO)
+    end
+  })
+end
+
+-- Handle split options menu selection
+M.handle_split_options_selection = function(selected_item, target_commit)
+  local options = {}
+  
+  -- Configure options based on selection
+  if selected_item.action == "interactive_split" then
+    options.interactive = true
+  elseif selected_item.action == "parallel_split" then
+    options.parallel = true
+    options.interactive = true -- Parallel splits are typically interactive
+  elseif selected_item.action == "fileset_split" then
+    -- Prompt for filesets
+    vim.ui.input({
+      prompt = "Enter file patterns (e.g., '*.lua src/'):",
+      default = "",
+    }, function(filesets_str)
+      if not filesets_str or filesets_str:match("^%s*$") then
+        vim.notify("Split cancelled - no file patterns provided", vim.log.levels.INFO)
+        return
+      end
+
+      -- Split filesets by spaces
+      local filesets = vim.split(filesets_str, "%s+")
+      options.filesets = filesets
+      options.interactive = true -- Fileset splits are typically interactive
+      
+      local success = M.split_commit(target_commit, options)
+      if success then
+        -- Refresh buffer to show changes
+        require('jj-nvim').refresh()
+      end
+    end)
+    return -- Exit early for fileset handling
+  elseif selected_item.action == "insert_after_split" then
+    -- Enter target selection mode for insert-after
+    local window = require('jj-nvim.ui.window')
+    window.enter_split_target_selection_mode("insert_after", target_commit)
+    return -- Exit early - target selection will handle the rest
+  elseif selected_item.action == "insert_before_split" then
+    -- Enter target selection mode for insert-before
+    local window = require('jj-nvim.ui.window')
+    window.enter_split_target_selection_mode("insert_before", target_commit)
+    return -- Exit early - target selection will handle the rest
+  elseif selected_item.action == "destination_split" then
+    -- Enter target selection mode for destination
+    local window = require('jj-nvim.ui.window')
+    window.enter_split_target_selection_mode("destination", target_commit)
+    return -- Exit early - target selection will handle the rest
+  else
+    -- quick_split uses default options (interactive diff editor)
+    options.interactive = true
+  end
+
+  local success = M.split_commit(target_commit, options)
+  if success then
+    -- Refresh buffer to show changes
+    require('jj-nvim').refresh()
+  end
+end
+
 return M
 

@@ -419,6 +419,24 @@ M.setup_keymaps = function()
     M.enter_target_selection_mode("squash", current_commit)
   end, opts)
 
+  -- Split commit (show split options menu)
+  vim.keymap.set('n', 'v', function()
+    local current_commit = navigation.get_current_commit(state.win_id)
+    if not current_commit then
+      vim.notify("No commit under cursor to split", vim.log.levels.WARN)
+      return
+    end
+
+    -- Don't allow splitting the root commit
+    if current_commit.root then
+      vim.notify("Cannot split the root commit", vim.log.levels.WARN)
+      return
+    end
+
+    -- Show split options menu for the current commit
+    actions.show_split_options_menu(current_commit, state.win_id)
+  end, opts)
+
   -- Bookmark operations
   vim.keymap.set('n', 'b', function()
     M.show_bookmark_menu()
@@ -834,6 +852,41 @@ M.enter_target_selection_mode = function(action_type, source_commit)
   end
 end
 
+-- Enter split target selection mode
+M.enter_split_target_selection_mode = function(split_action, source_commit)
+  if not M.is_open() then
+    vim.notify("JJ window is not open", vim.log.levels.WARN)
+    return
+  end
+
+  -- Store current cursor position to return to if cancelled
+  local current_line = vim.api.nvim_win_get_cursor(state.win_id)[1]
+
+  local mode_data = {
+    action = "split_" .. split_action, -- "split_insert_after", "split_insert_before", "split_destination"
+    split_action = split_action, -- "insert_after", "insert_before", "destination"
+    source_commit = source_commit,
+    original_line = current_line
+  }
+
+  M.set_mode(MODES.TARGET_SELECT, mode_data)
+
+  -- Update keymaps for target selection
+  M.setup_target_selection_keymaps()
+
+  -- Show appropriate status message
+  local action_desc
+  if split_action == "insert_after" then
+    action_desc = "select target to insert split result after"
+  elseif split_action == "insert_before" then
+    action_desc = "select target to insert split result before"
+  elseif split_action == "destination" then
+    action_desc = "select destination to rebase split result onto"
+  end
+
+  vim.notify(string.format("Split mode: %s (Enter to confirm, Esc to cancel)", action_desc), vim.log.levels.INFO)
+end
+
 -- Confirm target selection and execute action
 M.confirm_target_selection = function()
   if not M.is_mode(MODES.TARGET_SELECT) then
@@ -875,6 +928,72 @@ M.confirm_target_selection = function()
 
     -- Show squash options menu with source commit information
     actions.show_squash_options_menu(target_commit, "commit", state.win_id, source_commit)
+  elseif action_type == "split_insert_after" then
+    -- Execute split with insert-after
+    local source_commit = mode_data.source_commit
+    local target_change_id = commit_utils.get_id(target_commit)
+    if not target_change_id or target_change_id == "" then
+      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
+      return
+    end
+
+    local options = {
+      insert_after = { target_change_id },
+      interactive = true
+    }
+    
+    success = actions.split_commit(source_commit, options)
+    if success then
+      require('jj-nvim').refresh()
+    end
+    
+    -- Return to normal mode
+    M.reset_mode()
+    M.setup_keymaps()
+  elseif action_type == "split_insert_before" then
+    -- Execute split with insert-before
+    local source_commit = mode_data.source_commit
+    local target_change_id = commit_utils.get_id(target_commit)
+    if not target_change_id or target_change_id == "" then
+      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
+      return
+    end
+
+    local options = {
+      insert_before = { target_change_id },
+      interactive = true
+    }
+    
+    success = actions.split_commit(source_commit, options)
+    if success then
+      require('jj-nvim').refresh()
+    end
+    
+    -- Return to normal mode
+    M.reset_mode()
+    M.setup_keymaps()
+  elseif action_type == "split_destination" then
+    -- Execute split with destination
+    local source_commit = mode_data.source_commit
+    local target_change_id = commit_utils.get_id(target_commit)
+    if not target_change_id or target_change_id == "" then
+      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
+      return
+    end
+
+    local options = {
+      destination = { target_change_id },
+      interactive = true
+    }
+    
+    success = actions.split_commit(source_commit, options)
+    if success then
+      require('jj-nvim').refresh()
+    end
+    
+    -- Return to normal mode
+    M.reset_mode()
+    M.setup_keymaps()
   end
 end
 
