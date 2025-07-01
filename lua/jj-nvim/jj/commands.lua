@@ -484,5 +484,87 @@ M.squash = function(target_revision, options)
   end
 end
 
+-- Rebase operation
+M.rebase = function(options)
+  if not options or not (options.destination or options.insert_after or options.insert_before) then
+    return nil, "No rebase target specified (destination, insert_after, or insert_before required)"
+  end
+
+  options = options or {}
+  local cmd_args = { 'rebase' }
+
+  -- Add source selection options (only one should be specified)
+  if options.branch then
+    table.insert(cmd_args, '-b')
+    if type(options.branch) == 'table' then
+      for _, branch in ipairs(options.branch) do
+        table.insert(cmd_args, branch)
+      end
+    else
+      table.insert(cmd_args, options.branch)
+    end
+  elseif options.source then
+    table.insert(cmd_args, '-s')
+    if type(options.source) == 'table' then
+      for _, source in ipairs(options.source) do
+        table.insert(cmd_args, source)
+      end
+    else
+      table.insert(cmd_args, options.source)
+    end
+  elseif options.revisions then
+    table.insert(cmd_args, '-r')
+    if type(options.revisions) == 'table' then
+      for _, revision in ipairs(options.revisions) do
+        table.insert(cmd_args, revision)
+      end
+    else
+      table.insert(cmd_args, options.revisions)
+    end
+  end
+  -- If none specified, jj rebase defaults to -b @
+
+  -- Add destination options (only one should be specified)
+  if options.destination then
+    table.insert(cmd_args, '-d')
+    if type(options.destination) == 'table' then
+      for _, dest in ipairs(options.destination) do
+        table.insert(cmd_args, dest)
+      end
+    else
+      table.insert(cmd_args, options.destination)
+    end
+  elseif options.insert_after then
+    table.insert(cmd_args, '-A')
+    if type(options.insert_after) == 'table' then
+      for _, after in ipairs(options.insert_after) do
+        table.insert(cmd_args, after)
+      end
+    else
+      table.insert(cmd_args, options.insert_after)
+    end
+  elseif options.insert_before then
+    table.insert(cmd_args, '-B')
+    if type(options.insert_before) == 'table' then
+      for _, before in ipairs(options.insert_before) do
+        table.insert(cmd_args, before)
+      end
+    else
+      table.insert(cmd_args, options.insert_before)
+    end
+  end
+
+  -- Add additional flags
+  if options.skip_emptied then
+    table.insert(cmd_args, '--skip-emptied')
+  end
+
+  if options.keep_divergent then
+    table.insert(cmd_args, '--keep-divergent')
+  end
+
+  return M.execute(cmd_args, { silent = options.silent })
+end
+
 return M
 
