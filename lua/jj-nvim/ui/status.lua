@@ -13,6 +13,7 @@ local status_state = {
   selected_count = 0,
   current_mode = "NORMAL",
   current_commit_id = nil,
+  current_commit_description = nil,
   repository_info = "",
   last_window_width = 80,
   cached_height = STATUS_CONFIG.MIN_HEIGHT,
@@ -34,6 +35,52 @@ function M.calculate_status_height(window_width)
   status_state.cached_height = final_height
   
   return final_height
+end
+
+-- Helper function to truncate text with ellipsis
+local function truncate_with_ellipsis(text, max_length)
+  if #text <= max_length then
+    return text
+  end
+  return text:sub(1, max_length - 3) .. "..."
+end
+
+-- Helper function to wrap text intelligently
+local function wrap_text_intelligently(text_segments, content_width)
+  local wrapped_lines = {}
+  local current_line = ""
+  
+  for i, segment in ipairs(text_segments) do
+    local separator = (current_line ~= "") and " │ " or ""
+    local test_line = current_line .. separator .. segment
+    
+    if #test_line <= content_width then
+      -- Fits on current line
+      current_line = test_line
+    else
+      -- Doesn't fit on current line
+      if current_line ~= "" then
+        -- Save current line and try to fit the segment on a new line
+        table.insert(wrapped_lines, current_line)
+        current_line = ""
+      end
+      
+      -- Try to fit the segment on the new line
+      if #segment <= content_width then
+        current_line = segment
+      else
+        -- Segment is too long even for its own line, truncate it
+        current_line = truncate_with_ellipsis(segment, content_width)
+      end
+    end
+  end
+  
+  -- Add the final line if not empty
+  if current_line ~= "" then
+    table.insert(wrapped_lines, current_line)
+  end
+  
+  return wrapped_lines
 end
 
 -- Build the actual status content lines
@@ -65,43 +112,40 @@ function M.build_status_content(window_width)
   end
   
   local mode_text = string.format("Mode: %s", status_state.current_mode)
-  local line1_content = selection_text .. " │ " .. mode_text
   
-  -- Handle wrapping
-  if #line1_content > content_width then
-    table.insert(content_lines, selection_text)
-    table.insert(content_lines, mode_text)
-  else
-    table.insert(content_lines, line1_content)
+  -- Use intelligent wrapping for line 1
+  local line1_segments = {selection_text, mode_text}
+  local line1_wrapped = wrap_text_intelligently(line1_segments, content_width)
+  for _, line in ipairs(line1_wrapped) do
+    table.insert(content_lines, line)
   end
   
-  -- Line 2: Repository and current working copy commit
-  local repo_info = status_state.repository_info ~= "" and status_state.repository_info or "Repository: jj"
-  local commit_info = ""
+  -- Line 2: Working copy information (with description)
+  local line2_segments = {}
+  
   if status_state.current_commit_id then
-    commit_info = string.format("Working Copy: %s", status_state.current_commit_id)
-  end
-  
-  local line2_content = commit_info ~= "" and (repo_info .. " │ " .. commit_info) or repo_info
-  
-  -- Handle wrapping
-  if #line2_content > content_width then
-    table.insert(content_lines, repo_info)
-    if commit_info ~= "" then
-      table.insert(content_lines, commit_info)
+    local working_copy_text = string.format("Working Copy: %s", status_state.current_commit_id)
+    table.insert(line2_segments, working_copy_text)
+    
+    -- Add description if available - let the wrapping function handle whether it fits
+    if status_state.current_commit_description and status_state.current_commit_description ~= "" then
+      table.insert(line2_segments, status_state.current_commit_description)
     end
-  else
-    table.insert(content_lines, line2_content)
   end
   
-  -- Line 3: Help hints (log-window specific)
-  local help_text = "Tab: expand │ Space: select │ rs: revsets │ rr: custom │ ?: help"
-  if #help_text > content_width then
-    -- Split into multiple lines if too long
-    table.insert(content_lines, "Tab: expand │ Space: select │ rs: revsets")
-    table.insert(content_lines, "rr: custom │ ?: help")
-  else
-    table.insert(content_lines, help_text)
+  -- Use intelligent wrapping for line 2
+  if #line2_segments > 0 then
+    local line2_wrapped = wrap_text_intelligently(line2_segments, content_width)
+    for _, line in ipairs(line2_wrapped) do
+      table.insert(content_lines, line)
+    end
+  end
+  
+  -- Line 3: Help hints (log-window specific) with intelligent wrapping
+  local help_segments = {"Tab: expand", "Space: select", "rs: revsets", "rr: custom", "?: help"}
+  local help_wrapped = wrap_text_intelligently(help_segments, content_width)
+  for _, line in ipairs(help_wrapped) do
+    table.insert(content_lines, line)
   end
   
   -- Pad to minimum content lines
@@ -137,6 +181,9 @@ function M.update_status(updates)
   if updates.current_commit_id then
     status_state.current_commit_id = updates.current_commit_id
   end
+  if updates.current_commit_description then
+    status_state.current_commit_description = updates.current_commit_description
+  end
   if updates.repository_info then
     status_state.repository_info = updates.repository_info
   end
@@ -157,6 +204,7 @@ function M.reset_status()
   status_state.selected_count = 0
   status_state.current_mode = "NORMAL"
   status_state.current_commit_id = nil
+  status_state.current_commit_description = nil
   status_state.repository_info = ""
 end
 

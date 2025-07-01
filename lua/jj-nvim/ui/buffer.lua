@@ -370,9 +370,11 @@ M.update_from_fresh_data = function(commits, revset)
   
   -- Find current working copy commit from fresh data
   local current_working_copy_id = nil
+  local current_working_copy_description = nil
   for _, commit in ipairs(commits) do
     if commit.current_working_copy then
       current_working_copy_id = commit.short_change_id or commit.change_id
+      current_working_copy_description = commit.description
       break
     end
   end
@@ -390,7 +392,8 @@ M.update_from_fresh_data = function(commits, revset)
   -- Update status with fresh working copy information
   status.update_status({
     current_commit_id = current_working_copy_id,
-    repository_info = "Repository: jj"
+    current_commit_description = current_working_copy_description,
+    repository_info = ""
   })
   
   -- Update buffer content with fresh data and status
