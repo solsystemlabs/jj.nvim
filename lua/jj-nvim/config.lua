@@ -66,6 +66,15 @@ M.setup = function(opts)
 
   -- Merge: defaults < persistent settings < user opts
   M.options = vim.tbl_deep_extend('force', M.defaults, M.persistent_settings, opts or {})
+  
+  -- Initialize persistent window width if not set
+  if not M.persistent_settings.window then
+    M.persistent_settings.window = {}
+  end
+  if not M.persistent_settings.window.width then
+    M.persistent_settings.window.width = M.defaults.window.width
+    persistence.save(M.persistent_settings)
+  end
 end
 
 M.get = function(key)
@@ -106,6 +115,16 @@ M.set = function(key, value)
   current[keys[#keys]] = value
 
   -- Save to disk
+  persistence.save(M.persistent_settings)
+end
+
+-- Convenience function to persist window width
+M.persist_window_width = function(width)
+  if not M.persistent_settings.window then
+    M.persistent_settings.window = {}
+  end
+  M.persistent_settings.window.width = width
+  M.options.window.width = width
   persistence.save(M.persistent_settings)
 end
 

@@ -138,9 +138,11 @@ local function create_window()
 
   -- Create a vertical split
   if position == 'left' then
-    vim.cmd('leftabove vsplit')
+    -- For left position, create split at the leftmost edge
+    vim.cmd('topleft vsplit')
   else
-    vim.cmd('rightbelow vsplit')
+    -- For right position, create split at the rightmost edge
+    vim.cmd('botright vsplit')
   end
 
   -- Get the new window and resize it
@@ -406,6 +408,23 @@ M.setup_commit_highlighting = function()
     buffer = state.buf_id,
     callback = M.highlight_current_commit,
     group = vim.api.nvim_create_augroup('JJCommitHighlight_' .. state.buf_id, { clear = true })
+  })
+
+  -- Set up autocmd to persist window width changes
+  vim.api.nvim_create_autocmd('WinResized', {
+    callback = function()
+      -- Only handle resize for our window
+      if state.win_id and vim.api.nvim_win_is_valid(state.win_id) then
+        local current_width = vim.api.nvim_win_get_width(state.win_id)
+        local config_width = config.get('window.width')
+        
+        -- Only persist if width actually changed
+        if current_width ~= config_width then
+          config.persist_window_width(current_width)
+        end
+      end
+    end,
+    group = vim.api.nvim_create_augroup('JJWindowResize_' .. state.buf_id, { clear = true })
   })
 
   -- Initial highlighting
