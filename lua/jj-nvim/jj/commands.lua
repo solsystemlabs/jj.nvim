@@ -3,24 +3,33 @@ local M = {}
 M.execute = function(args, opts)
   opts = opts or {}
   local cmd = { 'jj' }
-  
+
   if type(args) == 'string' then
     args = vim.split(args, ' ', { plain = true })
   end
-  
+
   for _, arg in ipairs(args) do
     table.insert(cmd, arg)
   end
-  
-  local result = vim.system(cmd, { text = true }):wait()
-  
+
+  local result = vim.system(cmd, { text = true }):wait(3000) -- 3 second timeout
+
+  -- Handle timeout case where result is nil
+  if not result then
+    local error_msg = 'jj command timed out after 3 seconds'
+    if not opts.silent then
+      vim.notify(error_msg, vim.log.levels.ERROR)
+    end
+    return nil, error_msg
+  end
+
   if result.code ~= 0 then
     if not opts.silent then
       vim.notify('jj command failed: ' .. (result.stderr or 'Unknown error'), vim.log.levels.ERROR)
     end
     return nil, result.stderr
   end
-  
+
   return result.stdout, nil
 end
 
@@ -34,13 +43,13 @@ M.get_current_branch = function()
   if not result then
     return nil
   end
-  
+
   for line in result:gmatch('[^\r\n]+') do
     if line:match('%*') then
       return line:match('%* ([^%s]+)')
     end
   end
-  
+
   return nil
 end
 
@@ -49,32 +58,32 @@ M.get_diff = function(change_id, options)
   if not change_id or change_id == "" then
     return nil, "No change ID provided"
   end
-  
+
   options = options or {}
   local cmd_args = { 'diff', '-r', change_id }
-  
+
   -- Add format options
   if options.git then
     table.insert(cmd_args, '--git')
   end
-  
+
   if options.stat then
     table.insert(cmd_args, '--stat')
   end
-  
+
   if options.color_words then
     table.insert(cmd_args, '--color-words')
   end
-  
+
   if options.name_only then
     table.insert(cmd_args, '--name-only')
   end
-  
+
   -- Always request color output for better display
   if not options.no_color then
     table.insert(cmd_args, '--color=always')
   end
-  
+
   return M.execute(cmd_args, { silent = options.silent })
 end
 
@@ -90,31 +99,31 @@ M.get_diff_range = function(from_rev, to_rev, options)
   if not from_rev or from_rev == "" or not to_rev or to_rev == "" then
     return nil, "Both from_rev and to_rev must be provided"
   end
-  
+
   options = options or {}
   local cmd_args = { 'diff', '-r', from_rev .. '..' .. to_rev }
-  
+
   -- Add format options (same as get_diff)
   if options.git then
     table.insert(cmd_args, '--git')
   end
-  
+
   if options.stat then
     table.insert(cmd_args, '--stat')
   end
-  
+
   if options.color_words then
     table.insert(cmd_args, '--color-words')
   end
-  
+
   if options.name_only then
     table.insert(cmd_args, '--name-only')
   end
-  
+
   if not options.no_color then
     table.insert(cmd_args, '--color=always')
   end
-  
+
   return M.execute(cmd_args, { silent = options.silent })
 end
 
@@ -122,40 +131,40 @@ end
 M.git_fetch = function(options)
   options = options or {}
   local cmd_args = { 'git', 'fetch' }
-  
+
   -- Add remote if specified
   if options.remote then
     table.insert(cmd_args, options.remote)
   end
-  
+
   -- Add branch if specified
   if options.branch then
     table.insert(cmd_args, options.branch)
   end
-  
+
   return M.execute(cmd_args, { silent = options.silent })
 end
 
--- JJ git push operation  
+-- JJ git push operation
 M.git_push = function(options)
   options = options or {}
   local cmd_args = { 'git', 'push' }
-  
+
   -- Add remote if specified
   if options.remote then
     table.insert(cmd_args, options.remote)
   end
-  
+
   -- Add branch if specified
   if options.branch then
     table.insert(cmd_args, options.branch)
   end
-  
+
   -- Add force flag if specified
   if options.force then
     table.insert(cmd_args, '--force-with-lease')
   end
-  
+
   return M.execute(cmd_args, { silent = options.silent })
 end
 
@@ -163,19 +172,19 @@ end
 M.get_status = function(options)
   options = options or {}
   local cmd_args = { 'status' }
-  
+
   -- Add file path restrictions if specified
   if options.paths and #options.paths > 0 then
     for _, path in ipairs(options.paths) do
       table.insert(cmd_args, path)
     end
   end
-  
+
   -- Always request color output for better display
   if not options.no_color then
     table.insert(cmd_args, '--color=always')
   end
-  
+
   return M.execute(cmd_args, { silent = options.silent })
 end
 
@@ -184,24 +193,24 @@ M.describe = function(change_id, message, options)
   if not change_id or change_id == "" then
     return nil, "No change ID provided"
   end
-  
+
   if not message then
     return nil, "No message provided"
   end
-  
+
   options = options or {}
   local cmd_args = { 'describe', '-r', change_id, '-m', message }
-  
+
   -- Add additional options if specified
   if options.reset_author then
     table.insert(cmd_args, '--reset-author')
   end
-  
+
   if options.author then
     table.insert(cmd_args, '--author')
     table.insert(cmd_args, options.author)
   end
-  
+
   return M.execute(cmd_args, { silent = options.silent })
 end
 
@@ -209,41 +218,41 @@ end
 M.commit = function(message, options)
   options = options or {}
   local cmd_args = { 'commit' }
-  
+
   -- Add message if provided
   if message and message ~= "" then
     table.insert(cmd_args, '-m')
     table.insert(cmd_args, message)
   end
-  
+
   -- Add interactive mode
   if options.interactive then
     table.insert(cmd_args, '--interactive')
   end
-  
+
   -- Add diff tool for interactive mode
   if options.tool then
     table.insert(cmd_args, '--tool')
     table.insert(cmd_args, options.tool)
   end
-  
+
   -- Add author options
   if options.reset_author then
     table.insert(cmd_args, '--reset-author')
   end
-  
+
   if options.author then
     table.insert(cmd_args, '--author')
     table.insert(cmd_args, options.author)
   end
-  
+
   -- Add filesets/paths if specified
   if options.filesets and #options.filesets > 0 then
     for _, fileset in ipairs(options.filesets) do
       table.insert(cmd_args, fileset)
     end
   end
-  
+
   return M.execute(cmd_args, { silent = options.silent })
 end
 
@@ -257,30 +266,30 @@ end
 M.commit_interactive = function(options)
   options = options or {}
   local cmd_args = { 'commit', '--interactive' }
-  
+
   -- Add diff tool if specified
   if options.tool then
     table.insert(cmd_args, '--tool')
     table.insert(cmd_args, options.tool)
   end
-  
+
   -- Add author options
   if options.reset_author then
     table.insert(cmd_args, '--reset-author')
   end
-  
+
   if options.author then
     table.insert(cmd_args, '--author')
     table.insert(cmd_args, options.author)
   end
-  
+
   -- Add filesets/paths if specified
   if options.filesets and #options.filesets > 0 then
     for _, fileset in ipairs(options.filesets) do
       table.insert(cmd_args, fileset)
     end
   end
-  
+
   return M.execute_interactive(cmd_args, options)
 end
 
@@ -288,45 +297,45 @@ end
 M.split_interactive = function(commit_id, options)
   options = options or {}
   local cmd_args = { 'split', '--interactive' }
-  
+
   if commit_id and commit_id ~= "" then
     table.insert(cmd_args, '-r')
     table.insert(cmd_args, commit_id)
   end
-  
+
   -- Add diff tool if specified
   if options.tool then
     table.insert(cmd_args, '--tool')
     table.insert(cmd_args, options.tool)
   end
-  
+
   -- Add filesets/paths if specified
   if options.filesets and #options.filesets > 0 then
     for _, fileset in ipairs(options.filesets) do
       table.insert(cmd_args, fileset)
     end
   end
-  
+
   return M.execute_interactive(cmd_args, options)
 end
 
--- Split source revision 
+-- Split source revision
 M.split = function(source_revision, options)
   options = options or {}
   local cmd_args = { 'split' }
-  
+
   -- Add source revision if provided, otherwise defaults to @
   if source_revision and source_revision ~= "" then
     table.insert(cmd_args, '-r')
     table.insert(cmd_args, source_revision)
   end
-  
+
   -- Add message if provided
   if options.message and options.message ~= "" then
     table.insert(cmd_args, '-m')
     table.insert(cmd_args, options.message)
   end
-  
+
   -- Add destination revisions if provided
   if options.destination and #options.destination > 0 then
     table.insert(cmd_args, '-d')
@@ -334,7 +343,7 @@ M.split = function(source_revision, options)
       table.insert(cmd_args, dest)
     end
   end
-  
+
   -- Add insert-after revisions if provided
   if options.insert_after and #options.insert_after > 0 then
     table.insert(cmd_args, '-A')
@@ -342,7 +351,7 @@ M.split = function(source_revision, options)
       table.insert(cmd_args, after)
     end
   end
-  
+
   -- Add insert-before revisions if provided
   if options.insert_before and #options.insert_before > 0 then
     table.insert(cmd_args, '-B')
@@ -350,30 +359,30 @@ M.split = function(source_revision, options)
       table.insert(cmd_args, before)
     end
   end
-  
+
   -- Add parallel flag if specified
   if options.parallel then
     table.insert(cmd_args, '--parallel')
   end
-  
+
   -- Add interactive mode
   if options.interactive then
     table.insert(cmd_args, '--interactive')
   end
-  
+
   -- Add diff tool for interactive mode
   if options.tool then
     table.insert(cmd_args, '--tool')
     table.insert(cmd_args, options.tool)
   end
-  
+
   -- Add filesets/paths if specified
   if options.filesets and #options.filesets > 0 then
     for _, fileset in ipairs(options.filesets) do
       table.insert(cmd_args, fileset)
     end
   end
-  
+
   -- Use interactive execution for interactive mode
   if options.interactive then
     -- Pass through callback options for interactive terminal
@@ -393,12 +402,12 @@ end
 M.squash_interactive = function(commit_id, options)
   options = options or {}
   local cmd_args = { 'squash', '--interactive' }
-  
+
   if commit_id and commit_id ~= "" then
     table.insert(cmd_args, '-r')
     table.insert(cmd_args, commit_id)
   end
-  
+
   return M.execute_interactive(cmd_args, options)
 end
 
@@ -407,54 +416,59 @@ M.squash = function(target_revision, options)
   if not target_revision or target_revision == "" then
     return nil, "No target revision provided"
   end
-  
+
   options = options or {}
   local cmd_args = { 'squash' }
-  
+
   -- Add source revision if provided, otherwise defaults to working copy
   if options.from_revision then
     table.insert(cmd_args, '--from')
     table.insert(cmd_args, options.from_revision)
   end
-  
+
   -- Add target revision
   table.insert(cmd_args, '--into')
   table.insert(cmd_args, target_revision)
-  
+
   -- Add message if provided
   if options.message and options.message ~= "" then
     table.insert(cmd_args, '-m')
     table.insert(cmd_args, options.message)
   end
-  
+
   -- Add interactive mode
   if options.interactive then
     table.insert(cmd_args, '--interactive')
   end
-  
+
   -- Add diff tool for interactive mode
   if options.tool then
     table.insert(cmd_args, '--tool')
     table.insert(cmd_args, options.tool)
   end
-  
+
   -- Use destination message
   if options.use_destination_message then
     table.insert(cmd_args, '--use-destination-message')
   end
-  
+
+  -- For non-interactive squash, default to using destination message if no other options specified
+  if not options.interactive and not options.message and not options.use_destination_message then
+    table.insert(cmd_args, '--use-destination-message')
+  end
+
   -- Keep emptied source
   if options.keep_emptied then
     table.insert(cmd_args, '--keep-emptied')
   end
-  
+
   -- Add filesets/paths if specified
   if options.filesets and #options.filesets > 0 then
     for _, fileset in ipairs(options.filesets) do
       table.insert(cmd_args, fileset)
     end
   end
-  
+
   -- Use interactive execution for interactive mode
   if options.interactive then
     -- Pass through callback options for interactive terminal
@@ -471,3 +485,4 @@ M.squash = function(target_revision, options)
 end
 
 return M
+

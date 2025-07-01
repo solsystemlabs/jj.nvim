@@ -8,6 +8,7 @@ local state = {
   buf_id = nil,
   job_id = nil,
   callbacks = nil,
+  timeout_timer = nil,
 }
 
 -- Create floating terminal window
@@ -59,6 +60,13 @@ end
 
 -- Clean up terminal state
 local function cleanup()
+  -- Cancel timeout timer
+  if state.timeout_timer then
+    state.timeout_timer:stop()
+    state.timeout_timer:close()
+    state.timeout_timer = nil
+  end
+  
   if state.job_id then
     vim.fn.jobstop(state.job_id)
     state.job_id = nil
@@ -82,11 +90,16 @@ local function on_exit(job_id, exit_code, event)
     -- Success - auto close and run success callback
     cleanup()
     
-    -- Always refresh with latest data after successful interactive commands
-    require('jj-nvim').refresh()
+    -- Schedule refresh to avoid potential deadlocks
+    vim.schedule(function()
+      require('jj-nvim').refresh()
+    end)
     
     if callbacks and callbacks.on_success then
-      callbacks.on_success()
+      -- Schedule callback to avoid blocking
+      vim.schedule(function()
+        callbacks.on_success()
+      end)
     end
   else
     -- Error - show message but keep terminal open for user to see error
@@ -97,13 +110,18 @@ local function on_exit(job_id, exit_code, event)
     if state.buf_id and vim.api.nvim_buf_is_valid(state.buf_id) then
       vim.keymap.set('n', 'q', function()
         cleanup()
-        -- Also refresh on manual close after error, in case some changes were made
-        require('jj-nvim').refresh()
+        -- Schedule refresh to avoid blocking main thread
+        vim.schedule(function()
+          require('jj-nvim').refresh()
+        end)
       end, { buffer = state.buf_id, noremap = true, silent = true })
     end
     
     if callbacks and callbacks.on_error then
-      callbacks.on_error(exit_code)
+      -- Schedule callback to avoid blocking
+      vim.schedule(function()
+        callbacks.on_error(exit_code)
+      end)
     end
   end
 end
@@ -142,13 +160,32 @@ M.run_interactive_command = function(cmd_args, options)
     on_cancel = options.on_cancel,
   }
   
+  -- Set up timeout (default 3 seconds, configurable)
+  local timeout_ms = (options.timeout_ms or 3000)
+  if timeout_ms > 0 then
+    state.timeout_timer = vim.loop.new_timer()
+    state.timeout_timer:start(timeout_ms, 0, function()
+      vim.schedule(function()
+        vim.notify(string.format("Interactive command timed out after %d seconds", timeout_ms / 1000), vim.log.levels.WARN)
+        cleanup()
+        if state.callbacks and state.callbacks.on_error then
+          state.callbacks.on_error(-1)  -- Use -1 to indicate timeout
+        end
+      end)
+    end)
+  end
+  
   -- Set up escape key to cancel
   vim.keymap.set('n', '<Esc>', function()
     cleanup()
-    -- Refresh on cancel in case partial changes were made
-    require('jj-nvim').refresh()
+    -- Schedule refresh to avoid blocking
+    vim.schedule(function()
+      require('jj-nvim').refresh()
+    end)
     if state.callbacks and state.callbacks.on_cancel then
-      state.callbacks.on_cancel()
+      vim.schedule(function()
+        state.callbacks.on_cancel()
+      end)
     end
   end, { buffer = buf_id, noremap = true, silent = true })
   
