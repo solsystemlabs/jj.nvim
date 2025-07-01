@@ -574,9 +574,6 @@ M.set_description = function(commit, on_success)
     end
 
     -- Allow empty description to clear it
-    if new_description == "" then
-      new_description = "(no description set)"
-    end
 
     local result, exec_err = describe.describe(change_id, new_description)
 
