@@ -29,6 +29,7 @@ local function build_help_content()
     "    gg            Go to first commit",
     "    G             Go to last commit", 
     "    @             Go to current commit",
+    "    <Up>/<Down>   Alternative navigation",
     "",
     "               ═══ Actions ═══",
     "    <CR>          Show diff for commit",
@@ -36,15 +37,18 @@ local function build_help_content()
     "    D             Show diff summary/stats",
     "    e             Edit commit",
     "    m             Set commit description",
-    "    a             Abandon commit(s)",
+    "    a             Abandon commit(s) - smart",
     "    A             Abandon selected commits",
     "    x             Squash commit (select target)",
-    "    n             New change menu",
+    "    v             Split commit (options menu)",
+    "    r             Rebase commit (options menu)",
+    "    n             New change (quick)",
+    "    N             New change (options menu)",
     "",
     "              ═══ Selection ═══",
     "    <Space>       Toggle commit selection",
     "    s             Show selection status",
-    "    <Esc>         Clear selections",
+    "    <Esc>         Clear selections or close",
     "    <Tab>         Toggle description expansion",
     "",
     "            ═══ Git Operations ═══",
@@ -61,12 +65,24 @@ local function build_help_content()
     "      m           Move bookmark here", 
     "      r           Rename bookmark",
     "      l           List bookmarks",
+    "      t           Toggle bookmark filter",
     "",
     "            ═══ Window Controls ═══",
     "    q             Close window",
     "    R             Refresh commits",
     "    +/-           Adjust width (large)",
     "    =/_           Adjust width (small)",
+    "",
+    "             ═══ Target Selection ═══",
+    "    <CR>          Confirm target selection",
+    "    <Esc>         Cancel target selection",
+    "    b             Show bookmark selection",
+    "",
+    "             ═══ Menu Navigation ═══",
+    "    j/k           Navigate menu items",
+    "    <CR>          Select menu item",
+    "    <Esc>/q       Cancel menu",
+    "    <BS>          Go back (parent menu)",
     "",
     "                ═══ Help ═══",
     "    ?             Show/hide this help",
@@ -120,7 +136,7 @@ local function create_help_window(parent_win_id)
   
   -- Calculate help window dimensions
   local help_width = 50
-  local help_height = 40
+  local help_height = 48
   
   -- Check if help dialog can fit within the log window (with margins)
   local min_margin = 4
