@@ -44,6 +44,7 @@ local function build_help_content()
     "    r             Rebase commit (options menu)",
     "    n             New change (quick)",
     "    N             New change (options menu)",
+    "    u             Undo last operation",
     "",
     "              ═══ Selection ═══",
     "    <Space>       Toggle commit selection",
@@ -80,7 +81,12 @@ local function build_help_content()
     "             ═══ Target Selection ═══",
     "    <CR>          Confirm target selection",
     "    <Esc>         Cancel target selection",
-    "    b             Show bookmark selection",
+    "    b             Show bookmark selection (squash)",
+    "",
+    "           ═══ Multi-Select Mode ═══",
+    "    <Space>       Toggle commit selection",
+    "    <CR>          Confirm selection & merge",
+    "    <Esc>         Cancel multi-selection",
     "",
     "             ═══ Menu Navigation ═══",
     "    j/k           Navigate menu items",
@@ -133,19 +139,43 @@ local function apply_help_highlighting(buf_id, lines)
 end
 
 -- Create help window centered in log window, or in editor if log window is too small
-local function create_help_window(parent_win_id)
+local function create_help_window(parent_win_id, content_lines)
   local parent_pos = vim.api.nvim_win_get_position(parent_win_id)
   local parent_width = vim.api.nvim_win_get_width(parent_win_id)
   local parent_height = vim.api.nvim_win_get_height(parent_win_id)
   
   -- Calculate help window dimensions
   local help_width = 50
-  local help_height = 48
-  
-  -- Check if help dialog can fit within the log window (with margins)
+  local content_height = #content_lines
   local min_margin = 4
-  local can_fit_in_parent = (parent_width >= help_width + min_margin) and 
-                           (parent_height >= help_height + min_margin)
+  
+  -- Calculate available height for different contexts
+  local parent_available_height = parent_height - (min_margin * 2)
+  local screen_available_height = vim.o.lines - (min_margin * 2)
+  
+  -- Apply 90% constraint to available height
+  local max_parent_height = math.floor(parent_available_height * 0.9)
+  local max_screen_height = math.floor(screen_available_height * 0.9)
+  
+  -- Determine optimal height (content height, but constrained by available space)
+  local help_height = content_height
+  local can_fit_in_parent = false
+  
+  if parent_width >= help_width + min_margin then
+    -- Check if we can fit in parent window
+    if help_height <= max_parent_height then
+      can_fit_in_parent = true
+    else
+      -- Try to fit in parent with 90% height constraint
+      help_height = max_parent_height
+      can_fit_in_parent = true
+    end
+  end
+  
+  -- If can't fit in parent, use screen space with 90% constraint
+  if not can_fit_in_parent then
+    help_height = math.min(content_height, max_screen_height)
+  end
   
   local col, row, relative, win_ref
   
@@ -199,18 +229,91 @@ local function create_help_window(parent_win_id)
   vim.api.nvim_win_set_option(win_id, 'number', false)
   vim.api.nvim_win_set_option(win_id, 'relativenumber', false)
   vim.api.nvim_win_set_option(win_id, 'signcolumn', 'no')
+  vim.api.nvim_win_set_option(win_id, 'scrolloff', 0)
   
-  return win_id, buf_id
+  -- Enable scrolling if content is larger than window
+  if content_height > help_height then
+    vim.api.nvim_win_set_option(win_id, 'wrap', false)
+    vim.api.nvim_win_set_option(win_id, 'scrollbind', false)
+  end
+  
+  return win_id, buf_id, help_height
 end
 
 -- Setup keymaps for help dialog
-local function setup_help_keymaps(buf_id, win_id)
+local function setup_help_keymaps(buf_id, win_id, content_height, window_height)
   local opts = { noremap = true, silent = true, buffer = buf_id }
   
   -- Close help dialog
   vim.keymap.set('n', 'q', function() M.close() end, opts)
   vim.keymap.set('n', '<Esc>', function() M.close() end, opts)
   vim.keymap.set('n', '?', function() M.close() end, opts)
+  
+  -- Add scroll navigation if content is larger than window
+  if content_height > window_height then
+    -- Calculate scroll bounds (allow 1-2 lines past end)
+    local max_top_line = math.max(content_height - window_height + 2, 1)
+    
+    -- Bounded scroll down (one line at a time)
+    vim.keymap.set('n', 'j', function()
+      local current_line = vim.fn.line('w0', win_id)  -- Get top line of window
+      if current_line < max_top_line then
+        vim.api.nvim_win_call(win_id, function()
+          vim.cmd('normal! j')
+        end)
+      end
+    end, opts)
+    
+    vim.keymap.set('n', '<Down>', function()
+      local current_line = vim.fn.line('w0', win_id)  -- Get top line of window  
+      if current_line < max_top_line then
+        vim.api.nvim_win_call(win_id, function()
+          vim.cmd('normal! j')
+        end)
+      end
+    end, opts)
+    
+    -- Bounded scroll up (one line at a time)
+    vim.keymap.set('n', 'k', function()
+      local current_line = vim.fn.line('w0', win_id)  -- Get top line of window
+      if current_line > 1 then
+        vim.api.nvim_win_call(win_id, function()
+          vim.cmd('normal! k')
+        end)
+      end
+    end, opts)
+    
+    vim.keymap.set('n', '<Up>', function()
+      local current_line = vim.fn.line('w0', win_id)  -- Get top line of window
+      if current_line > 1 then
+        vim.api.nvim_win_call(win_id, function()
+          vim.cmd('normal! k')
+        end)
+      end
+    end, opts)
+    
+    -- Page navigation with bounds
+    vim.keymap.set('n', '<C-f>', function()
+      local current_top = vim.fn.line('w0', win_id)
+      local target_top = math.min(current_top + window_height, max_top_line)
+      vim.api.nvim_win_set_cursor(win_id, {target_top, 0})
+    end, opts)
+    
+    vim.keymap.set('n', '<C-b>', function()
+      local current_top = vim.fn.line('w0', win_id)
+      local target_top = math.max(current_top - window_height, 1)
+      vim.api.nvim_win_set_cursor(win_id, {target_top, 0})
+    end, opts)
+    
+    -- Go to bounds
+    vim.keymap.set('n', 'gg', function()
+      vim.api.nvim_win_set_cursor(win_id, {1, 0})
+    end, opts)
+    
+    vim.keymap.set('n', 'G', function()
+      vim.api.nvim_win_set_cursor(win_id, {content_height, 0})
+    end, opts)
+  end
 end
 
 -- Show help dialog
@@ -223,11 +326,13 @@ M.show = function(parent_win_id)
   -- Setup highlighting
   setup_help_highlights()
   
-  -- Create window and buffer
-  local win_id, buf_id = create_help_window(parent_win_id)
-  
-  -- Build and set content
+  -- Build content first to calculate proper window size
   local lines = build_help_content()
+  
+  -- Create window and buffer with content-aware sizing
+  local win_id, buf_id, window_height = create_help_window(parent_win_id, lines)
+  
+  -- Set content
   vim.api.nvim_buf_set_option(buf_id, 'modifiable', true)
   vim.api.nvim_buf_set_lines(buf_id, 0, -1, false, lines)
   vim.api.nvim_buf_set_option(buf_id, 'modifiable', false)
@@ -235,8 +340,8 @@ M.show = function(parent_win_id)
   -- Apply syntax highlighting
   apply_help_highlighting(buf_id, lines)
   
-  -- Setup keymaps
-  setup_help_keymaps(buf_id, win_id)
+  -- Setup keymaps with scroll support
+  setup_help_keymaps(buf_id, win_id, #lines, window_height)
   
   -- Store state
   state.win_id = win_id
