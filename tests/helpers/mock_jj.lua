@@ -1,8 +1,17 @@
 -- Mock jj command utilities for testing
 local M = {}
 
--- Sample jj log output for testing (with * separator format that parser expects)
-M.SAMPLE_JJ_LOG_GRAPH = [[
+-- Load real fixture data
+local fixture_loader = require('tests.helpers.fixture_loader')
+
+-- Try to load real fixture data, fallback to simple mock if not available
+local function get_sample_data()
+  if fixture_loader.fixtures_available() then
+    local fixtures = fixture_loader.load_jj_outputs()
+    return fixtures.graph, fixtures.template
+  else
+    -- Fallback to simple mock data if fixtures not available
+    local fallback_graph = [[
 @  *abcd1234
 │
 ○  *efgh5678
@@ -13,14 +22,52 @@ M.SAMPLE_JJ_LOG_GRAPH = [[
 │
 ○  *qrst7890
 ]]
+    
+    local fallback_template = "change_1234abcd\x1Fabcd1234\x1Fchange_1\x1Fabcd1234\x1Fc_1\x1Fa123\x1FTest User\x1Ftest@example.com\x1F2024-01-01T10:00:00Z\x1FInitial commit\x1FInitial commit\n\nThis is a longer description.\x1Ftrue\x1Ffalse\x1Ftrue\x1Ffalse\x1Ffalse\x1Fmain\x1F\x1E\n"
+    
+    return fallback_graph, fallback_template
+  end
+end
 
--- Sample template data with proper field separators that parser expects
-M.SAMPLE_JJ_LOG_TEMPLATE =
-    "change_1234abcd\x1Fabcd1234\x1Fchange_1\x1Fabcd1234\x1Fc_1\x1Fa123\x1FTest User\x1Ftest@example.com\x1F2024-01-01T10:00:00Z\x1FInitial commit\x1FInitial commit\n\nThis is a longer description.\x1Ftrue\x1Ffalse\x1Ftrue\x1Ffalse\x1Ffalse\x1Fmain\x1F\x1E\n" ..
-    "change_5678efgh\x1Fefgh5678\x1Fchange_2\x1Fefgh5678\x1Fc_2\x1Fe567\x1FAnother User\x1Fanother@example.com\x1F2024-01-01T11:00:00Z\x1FAdd feature\x1FAdd feature for testing\x1Ffalse\x1Ffalse\x1Ftrue\x1Ffalse\x1Ffalse\x1F\x1Fchange_1234abcd\x1E\n" ..
-    "change_9012ijkl\x1Fijkl9012\x1Fchange_3\x1Fijkl9012\x1Fc_3\x1Fi901\x1FTest User\x1Ftest@example.com\x1F2024-01-01T12:00:00Z\x1FFix bug\x1FFix critical bug\x1Ffalse\x1Ftrue\x1Ftrue\x1Ffalse\x1Ffalse\x1Fbugfix\x1Fchange_5678efgh\x1E\n" ..
-    "change_3456mnop\x1Fmnop3456\x1Fchange_4\x1Fmnop3456\x1Fc_4\x1Fm345\x1FMerge User\x1Fmerge@example.com\x1F2024-01-01T13:00:00Z\x1FMerge branches\x1FMerge feature into main\x1Ffalse\x1Ffalse\x1Ftrue\x1Ffalse\x1Ffalse\x1F\x1Fchange_9012ijkl\x1E\n" ..
-    "change_7890qrst\x1Fqrst7890\x1Fchange_5\x1Fqrst7890\x1Fc_5\x1Fq789\x1FDev User\x1Fdev@example.com\x1F2024-01-01T14:00:00Z\x1FUpdate docs\x1FUpdate documentation\x1Ffalse\x1Ffalse\x1Ftrue\x1Ffalse\x1Ffalse\x1F\x1Fchange_3456mnop\x1E\n"
+-- Get the actual data (will use fixtures if available)
+M.SAMPLE_JJ_LOG_GRAPH, M.SAMPLE_JJ_LOG_TEMPLATE = get_sample_data()
+
+-- Create a mock that uses the live test repository if available
+function M.mock_vim_system_with_test_repo()
+  if not fixture_loader.test_repo_available() then
+    return M.mock_vim_system() -- Fall back to regular mock
+  end
+  
+  local original_system = vim.system
+  local test_repo_path = fixture_loader.get_test_repo_path()
+  
+  vim.system = function(cmd, opts)
+    -- Only handle jj commands
+    if cmd[1] == 'jj' then
+      -- Execute the actual jj command in the test repository using original system
+      local test_cmd = vim.deepcopy(cmd)
+      local test_result = original_system(test_cmd, {
+        text = true,
+        cwd = test_repo_path
+      }):wait(3000)
+      
+      return {
+        wait = function()
+          return test_result
+        end
+      }
+    end
+    
+    -- For non-jj commands, use original
+    return original_system(cmd, opts)
+  end
+  
+  return {
+    restore = function()
+      vim.system = original_system
+    end
+  }
+end
 
 -- Mock vim.system function for testing jj commands
 function M.mock_vim_system(expected_commands)
