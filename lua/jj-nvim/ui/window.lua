@@ -593,8 +593,10 @@ M.setup_rebase_multi_select_keymaps = function()
     M.highlight_current_commit()
   end)
 
-  -- Toggle commit selection
-  vim.keymap.set('n', '<Space>', function()
+  -- Toggle commit selection using configured key
+  local config = require('jj-nvim.config')
+  local toggle_selection_key = config.get_first_keybind('keybinds.log_window.special_modes.multi_select.toggle_selection') or '<Space>'
+  vim.keymap.set('n', toggle_selection_key, function()
     local commit = navigation.get_current_commit(state.win_id)
     if commit then
       state.selected_commits = multi_select.toggle_commit_selection(commit, state.selected_commits)
@@ -609,13 +611,15 @@ M.setup_rebase_multi_select_keymaps = function()
     end
   end, opts)
 
-  -- Confirm selection and proceed to target selection
-  vim.keymap.set('n', '<CR>', function()
+  -- Confirm selection and proceed to target selection using configured key
+  local confirm_key = config.get_first_keybind('keybinds.log_window.special_modes.multi_select.confirm') or '<CR>'
+  vim.keymap.set('n', confirm_key, function()
     M.confirm_rebase_multi_selection()
   end, opts)
 
-  -- Cancel multi-select mode
-  vim.keymap.set('n', '<Esc>', function()
+  -- Cancel multi-select mode using configured key
+  local cancel_key = config.get_first_keybind('keybinds.log_window.special_modes.multi_select.cancel') or '<Esc>'
+  vim.keymap.set('n', cancel_key, function()
     M.cancel_rebase_multi_selection()
   end, opts)
 

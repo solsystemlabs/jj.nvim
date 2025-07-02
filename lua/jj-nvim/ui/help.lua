@@ -321,36 +321,39 @@ end
 local function setup_help_keymaps(buf_id, win_id, content_height, window_height)
   local opts = { noremap = true, silent = true, buffer = buf_id }
 
-  -- Get configured navigation keys to avoid conflicts
-  local nav_keys = config.get('keybinds.menu_navigation') or config.get('menus.navigation') or {
-    next = 'j', prev = 'k', cancel = {'<Esc>', 'q'}
+  -- Get configured help navigation keys
+  local help_nav = config.get('keybinds.help_navigation') or {
+    close = {'<Esc>', 'q', '?'},
+    scroll_down = '<Down>',
+    scroll_up = '<Up>',
+    scroll_down_alt = '<C-j>',
+    scroll_up_alt = '<C-k>',
+    page_down = '<C-f>',
+    page_up = '<C-b>',
+    goto_top = 'gg',
+    goto_bottom = 'G',
   }
 
   -- Close help dialog using configured keys (handle arrays)
-  local cancel_keys = {}
-  if type(nav_keys.cancel) == "table" then
-    cancel_keys = nav_keys.cancel
-  elseif nav_keys.cancel then
-    table.insert(cancel_keys, nav_keys.cancel)
-  end
-  if nav_keys.cancel_alt then
-    table.insert(cancel_keys, nav_keys.cancel_alt)
+  local close_keys = {}
+  if type(help_nav.close) == "table" then
+    close_keys = help_nav.close
+  elseif help_nav.close then
+    table.insert(close_keys, help_nav.close)
   end
   
-  -- Set up close keymaps for all cancel keys
-  for _, cancel_key in ipairs(cancel_keys) do
-    vim.keymap.set('n', cancel_key, function() M.close() end, opts)
+  -- Set up close keymaps for all close keys
+  for _, close_key in ipairs(close_keys) do
+    vim.keymap.set('n', close_key, function() M.close() end, opts)
   end
-  vim.keymap.set('n', '?', function() M.close() end, opts)
 
   -- Add scroll navigation if content is larger than window
   if content_height > window_height then
     -- Calculate scroll bounds (allow 1-2 lines past end)
     local max_top_line = math.max(content_height - window_height + 2, 1)
 
-    -- Use different keys for help scrolling to avoid conflicts with menu navigation
-    -- Use arrow keys and Ctrl+j/k for scrolling instead of j/k
-    vim.keymap.set('n', '<Down>', function()
+    -- Use configured keys for help scrolling
+    vim.keymap.set('n', help_nav.scroll_down or '<Down>', function()
       local current_line = vim.fn.line('w0', win_id) -- Get top line of window
       if current_line < max_top_line then
         vim.api.nvim_win_call(win_id, function()
@@ -359,7 +362,7 @@ local function setup_help_keymaps(buf_id, win_id, content_height, window_height)
       end
     end, opts)
 
-    vim.keymap.set('n', '<Up>', function()
+    vim.keymap.set('n', help_nav.scroll_up or '<Up>', function()
       local current_line = vim.fn.line('w0', win_id) -- Get top line of window
       if current_line > 1 then
         vim.api.nvim_win_call(win_id, function()
@@ -369,7 +372,7 @@ local function setup_help_keymaps(buf_id, win_id, content_height, window_height)
     end, opts)
 
     -- Alternative scroll keys that won't conflict
-    vim.keymap.set('n', '<C-j>', function()
+    vim.keymap.set('n', help_nav.scroll_down_alt or '<C-j>', function()
       local current_line = vim.fn.line('w0', win_id) -- Get top line of window
       if current_line < max_top_line then
         vim.api.nvim_win_call(win_id, function()
@@ -378,7 +381,7 @@ local function setup_help_keymaps(buf_id, win_id, content_height, window_height)
       end
     end, opts)
 
-    vim.keymap.set('n', '<C-k>', function()
+    vim.keymap.set('n', help_nav.scroll_up_alt or '<C-k>', function()
       local current_line = vim.fn.line('w0', win_id) -- Get top line of window
       if current_line > 1 then
         vim.api.nvim_win_call(win_id, function()
@@ -388,24 +391,24 @@ local function setup_help_keymaps(buf_id, win_id, content_height, window_height)
     end, opts)
 
     -- Page navigation with bounds
-    vim.keymap.set('n', '<C-f>', function()
+    vim.keymap.set('n', help_nav.page_down or '<C-f>', function()
       local current_top = vim.fn.line('w0', win_id)
       local target_top = math.min(current_top + window_height, max_top_line)
       vim.api.nvim_win_set_cursor(win_id, { target_top, 0 })
     end, opts)
 
-    vim.keymap.set('n', '<C-b>', function()
+    vim.keymap.set('n', help_nav.page_up or '<C-b>', function()
       local current_top = vim.fn.line('w0', win_id)
       local target_top = math.max(current_top - window_height, 1)
       vim.api.nvim_win_set_cursor(win_id, { target_top, 0 })
     end, opts)
 
     -- Go to bounds
-    vim.keymap.set('n', 'gg', function()
+    vim.keymap.set('n', help_nav.goto_top or 'gg', function()
       vim.api.nvim_win_set_cursor(win_id, { 1, 0 })
     end, opts)
 
-    vim.keymap.set('n', 'G', function()
+    vim.keymap.set('n', help_nav.goto_bottom or 'G', function()
       vim.api.nvim_win_set_cursor(win_id, { content_height, 0 })
     end, opts)
   end

@@ -98,9 +98,11 @@ local function on_exit(job_id, exit_code, event)
     local error_msg = string.format("Command failed with exit code %d. Press 'q' to close.", exit_code)
     vim.notify(error_msg, vim.log.levels.WARN)
     
-    -- Set up keymap to close on 'q'
+    -- Set up keymap to close using configured key
     if state.buf_id and vim.api.nvim_buf_is_valid(state.buf_id) then
-      vim.keymap.set('n', 'q', function()
+      local config = require('jj-nvim.config')
+      local close_key = config.get_first_keybind('keybinds.terminal.close') or 'q'
+      vim.keymap.set('n', close_key, function()
         cleanup()
         -- Schedule refresh to avoid blocking main thread
         vim.schedule(function()
@@ -153,8 +155,10 @@ M.run_interactive_command = function(cmd_args, options)
   }
   
   
-  -- Set up escape key to cancel
-  vim.keymap.set('n', '<Esc>', function()
+  -- Set up cancel key using configured key
+  local config = require('jj-nvim.config')
+  local cancel_key = config.get_first_keybind('keybinds.terminal.cancel') or '<Esc>'
+  vim.keymap.set('n', cancel_key, function()
     cleanup()
     -- Schedule refresh to avoid blocking
     vim.schedule(function()

@@ -247,7 +247,9 @@ local function setup_menu_keymaps(buf_id, menu_config)
   
   -- Special toggle key for bookmark menus
   if menu_config.toggle_data then
-    vim.keymap.set('n', 't', function()
+    local config = require('jj-nvim.config')
+    local toggle_key = config.get_first_keybind('keybinds.help_navigation.toggle_menu') or 't'
+    vim.keymap.set('n', toggle_key, function()
       local callback = M.state.on_select
       if callback then
         local toggle_item = {

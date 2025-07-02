@@ -235,13 +235,16 @@ local function display_diff_buffer(buf_id, display_mode, split_direction)
     win_id = display_diff_buffer_split(buf_id, split_direction)
   end
 
-  -- Set up keymap to close diff window (works for both split and float)
-  vim.keymap.set('n', 'q', function()
+  -- Set up keymaps to close diff window using configured keys
+  local config = require('jj-nvim.config')
+  local close_key = config.get_first_keybind('keybinds.diff_window.close') or 'q'
+  local close_alt_key = config.get_first_keybind('keybinds.diff_window.close_alt') or '<Esc>'
+  
+  vim.keymap.set('n', close_key, function()
     vim.api.nvim_win_close(win_id, false)
   end, { buffer = buf_id, noremap = true, silent = true })
 
-  -- Set up keymap to return to log window
-  vim.keymap.set('n', '<Esc>', function()
+  vim.keymap.set('n', close_alt_key, function()
     vim.api.nvim_win_close(win_id, false)
   end, { buffer = buf_id, noremap = true, silent = true })
 
@@ -490,13 +493,16 @@ local function display_status_buffer(buf_id, display_mode, split_direction)
     win_id = display_diff_buffer_split(buf_id, split_direction)
   end
 
-  -- Set up keymap to close status window (works for both split and float)
-  vim.keymap.set('n', 'q', function()
+  -- Set up keymaps to close status window using configured keys
+  local config = require('jj-nvim.config')
+  local close_key = config.get_first_keybind('keybinds.status_window.close') or 'q'
+  local close_alt_key = config.get_first_keybind('keybinds.status_window.close_alt') or '<Esc>'
+  
+  vim.keymap.set('n', close_key, function()
     vim.api.nvim_win_close(win_id, false)
   end, { buffer = buf_id, noremap = true, silent = true })
 
-  -- Set up keymap to return to log window
-  vim.keymap.set('n', '<Esc>', function()
+  vim.keymap.set('n', close_alt_key, function()
     vim.api.nvim_win_close(win_id, false)
   end, { buffer = buf_id, noremap = true, silent = true })
 

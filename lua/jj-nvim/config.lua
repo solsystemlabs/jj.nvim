@@ -29,13 +29,55 @@ M.defaults = {
       actions = {
         close = 'q',
         show_diff = '<CR>',
+        show_diff_alt = 'd',
+        show_diff_summary = 'D',
         edit_message = 'e',
+        set_description = 'm',
         abandon = 'a',
+        multi_abandon = 'A',
         rebase = 'r',
         squash = 'x',
         split = 's',
         undo = 'u',
-      }
+        clear_selections = '<Esc>',
+        toggle_description = '<Tab>',
+        help = '?',
+      },
+      git_operations = {
+        fetch = 'f',
+        push = 'p',
+        show_status = 'S',
+      },
+      commit_operations = {
+        quick_commit = 'c',
+        commit_menu = 'C',
+        new_change = 'n',
+        new_change_menu = 'N',
+      },
+      window_controls = {
+        refresh = 'R',
+        bookmarks = 'b',
+        width_increase_large = '+',
+        width_decrease_large = '-',
+        width_increase_small = '=',
+        width_decrease_small = '_',
+      },
+      revsets = {
+        show_menu = 'rs',
+        custom_input = 'rr',
+      },
+      special_modes = {
+        target_selection = {
+          confirm = '<CR>',
+          cancel = '<Esc>',
+          bookmark_selection = 'b',
+        },
+        multi_select = {
+          toggle_selection = '<Space>',
+          confirm = '<CR>',
+          cancel = '<Esc>',
+        },
+      },
     },
     menu_navigation = {
       next = 'j',
@@ -45,6 +87,30 @@ M.defaults = {
       select = '<CR>',
       cancel = {'<Esc>', 'q'}, -- array support for multiple keys
       back = '<BS>',
+    },
+    help_navigation = {
+      close = {'<Esc>', 'q', '?'},
+      scroll_down = '<Down>',
+      scroll_up = '<Up>',
+      scroll_down_alt = '<C-j>',
+      scroll_up_alt = '<C-k>',
+      page_down = '<C-f>',
+      page_up = '<C-b>',
+      goto_top = 'gg',
+      goto_bottom = 'G',
+      toggle_menu = 't', -- for inline menu toggle
+    },
+    terminal = {
+      close = 'q',
+      cancel = '<Esc>',
+    },
+    diff_window = {
+      close = 'q',
+      close_alt = '<Esc>',
+    },
+    status_window = {
+      close = 'q', 
+      close_alt = '<Esc>',
     },
     menus = {
       commit = {
