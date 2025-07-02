@@ -64,8 +64,8 @@ local function build_help_content()
   -- Add bookmark submenu items if available
   local bookmark_menu = keymap_registry.get_menu_items("bookmark")
   if next(bookmark_menu) then
-    local nav_keys = config.get('menus.navigation') or {}
-    local menu_keys = config.get('menus.bookmark') or {}
+    local nav_keys = config.get('keybinds.menu_navigation') or config.get('menus.navigation') or {}
+    local menu_keys = config.get('keybinds.menus.bookmark') or config.get('menus.bookmark') or {}
 
     for action, key in pairs(menu_keys) do
       local description = ""
@@ -98,18 +98,50 @@ local function build_help_content()
   add_section("Multi-Select Mode", "multi_select", "multi_select")
 
   -- Menu navigation (show configured keys)
-  local nav_keys = config.get('menus.navigation') or {}
+  local nav_keys = config.get('keybinds.menu_navigation') or config.get('menus.navigation') or {}
   if next(nav_keys) then
     table.insert(lines, "             ═══ Menu Navigation ═══")
+    
+    -- Handle backward compatibility for key names
+    local next_key = nav_keys.next or 'j'
+    local prev_key = nav_keys.prev or 'k'
+    local jump_next = nav_keys.jump_next or nav_keys.next_alt
+    local jump_prev = nav_keys.jump_prev or nav_keys.prev_alt
+    
     table.insert(lines,
       string.format("    %-12s  Navigate menu items",
-        keymap_registry.format_key(nav_keys.next or 'j') .. "/" .. keymap_registry.format_key(nav_keys.prev or 'k')))
+        keymap_registry.format_key(next_key) .. "/" .. keymap_registry.format_key(prev_key)))
+    
+    if jump_next and jump_prev then
+      table.insert(lines,
+        string.format("    %-12s  Jump navigate menu items",
+          keymap_registry.format_key(jump_next) .. "/" .. keymap_registry.format_key(jump_prev)))
+    end
+    
     table.insert(lines,
       string.format("    %-12s  Select menu item", keymap_registry.format_key(nav_keys.select or '<CR>')))
-    table.insert(lines,
-      string.format("    %-12s  Cancel menu",
-        keymap_registry.format_key(nav_keys.cancel or '<Esc>') ..
-        "/" .. keymap_registry.format_key(nav_keys.cancel_alt or 'q')))
+    
+    -- Handle cancel key arrays
+    local cancel_keys = {}
+    if type(nav_keys.cancel) == "table" then
+      cancel_keys = nav_keys.cancel
+    elseif nav_keys.cancel then
+      table.insert(cancel_keys, nav_keys.cancel)
+    end
+    if nav_keys.cancel_alt then
+      table.insert(cancel_keys, nav_keys.cancel_alt)
+    end
+    
+    if #cancel_keys > 0 then
+      local cancel_str = ""
+      for i, key in ipairs(cancel_keys) do
+        if i > 1 then cancel_str = cancel_str .. "/" end
+        cancel_str = cancel_str .. keymap_registry.format_key(key)
+      end
+      table.insert(lines,
+        string.format("    %-12s  Cancel menu", cancel_str))
+    end
+    
     table.insert(lines,
       string.format("    %-12s  Go back (parent menu)", keymap_registry.format_key(nav_keys.back or '<BS>')))
     table.insert(lines, "")
@@ -117,11 +149,24 @@ local function build_help_content()
 
   add_section("Help", "help")
 
-  -- Footer - use configured cancel keys
-  local cancel_keys = {}
-  if nav_keys.cancel_alt then table.insert(cancel_keys, keymap_registry.format_key(nav_keys.cancel_alt)) end
-  if nav_keys.cancel then table.insert(cancel_keys, keymap_registry.format_key(nav_keys.cancel)) end
-  table.insert(cancel_keys, "?")
+  -- Footer - use configured cancel keys (handle arrays)
+  local footer_cancel_keys = {}
+  
+  -- Handle cancel key arrays
+  if type(nav_keys.cancel) == "table" then
+    for _, key in ipairs(nav_keys.cancel) do
+      table.insert(footer_cancel_keys, keymap_registry.format_key(key))
+    end
+  elseif nav_keys.cancel then
+    table.insert(footer_cancel_keys, keymap_registry.format_key(nav_keys.cancel))
+  end
+  
+  -- Add legacy cancel_alt if present
+  if nav_keys.cancel_alt then 
+    table.insert(footer_cancel_keys, keymap_registry.format_key(nav_keys.cancel_alt)) 
+  end
+  
+  table.insert(footer_cancel_keys, "?")
 
   table.insert(lines, "")
   table.insert(lines, "           ═══ Help Navigation ═══")
@@ -130,7 +175,7 @@ local function build_help_content()
   table.insert(lines, "    Ctrl+f/b      Page up/down")
   table.insert(lines, "    gg/G          Go to top/bottom")
   table.insert(lines, "")
-  table.insert(lines, string.format("           Press %s to close", table.concat(cancel_keys, ", ")))
+  table.insert(lines, string.format("           Press %s to close", table.concat(footer_cancel_keys, ", ")))
 
   return lines
 end
@@ -277,13 +322,25 @@ local function setup_help_keymaps(buf_id, win_id, content_height, window_height)
   local opts = { noremap = true, silent = true, buffer = buf_id }
 
   -- Get configured navigation keys to avoid conflicts
-  local nav_keys = config.get('menus.navigation') or {
-    next = 'j', prev = 'k', cancel = '<Esc>', cancel_alt = 'q'
+  local nav_keys = config.get('keybinds.menu_navigation') or config.get('menus.navigation') or {
+    next = 'j', prev = 'k', cancel = {'<Esc>', 'q'}
   }
 
-  -- Close help dialog using configured keys
-  vim.keymap.set('n', nav_keys.cancel_alt or 'q', function() M.close() end, opts)
-  vim.keymap.set('n', nav_keys.cancel or '<Esc>', function() M.close() end, opts)
+  -- Close help dialog using configured keys (handle arrays)
+  local cancel_keys = {}
+  if type(nav_keys.cancel) == "table" then
+    cancel_keys = nav_keys.cancel
+  elseif nav_keys.cancel then
+    table.insert(cancel_keys, nav_keys.cancel)
+  end
+  if nav_keys.cancel_alt then
+    table.insert(cancel_keys, nav_keys.cancel_alt)
+  end
+  
+  -- Set up close keymaps for all cancel keys
+  for _, cancel_key in ipairs(cancel_keys) do
+    vim.keymap.set('n', cancel_key, function() M.close() end, opts)
+  end
   vim.keymap.set('n', '?', function() M.close() end, opts)
 
   -- Add scroll navigation if content is larger than window

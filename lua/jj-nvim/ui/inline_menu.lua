@@ -140,17 +140,37 @@ local function setup_menu_keymaps(buf_id, menu_config)
   -- Store keymap IDs for cleanup
   M.state.menu_keymaps = {}
   
-  -- Get menu navigation keybinds from config
-  local nav_keys = config.get('menus.navigation') or {
+  -- Get menu navigation keybinds from config (with backward compatibility)
+  local nav_keys = config.get('keybinds.menu_navigation') or config.get('menus.navigation') or {
     next = 'j',
     prev = 'k',
-    next_alt = '<Down>',
-    prev_alt = '<Up>',
+    jump_next = '<Down>',
+    jump_prev = '<Up>',
     select = '<CR>',
-    cancel = '<Esc>',
-    cancel_alt = 'q',
+    cancel = {'<Esc>', 'q'},
     back = '<BS>'
   }
+  
+  -- Handle backward compatibility for old key names
+  if not nav_keys.jump_next and nav_keys.next_alt then
+    nav_keys.jump_next = nav_keys.next_alt
+  end
+  if not nav_keys.jump_prev and nav_keys.prev_alt then
+    nav_keys.jump_prev = nav_keys.prev_alt
+  end
+  
+  -- Normalize arrays - convert single values to arrays for consistent handling
+  local function normalize_key(key)
+    if type(key) == "string" then
+      return {key}
+    elseif type(key) == "table" then
+      return key
+    else
+      return {}
+    end
+  end
+  
+  nav_keys.cancel = normalize_key(nav_keys.cancel or nav_keys.cancel_alt)
   
   -- Navigation keymaps - use more unique function definitions to avoid conflicts
   local function menu_nav_down()
@@ -168,22 +188,33 @@ local function setup_menu_keymaps(buf_id, menu_config)
   end
   
   -- Clear any existing navigation keymaps first (including old defaults)
-  local possible_nav_keys = {'j', 'k', 'h', 'l', '<Down>', '<Up>', '<Left>', '<Right>'}
+  local possible_nav_keys = {'j', 'k', 'h', 'l', '<Down>', '<Up>', '<Left>', '<Right>', '<Esc>', 'q'}
   for _, key in ipairs(possible_nav_keys) do
     pcall(vim.keymap.del, 'n', key, { buffer = buf_id })
   end
   
-  -- Also clear the specific configured keys
+  -- Also clear the specific configured keys (handle both old and new key names)
   pcall(vim.keymap.del, 'n', nav_keys.next, { buffer = buf_id })
   pcall(vim.keymap.del, 'n', nav_keys.prev, { buffer = buf_id })
-  pcall(vim.keymap.del, 'n', nav_keys.next_alt, { buffer = buf_id })
-  pcall(vim.keymap.del, 'n', nav_keys.prev_alt, { buffer = buf_id })
+  pcall(vim.keymap.del, 'n', nav_keys.jump_next, { buffer = buf_id })
+  pcall(vim.keymap.del, 'n', nav_keys.jump_prev, { buffer = buf_id })
+  pcall(vim.keymap.del, 'n', nav_keys.select, { buffer = buf_id })
+  pcall(vim.keymap.del, 'n', nav_keys.back, { buffer = buf_id })
+  
+  -- Clear array-based cancel keys
+  for _, cancel_key in ipairs(nav_keys.cancel) do
+    pcall(vim.keymap.del, 'n', cancel_key, { buffer = buf_id })
+  end
   
   -- Set navigation keymaps using configured keys
   vim.keymap.set('n', nav_keys.next, menu_nav_down, opts)
   vim.keymap.set('n', nav_keys.prev, menu_nav_up, opts)
-  vim.keymap.set('n', nav_keys.next_alt, menu_nav_down, opts)
-  vim.keymap.set('n', nav_keys.prev_alt, menu_nav_up, opts)
+  if nav_keys.jump_next then
+    vim.keymap.set('n', nav_keys.jump_next, menu_nav_down, opts)
+  end
+  if nav_keys.jump_prev then
+    vim.keymap.set('n', nav_keys.jump_prev, menu_nav_up, opts)
+  end
   
   -- Selection keymaps using configured keys
   vim.keymap.set('n', nav_keys.select, function()
@@ -228,20 +259,15 @@ local function setup_menu_keymaps(buf_id, menu_config)
     end, opts)
   end
   
-  -- Cancel keymaps using configured keys
-  vim.keymap.set('n', nav_keys.cancel, function()
-    M.close()
-    if M.state.on_cancel then
-      M.state.on_cancel()
-    end
-  end, opts)
-  
-  vim.keymap.set('n', nav_keys.cancel_alt, function()
-    M.close()
-    if M.state.on_cancel then
-      M.state.on_cancel()
-    end
-  end, opts)
+  -- Cancel keymaps using configured keys (handle arrays)
+  for _, cancel_key in ipairs(nav_keys.cancel) do
+    vim.keymap.set('n', cancel_key, function()
+      M.close()
+      if M.state.on_cancel then
+        M.state.on_cancel()
+      end
+    end, opts)
+  end
   
   vim.keymap.set('n', nav_keys.back, function()
     -- Store callbacks before closing (since close() clears state)
@@ -263,9 +289,14 @@ local function setup_menu_keymaps(buf_id, menu_config)
   -- Block all other keys to prevent conflicts with other plugins
   -- Create a list of allowed keys (use configured navigation keys)
   local allowed_keys = {
-    nav_keys.next, nav_keys.prev, nav_keys.next_alt, nav_keys.prev_alt,
-    nav_keys.select, nav_keys.cancel, nav_keys.cancel_alt, nav_keys.back
+    nav_keys.next, nav_keys.prev, nav_keys.jump_next, nav_keys.jump_prev,
+    nav_keys.select, nav_keys.back
   }
+  
+  -- Add cancel keys from array
+  for _, cancel_key in ipairs(nav_keys.cancel) do
+    table.insert(allowed_keys, cancel_key)
+  end
   
   -- Add menu item keys to allowed list
   for _, item in ipairs(menu_config.items) do

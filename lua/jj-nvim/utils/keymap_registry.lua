@@ -100,36 +100,38 @@ M.initialize = function(config)
   M.config_cache = config
   M.clear()
   
-  -- Get keybinds from config
-  local keymaps = config.get('keymaps') or {}
+  -- Get keybinds from config (with backward compatibility)
+  local log_navigation = config.get('keybinds.log_window.navigation') or {}
+  local log_actions = config.get('keybinds.log_window.actions') or {}
+  local legacy_keymaps = config.get('keymaps') or {}
   
-  -- Main window keymaps - read from config
+  -- Main window navigation keymaps - read from new config structure with fallbacks
   M.register_batch("navigation", {
-    [keymaps.next_commit or "j"] = "Navigate commits",
-    [keymaps.prev_commit or "k"] = "Navigate commits", 
+    [log_navigation.next_commit or legacy_keymaps.next_commit or "j"] = "Navigate commits",
+    [log_navigation.prev_commit or legacy_keymaps.prev_commit or "k"] = "Navigate commits", 
+    [log_navigation.jump_next or "<Down>"] = "Alternative navigation",
+    [log_navigation.jump_prev or "<Up>"] = "Alternative navigation",
     ["J"] = "Navigate commits (centered)",
     ["K"] = "Navigate commits (centered)",
     ["gg"] = "Go to first commit",
     ["G"] = "Go to last commit",
-    ["@"] = "Go to current commit",
-    ["<Up>"] = "Alternative navigation",
-    ["<Down>"] = "Alternative navigation"
+    ["@"] = "Go to current commit"
   })
   
   M.register_batch("actions", {
-    [keymaps.show_diff or "<CR>"] = "Show diff for commit",
+    [log_actions.show_diff or legacy_keymaps.show_diff or "<CR>"] = "Show diff for commit",
     ["d"] = "Show diff (alternative)",
     ["D"] = "Show diff summary/stats", 
-    [keymaps.edit_message or "e"] = "Edit commit",
+    [log_actions.edit_message or legacy_keymaps.edit_message or "e"] = "Edit commit",
     ["m"] = "Set commit description",
-    [keymaps.abandon or "a"] = "Abandon commit(s) - smart",
+    [log_actions.abandon or legacy_keymaps.abandon or "a"] = "Abandon commit(s) - smart",
     ["A"] = "Abandon selected commits",
-    [keymaps.squash or "x"] = "Squash commit (select target)",
-    [keymaps.split or "s"] = "Split commit (options menu)",
-    [keymaps.rebase or "r"] = "Rebase commit (options menu)",
+    [log_actions.squash or legacy_keymaps.squash or "x"] = "Squash commit (select target)",
+    [log_actions.split or legacy_keymaps.split or "s"] = "Split commit (options menu)",
+    [log_actions.rebase or legacy_keymaps.rebase or "r"] = "Rebase commit (options menu)",
     ["n"] = "New change (quick)",
     ["N"] = "New change (options menu)",
-    ["u"] = "Undo last operation"
+    [log_actions.undo or "u"] = "Undo last operation"
   })
   
   M.register_batch("selection", {
@@ -156,7 +158,7 @@ M.initialize = function(config)
   })
   
   M.register_batch("window_controls", {
-    [keymaps.close or "q"] = "Close window",
+    [log_actions.close or legacy_keymaps.close or "q"] = "Close window",
     ["R"] = "Refresh commits",
     ["+"] = "Adjust width (large)",
     ["-"] = "Adjust width (large)",
@@ -182,19 +184,52 @@ M.initialize = function(config)
     ["<Esc>"] = "Cancel multi-selection"
   }, "multi_select")
   
-  -- Menu navigation (use configured keys)
-  local nav_keys = config.get('menus.navigation') or {
-    next = 'j', prev = 'k', select = '<CR>', cancel = '<Esc>', cancel_alt = 'q', back = '<BS>'
+  -- Menu navigation (use configured keys with backward compatibility)
+  local nav_keys = config.get('keybinds.menu_navigation') or config.get('menus.navigation') or {
+    next = 'j', prev = 'k', jump_next = '<Down>', jump_prev = '<Up>', 
+    select = '<CR>', cancel = {'<Esc>', 'q'}, back = '<BS>'
   }
   
-  M.register_batch("menu_navigation", {
+  -- Handle backward compatibility for old key names
+  if not nav_keys.jump_next and nav_keys.next_alt then
+    nav_keys.jump_next = nav_keys.next_alt
+  end
+  if not nav_keys.jump_prev and nav_keys.prev_alt then
+    nav_keys.jump_prev = nav_keys.prev_alt
+  end
+  
+  -- Handle cancel arrays and old cancel_alt
+  local cancel_keys = {}
+  if type(nav_keys.cancel) == "table" then
+    cancel_keys = nav_keys.cancel
+  elseif nav_keys.cancel then
+    table.insert(cancel_keys, nav_keys.cancel)
+  end
+  if nav_keys.cancel_alt then
+    table.insert(cancel_keys, nav_keys.cancel_alt)
+  end
+  
+  local menu_nav_keymap = {
     [nav_keys.next] = "Navigate menu items",
     [nav_keys.prev] = "Navigate menu items",
     [nav_keys.select] = "Select menu item",
-    [nav_keys.cancel] = "Cancel menu",
-    [nav_keys.cancel_alt] = "Cancel menu",
     [nav_keys.back] = "Go back (parent menu)"
-  }, "menu")
+  }
+  
+  -- Add jump navigation if available
+  if nav_keys.jump_next then
+    menu_nav_keymap[nav_keys.jump_next] = "Navigate menu items"
+  end
+  if nav_keys.jump_prev then
+    menu_nav_keymap[nav_keys.jump_prev] = "Navigate menu items"
+  end
+  
+  -- Add cancel keys
+  for _, cancel_key in ipairs(cancel_keys) do
+    menu_nav_keymap[cancel_key] = "Cancel menu"
+  end
+  
+  M.register_batch("menu_navigation", menu_nav_keymap, "menu")
 end
 
 -- Add dynamic menu items (called when menus are created)

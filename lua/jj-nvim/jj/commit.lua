@@ -162,7 +162,7 @@ M.show_commit_menu = function(parent_win_id)
   end
 
   -- Get commit menu keys from config
-  local commit_keys = config.get('menus.commit') or {
+  local commit_keys = config.get('keybinds.menus.commit') or config.get('menus.commit') or {
     quick = 'q',
     interactive = 'i',
     reset_author = 'r',

@@ -257,7 +257,7 @@ M.show_squash_options_menu = function(target, target_type, parent_win_id, source
   end
 
   -- Get squash menu keys from config
-  local squash_keys = config.get('menus.squash') or {
+  local squash_keys = config.get('keybinds.menus.squash') or config.get('menus.squash') or {
     quick = 'q',
     interactive = 'i',
     keep_emptied = 'k',

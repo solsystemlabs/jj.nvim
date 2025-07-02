@@ -10,70 +10,85 @@ M.defaults = {
       style = 'left', -- 'none', 'single', 'double', 'rounded', 'thick', 'shadow', 'left'
     },
   },
-  keymaps = {
-    toggle = '<leader>jp',
-    close = 'q',
-    show_diff = '<CR>',
-    edit_message = 'e',
-    abandon = 'a',
-    rebase = 'r',
-    squash = 'x',
-    split = 's',
-    next_commit = 'j',
-    prev_commit = 'k',
-  },
-  menus = {
-    navigation = {
+  keybinds = {
+    log_window = {
+      navigation = {
+        next_commit = 'j',
+        prev_commit = 'k',
+        jump_next = '<Down>',
+        jump_prev = '<Up>',
+        -- Enhanced navigation
+        next_commit_centered = 'J',
+        prev_commit_centered = 'K', 
+        goto_first = 'gg',
+        goto_last = 'G',
+        goto_current = '@',
+        -- Selection
+        toggle_selection = '<Space>',
+      },
+      actions = {
+        close = 'q',
+        show_diff = '<CR>',
+        edit_message = 'e',
+        abandon = 'a',
+        rebase = 'r',
+        squash = 'x',
+        split = 's',
+        undo = 'u',
+      }
+    },
+    menu_navigation = {
       next = 'j',
       prev = 'k',
-      next_alt = '<Down>',
-      prev_alt = '<Up>',
+      jump_next = '<Down>',
+      jump_prev = '<Up>',
       select = '<CR>',
-      cancel = '<Esc>',
-      cancel_alt = 'q',
-      back = '<BS>', -- submenu back navigation
+      cancel = {'<Esc>', 'q'}, -- array support for multiple keys
+      back = '<BS>',
     },
-    commit = {
-      quick = 'q',
-      interactive = 'i',
-      reset_author = 'r',
-      custom_author = 'a',
-      filesets = 'f',
-    },
-    squash = {
-      quick = 'q',
-      interactive = 'i',
-      keep_emptied = 'k',
-      custom_message = 'm',
-    },
-    split = {
-      interactive = 'i',
-      after = 'a',
-      before = 'b',
-    },
-    rebase = {
-      branch = 'b',
-      source = 's',
-      revisions = 'r',
-      destination = 'd',
-      insert_after = 'a',
-      insert_before = 'f',
-      skip_emptied = 'e',
-    },
-    bookmark = {
-      create = 'c',
-      delete = 'd',
-      move = 'm',
-      rename = 'r',
-      list = 'l',
-      toggle_filter = 't',
-    },
-    new_change = {
-      quick = 'q',
-      interactive = 'i',
-      custom_message = 'm',
-      after_commit = 'a',
-      insert = 'n',
+    menus = {
+      commit = {
+        quick = 'q',
+        interactive = 'i',
+        reset_author = 'r',
+        custom_author = 'a',
+        filesets = 'f',
+      },
+      squash = {
+        quick = 'q',
+        interactive = 'i',
+        keep_emptied = 'k',
+        custom_message = 'm',
+      },
+      split = {
+        interactive = 'i',
+        after = 'a',
+        before = 'b',
+      },
+      rebase = {
+        branch = 'b',
+        source = 's',
+        revisions = 'r',
+        destination = 'd',
+        insert_after = 'a',
+        insert_before = 'f',
+        skip_emptied = 'e',
+      },
+      bookmark = {
+        create = 'c',
+        delete = 'd',
+        move = 'm',
+        rename = 'r',
+        list = 'l',
+        toggle_filter = 't',
+      },
+      new_change = {
+        quick = 'q',
+        interactive = 'i',
+        custom_message = 'm',
+        after_commit = 'a',
+        insert = 'n',
+      },
     },
   },
   log = {
@@ -181,6 +196,26 @@ M.get = function(key)
   end
 
   return value
+end
+
+-- Helper function to normalize keybind values (handles both strings and arrays)
+M.get_keybinds = function(key)
+  local value = M.get(key)
+  if value == nil then
+    return {}
+  elseif type(value) == "string" then
+    return {value}
+  elseif type(value) == "table" then
+    return value
+  else
+    return {}
+  end
+end
+
+-- Helper function to get first keybind (for backward compatibility)
+M.get_first_keybind = function(key)
+  local keybinds = M.get_keybinds(key)
+  return keybinds[1]
 end
 
 M.set = function(key, value)

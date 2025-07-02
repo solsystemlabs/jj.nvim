@@ -5,9 +5,11 @@ M.setup_common_navigation = function(buf_id, win_id, navigation, opts, update_ca
   local nav_opts = opts or {}
   local config = require('jj-nvim.config')
   
-  -- Get navigation keys from config
-  local next_key = config.get('keymaps.next_commit') or 'j'
-  local prev_key = config.get('keymaps.prev_commit') or 'k'
+  -- Get navigation keys from config (with backward compatibility)
+  local next_key = config.get_first_keybind('keybinds.log_window.navigation.next_commit') or 
+                   config.get('keymaps.next_commit') or 'j'
+  local prev_key = config.get_first_keybind('keybinds.log_window.navigation.prev_commit') or 
+                   config.get('keymaps.prev_commit') or 'k'
 
   -- Basic navigation using configured keys
   vim.keymap.set('n', next_key, function()
@@ -105,9 +107,11 @@ M.setup_main_keymaps = function(buf_id, win_id, state, actions, navigation, mult
     end
   end, opts)
 
-  -- Smart commit navigation using configured keys
-  local next_key = config.get('keymaps.next_commit') or 'j'
-  local prev_key = config.get('keymaps.prev_commit') or 'k'
+  -- Smart commit navigation using configured keys (with backward compatibility)
+  local next_key = config.get_first_keybind('keybinds.log_window.navigation.next_commit') or 
+                   config.get('keymaps.next_commit') or 'j'
+  local prev_key = config.get_first_keybind('keybinds.log_window.navigation.prev_commit') or 
+                   config.get('keymaps.prev_commit') or 'k'
   
   vim.keymap.set('n', next_key, function()
     navigation.next_commit(win_id)
@@ -161,8 +165,9 @@ end
 M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, opts)
   local config = require('jj-nvim.config')
   
-  -- Show diff for current commit - use configured key
-  local show_diff_key = config.get('keymaps.show_diff') or '<CR>'
+  -- Show diff for current commit - use configured key (with backward compatibility)
+  local show_diff_key = config.get_first_keybind('keybinds.log_window.actions.show_diff') or 
+                        config.get('keymaps.show_diff') or '<CR>'
   vim.keymap.set('n', show_diff_key, function()
     local commit = navigation.get_current_commit(win_id)
     actions.show_diff(commit)
@@ -180,8 +185,9 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
     actions.show_diff_summary(commit)
   end, opts)
 
-  -- Edit commit - use configured key
-  local edit_key = config.get('keymaps.edit_message') or 'e'
+  -- Edit commit - use configured key (with backward compatibility)
+  local edit_key = config.get_first_keybind('keybinds.log_window.actions.edit_message') or 
+                   config.get('keymaps.edit_message') or 'e'
   vim.keymap.set('n', edit_key, function()
     local commit = navigation.get_current_commit(win_id)
     if actions.edit_commit(commit) then
@@ -197,8 +203,9 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
     end)
   end, opts)
 
-  -- Abandon commit(s) - use configured key
-  local abandon_key = config.get('keymaps.abandon') or 'a'
+  -- Abandon commit(s) - use configured key (with backward compatibility)
+  local abandon_key = config.get_first_keybind('keybinds.log_window.actions.abandon') or 
+                      config.get('keymaps.abandon') or 'a'
   vim.keymap.set('n', abandon_key, function()
     if #state.selected_commits > 0 then
       actions.abandon_multiple_commits(state.selected_commits, function()
@@ -241,8 +248,9 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
     end
   end, opts)
 
-  -- Squash commit - use configured key
-  local squash_key = config.get('keymaps.squash') or 'x'
+  -- Squash commit - use configured key (with backward compatibility)
+  local squash_key = config.get_first_keybind('keybinds.log_window.actions.squash') or 
+                     config.get('keymaps.squash') or 'x'
   vim.keymap.set('n', squash_key, function()
     local current_commit = navigation.get_current_commit(win_id)
     if not current_commit then
@@ -259,8 +267,9 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
     window_module.enter_target_selection_mode("squash", current_commit)
   end, opts)
 
-  -- Split commit - use configured key  
-  local split_key = config.get('keymaps.split') or 's'
+  -- Split commit - use configured key (with backward compatibility)
+  local split_key = config.get_first_keybind('keybinds.log_window.actions.split') or 
+                    config.get('keymaps.split') or 's'
   vim.keymap.set('n', split_key, function()
     local current_commit = navigation.get_current_commit(win_id)
     if not current_commit then
@@ -276,8 +285,9 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
     actions.show_split_options_menu(current_commit, win_id)
   end, opts)
 
-  -- Rebase commit - use configured key
-  local rebase_key = config.get('keymaps.rebase') or 'r'
+  -- Rebase commit - use configured key (with backward compatibility)
+  local rebase_key = config.get_first_keybind('keybinds.log_window.actions.rebase') or 
+                     config.get('keymaps.rebase') or 'r'
   vim.keymap.set('n', rebase_key, function()
     local current_commit = navigation.get_current_commit(win_id)
     if not current_commit then
@@ -413,8 +423,9 @@ M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, m
     actions.show_commit_menu(win_id)
   end, opts)
 
-  -- Undo last operation
-  vim.keymap.set('n', 'u', function()
+  -- Undo last operation - use configured key (with backward compatibility)
+  local undo_key = config.get_first_keybind('keybinds.log_window.actions.undo') or 'u'
+  vim.keymap.set('n', undo_key, function()
     if actions.undo_last(function()
           require('jj-nvim').refresh()
         end) then
@@ -422,8 +433,9 @@ M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, m
     end
   end, opts)
 
-  -- Close window - use configured key
-  local close_key = config.get('keymaps.close') or 'q'
+  -- Close window - use configured key (with backward compatibility)
+  local close_key = config.get_first_keybind('keybinds.log_window.actions.close') or 
+                    config.get('keymaps.close') or 'q'
   vim.keymap.set('n', close_key, function()
     local window_module = require('jj-nvim.ui.window')
     window_module.close()

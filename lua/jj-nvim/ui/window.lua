@@ -260,7 +260,7 @@ M.setup_keymaps = function()
 
   -- Clear potential old keymaps first (navigation and actions)
   local possible_nav_keys = {'j', 'k', 'h', 'l'}
-  local possible_action_keys = {'a', 'o', 'e', 'r', 'x', 's', 'q', '<CR>'}
+  local possible_action_keys = {'a', 'o', 'e', 'r', 'x', 's', 'q', 'u', '<CR>'}
   
   for _, key in ipairs(possible_nav_keys) do
     pcall(vim.keymap.del, 'n', key, { buffer = state.buf_id })
