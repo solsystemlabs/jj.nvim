@@ -11,13 +11,13 @@ CommitPart.__index = CommitPart
 -- @param visible boolean: whether this part should be displayed
 function CommitPart.new(type, text, color_fn, visible)
   if visible == nil then visible = true end
-  
+
   return setmetatable({
     type = type,
     text = text or "",
     color_fn = color_fn,
     visible = visible,
-    _cached_width = nil,  -- Cached display width
+    _cached_width = nil, -- Cached display width
   }, CommitPart)
 end
 
@@ -26,17 +26,17 @@ function CommitPart:get_styled_text()
   if not self.visible or self.text == "" then
     return ""
   end
-  
+
   if self.color_fn then
     local renderer = require('jj-nvim.core.renderer')
     local COLORS = renderer.get_colors()
     local reset = COLORS.reset_fg or "\27[39m"
     local color_result = self.color_fn(self.text, COLORS)
-    
+
     -- Special handling for graph parts that need symbol coloring
     if self.type == "graph" then
       return renderer.apply_symbol_colors(self.text, self._commit_ref)
-    -- Special handling for change_id and commit_id that may return pre-formatted text
+      -- Special handling for change_id and commit_id that may return pre-formatted text
     elseif (self.type == "change_id" or self.type == "commit_id") and color_result:find(COLORS.reset, 1, true) then
       -- Color function returned pre-formatted text with internal coloring, just add final reset
       return color_result .. reset
@@ -54,11 +54,11 @@ function CommitPart:get_width()
   if not self.visible or self.text == "" then
     return 0
   end
-  
+
   if not self._cached_width then
     self._cached_width = vim.fn.strdisplaywidth(self.text)
   end
-  
+
   return self._cached_width
 end
 
@@ -85,3 +85,4 @@ end
 M.new = CommitPart.new
 
 return M
+

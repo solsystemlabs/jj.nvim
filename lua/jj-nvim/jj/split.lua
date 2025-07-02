@@ -323,3 +323,4 @@ M.handle_split_options_selection = function(selected_item, target_commit)
 end
 
 return M
+

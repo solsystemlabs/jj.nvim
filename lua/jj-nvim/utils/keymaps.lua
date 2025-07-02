@@ -73,7 +73,8 @@ end
 
 
 -- Setup main window keymaps
-M.setup_main_keymaps = function(buf_id, win_id, state, actions, navigation, multi_select, buffer, window_utils, help, config)
+M.setup_main_keymaps = function(buf_id, win_id, state, actions, navigation, multi_select, buffer, window_utils, help,
+                                config)
   local opts = { noremap = true, silent = true, buffer = buf_id }
 
   -- Navigation keymaps
@@ -245,7 +246,7 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
   end, opts)
 
   -- Split commit
-  vim.keymap.set('n', 'v', function()
+  vim.keymap.set('n', 's', function()
     local current_commit = navigation.get_current_commit(win_id)
     if not current_commit then
       vim.notify("No commit under cursor to split", vim.log.levels.WARN)
@@ -278,18 +279,9 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
 end
 
 -- Setup control keymaps (window, git operations, etc.)
-M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, multi_select, buffer, window_utils, help, config)
+M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, multi_select, buffer, window_utils, help,
+                                   config)
   local opts = { noremap = true, silent = true, buffer = buf_id }
-
-  -- Show selection status
-  vim.keymap.set('n', 's', function()
-    local count = #state.selected_commits
-    if count > 0 then
-      vim.notify(string.format("%d commit%s selected", count, count > 1 and "s" or ""), vim.log.levels.INFO)
-    else
-      vim.notify("No commits selected", vim.log.levels.INFO)
-    end
-  end, opts)
 
   -- Clear all selections or close window
   vim.keymap.set('n', '<Esc>', function()
@@ -358,21 +350,21 @@ M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, m
 
   -- Window width adjustment keybinds
   local WIDTH_ADJUSTMENTS = { LARGE = 10, SMALL = 2 }
-  vim.keymap.set('n', '+', function() 
+  vim.keymap.set('n', '+', function()
     local window_module = require('jj-nvim.ui.window')
-    window_module.adjust_width(WIDTH_ADJUSTMENTS.LARGE) 
+    window_module.adjust_width(WIDTH_ADJUSTMENTS.LARGE)
   end, opts)
-  vim.keymap.set('n', '-', function() 
+  vim.keymap.set('n', '-', function()
     local window_module = require('jj-nvim.ui.window')
-    window_module.adjust_width(-WIDTH_ADJUSTMENTS.LARGE) 
+    window_module.adjust_width(-WIDTH_ADJUSTMENTS.LARGE)
   end, opts)
-  vim.keymap.set('n', '=', function() 
+  vim.keymap.set('n', '=', function()
     local window_module = require('jj-nvim.ui.window')
-    window_module.adjust_width(WIDTH_ADJUSTMENTS.SMALL) 
+    window_module.adjust_width(WIDTH_ADJUSTMENTS.SMALL)
   end, opts)
-  vim.keymap.set('n', '_', function() 
+  vim.keymap.set('n', '_', function()
     local window_module = require('jj-nvim.ui.window')
-    window_module.adjust_width(-WIDTH_ADJUSTMENTS.SMALL) 
+    window_module.adjust_width(-WIDTH_ADJUSTMENTS.SMALL)
   end, opts)
 
   -- Git operations
@@ -408,8 +400,8 @@ M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, m
   -- Undo last operation
   vim.keymap.set('n', 'u', function()
     if actions.undo_last(function()
-      require('jj-nvim').refresh()
-    end) then
+          require('jj-nvim').refresh()
+        end) then
       require('jj-nvim').refresh()
     end
   end, opts)
@@ -441,21 +433,21 @@ end
 -- Setup target selection mode keymaps
 M.setup_target_selection_keymaps = function(buf_id, win_id, navigation, opts)
   -- Override Enter and Escape for target selection
-  vim.keymap.set('n', '<CR>', function() 
+  vim.keymap.set('n', '<CR>', function()
     local window_module = require('jj-nvim.ui.window')
-    window_module.confirm_target_selection() 
+    window_module.confirm_target_selection()
   end, opts)
-  vim.keymap.set('n', '<Esc>', function() 
+  vim.keymap.set('n', '<Esc>', function()
     local window_module = require('jj-nvim.ui.window')
-    window_module.cancel_target_selection() 
+    window_module.cancel_target_selection()
   end, opts)
 
   -- Add bookmark selection for squash operations
   local window_module = require('jj-nvim.ui.window')
   local mode_data = select(2, window_module.get_mode())
   if mode_data and mode_data.action == "squash" then
-    vim.keymap.set('n', 'b', function() 
-      window_module.show_squash_bookmark_selection() 
+    vim.keymap.set('n', 'b', function()
+      window_module.show_squash_bookmark_selection()
     end, opts)
   end
 
@@ -472,21 +464,21 @@ M.setup_multi_select_keymaps = function(buf_id, win_id, navigation, opts)
   M.clear_conflicting_keymaps(buf_id)
 
   -- Space to toggle commit selection
-  vim.keymap.set('n', '<Space>', function() 
+  vim.keymap.set('n', '<Space>', function()
     local window_module = require('jj-nvim.ui.window')
-    window_module.toggle_commit_selection() 
+    window_module.toggle_commit_selection()
   end, opts)
 
   -- Enter to confirm selection and create merge commit
-  vim.keymap.set('n', '<CR>', function() 
+  vim.keymap.set('n', '<CR>', function()
     local window_module = require('jj-nvim.ui.window')
-    window_module.confirm_multi_selection() 
+    window_module.confirm_multi_selection()
   end, opts)
 
   -- Escape to cancel multi-select mode
-  vim.keymap.set('n', '<Esc>', function() 
+  vim.keymap.set('n', '<Esc>', function()
     local window_module = require('jj-nvim.ui.window')
-    window_module.cancel_multi_selection() 
+    window_module.cancel_multi_selection()
   end, opts)
 
   -- Setup common navigation keymaps with update callback
@@ -498,4 +490,3 @@ M.setup_multi_select_keymaps = function(buf_id, win_id, navigation, opts)
 end
 
 return M
-
