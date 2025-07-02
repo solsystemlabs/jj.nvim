@@ -3,14 +3,19 @@ local M = {}
 -- Setup common navigation keymaps used in both target selection and multi-select modes
 M.setup_common_navigation = function(buf_id, win_id, navigation, opts, update_callback)
   local nav_opts = opts or {}
+  local config = require('jj-nvim.config')
+  
+  -- Get navigation keys from config
+  local next_key = config.get('keymaps.next_commit') or 'j'
+  local prev_key = config.get('keymaps.prev_commit') or 'k'
 
-  -- Basic j/k navigation
-  vim.keymap.set('n', 'j', function()
+  -- Basic navigation using configured keys
+  vim.keymap.set('n', next_key, function()
     navigation.next_commit(win_id)
     if update_callback then update_callback() end
   end, nav_opts)
 
-  vim.keymap.set('n', 'k', function()
+  vim.keymap.set('n', prev_key, function()
     navigation.prev_commit(win_id)
     if update_callback then update_callback() end
   end, nav_opts)
@@ -100,11 +105,14 @@ M.setup_main_keymaps = function(buf_id, win_id, state, actions, navigation, mult
     end
   end, opts)
 
-  -- Smart commit navigation
-  vim.keymap.set('n', 'j', function()
+  -- Smart commit navigation using configured keys
+  local next_key = config.get('keymaps.next_commit') or 'j'
+  local prev_key = config.get('keymaps.prev_commit') or 'k'
+  
+  vim.keymap.set('n', next_key, function()
     navigation.next_commit(win_id)
   end, opts)
-  vim.keymap.set('n', 'k', function()
+  vim.keymap.set('n', prev_key, function()
     navigation.prev_commit(win_id)
   end, opts)
 
@@ -153,8 +161,9 @@ end
 M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, opts)
   local config = require('jj-nvim.config')
   
-  -- Show diff for current commit
-  vim.keymap.set('n', '<CR>', function()
+  -- Show diff for current commit - use configured key
+  local show_diff_key = config.get('keymaps.show_diff') or '<CR>'
+  vim.keymap.set('n', show_diff_key, function()
     local commit = navigation.get_current_commit(win_id)
     actions.show_diff(commit)
   end, opts)
@@ -171,8 +180,9 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
     actions.show_diff_summary(commit)
   end, opts)
 
-  -- Edit commit
-  vim.keymap.set('n', 'e', function()
+  -- Edit commit - use configured key
+  local edit_key = config.get('keymaps.edit_message') or 'e'
+  vim.keymap.set('n', edit_key, function()
     local commit = navigation.get_current_commit(win_id)
     if actions.edit_commit(commit) then
       require('jj-nvim').refresh()
@@ -187,8 +197,9 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
     end)
   end, opts)
 
-  -- Abandon commit(s)
-  vim.keymap.set('n', 'a', function()
+  -- Abandon commit(s) - use configured key
+  local abandon_key = config.get('keymaps.abandon') or 'a'
+  vim.keymap.set('n', abandon_key, function()
     if #state.selected_commits > 0 then
       actions.abandon_multiple_commits(state.selected_commits, function()
         state.selected_commits = {}
@@ -265,8 +276,9 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
     actions.show_split_options_menu(current_commit, win_id)
   end, opts)
 
-  -- Rebase commit
-  vim.keymap.set('n', 'r', function()
+  -- Rebase commit - use configured key
+  local rebase_key = config.get('keymaps.rebase') or 'r'
+  vim.keymap.set('n', rebase_key, function()
     local current_commit = navigation.get_current_commit(win_id)
     if not current_commit then
       vim.notify("No commit under cursor to rebase", vim.log.levels.WARN)
@@ -410,8 +422,9 @@ M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, m
     end
   end, opts)
 
-  -- Close window
-  vim.keymap.set('n', 'q', function()
+  -- Close window - use configured key
+  local close_key = config.get('keymaps.close') or 'q'
+  vim.keymap.set('n', close_key, function()
     local window_module = require('jj-nvim.ui.window')
     window_module.close()
   end, opts)

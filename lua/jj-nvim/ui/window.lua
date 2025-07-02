@@ -258,6 +258,18 @@ end
 M.setup_keymaps = function()
   if not state.buf_id then return end
 
+  -- Clear potential old keymaps first (navigation and actions)
+  local possible_nav_keys = {'j', 'k', 'h', 'l'}
+  local possible_action_keys = {'a', 'o', 'e', 'r', 'x', 's', 'q', '<CR>'}
+  
+  for _, key in ipairs(possible_nav_keys) do
+    pcall(vim.keymap.del, 'n', key, { buffer = state.buf_id })
+  end
+  
+  for _, key in ipairs(possible_action_keys) do
+    pcall(vim.keymap.del, 'n', key, { buffer = state.buf_id })
+  end
+
   -- Use consolidated keymaps from keymaps.lua
   local opts = keymaps.setup_main_keymaps(
     state.buf_id, state.win_id, state, actions, navigation, 

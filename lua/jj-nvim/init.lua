@@ -14,6 +14,24 @@ M.setup = function(opts)
   keymap_registry.initialize(config)
 end
 
+-- Reload config and re-initialize all systems (useful for config changes)
+M.reload_config = function(opts)
+  -- Reload the config module to pick up changes to defaults
+  local reloaded_config = config.reload(opts)
+  
+  -- Re-initialize keymap registry with fresh config
+  keymap_registry.initialize(reloaded_config)
+  
+  -- Refresh the jj-nvim window if it's open to pick up new keybinds
+  if window.is_open() then
+    M.refresh()
+    -- Re-setup keymaps to pick up config changes
+    window.setup_keymaps()
+  end
+  
+  vim.notify("jj-nvim config reloaded", vim.log.levels.INFO)
+end
+
 M.toggle = function()
   if window.is_open() then
     M.close()
@@ -182,6 +200,11 @@ M.show_revset_menu = function()
   
   inline_menu.show(parent_win, menu_config, callbacks)
 end
+
+-- Create vim commands for config reloading
+vim.api.nvim_create_user_command('JJReloadConfig', function()
+  M.reload_config()
+end, { desc = 'Reload jj-nvim configuration' })
 
 return M
 

@@ -21,7 +21,8 @@ end
 
 -- Build help content dynamically from keymap registry
 local function build_help_content()
-  -- Initialize keymap registry with current config
+  -- Always re-initialize keymap registry to pick up any config changes
+  -- This ensures help always shows current config state
   keymap_registry.initialize(config)
 
   local lines = {

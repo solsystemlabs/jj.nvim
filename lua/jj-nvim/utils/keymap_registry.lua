@@ -241,4 +241,11 @@ M.format_key = function(key)
   return key_mappings[key] or key
 end
 
+-- Reload the registry (useful when config changes)
+M.reload = function()
+  if M.config_cache then
+    M.initialize(M.config_cache)
+  end
+end
+
 return M

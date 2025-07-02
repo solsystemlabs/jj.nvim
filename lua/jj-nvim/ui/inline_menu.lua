@@ -167,7 +167,13 @@ local function setup_menu_keymaps(buf_id, menu_config)
     end
   end
   
-  -- Clear any existing navigation keymaps first
+  -- Clear any existing navigation keymaps first (including old defaults)
+  local possible_nav_keys = {'j', 'k', 'h', 'l', '<Down>', '<Up>', '<Left>', '<Right>'}
+  for _, key in ipairs(possible_nav_keys) do
+    pcall(vim.keymap.del, 'n', key, { buffer = buf_id })
+  end
+  
+  -- Also clear the specific configured keys
   pcall(vim.keymap.del, 'n', nav_keys.next, { buffer = buf_id })
   pcall(vim.keymap.del, 'n', nav_keys.prev, { buffer = buf_id })
   pcall(vim.keymap.del, 'n', nav_keys.next_alt, { buffer = buf_id })
