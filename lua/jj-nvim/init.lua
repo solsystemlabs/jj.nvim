@@ -6,9 +6,12 @@ local buffer = require('jj-nvim.ui.buffer')
 local parser = require('jj-nvim.core.parser')
 local jj_log = require('jj-nvim.jj.log')
 local error_handler = require('jj-nvim.utils.error_handler')
+local keymap_registry = require('jj-nvim.utils.keymap_registry')
 
 M.setup = function(opts)
   config.setup(opts or {})
+  -- Initialize keymap registry with the configured options
+  keymap_registry.initialize(config)
 end
 
 M.toggle = function()

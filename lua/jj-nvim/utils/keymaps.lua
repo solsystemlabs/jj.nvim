@@ -151,6 +151,8 @@ end
 
 -- Setup action keymaps
 M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, opts)
+  local config = require('jj-nvim.config')
+  
   -- Show diff for current commit
   vim.keymap.set('n', '<CR>', function()
     local commit = navigation.get_current_commit(win_id)
@@ -228,8 +230,9 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
     end
   end, opts)
 
-  -- Squash commit
-  vim.keymap.set('n', 'x', function()
+  -- Squash commit - use configured key
+  local squash_key = config.get('keymaps.squash') or 'x'
+  vim.keymap.set('n', squash_key, function()
     local current_commit = navigation.get_current_commit(win_id)
     if not current_commit then
       vim.notify("No commit under cursor to squash", vim.log.levels.WARN)
@@ -245,8 +248,9 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
     window_module.enter_target_selection_mode("squash", current_commit)
   end, opts)
 
-  -- Split commit
-  vim.keymap.set('n', 's', function()
+  -- Split commit - use configured key  
+  local split_key = config.get('keymaps.split') or 's'
+  vim.keymap.set('n', split_key, function()
     local current_commit = navigation.get_current_commit(win_id)
     if not current_commit then
       vim.notify("No commit under cursor to split", vim.log.levels.WARN)

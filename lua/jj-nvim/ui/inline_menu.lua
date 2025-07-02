@@ -2,6 +2,7 @@ local M = {}
 
 local config = require('jj-nvim.config')
 local themes = require('jj-nvim.ui.themes')
+local keymap_registry = require('jj-nvim.utils.keymap_registry')
 
 -- Menu state
 M.state = {
@@ -139,6 +140,18 @@ local function setup_menu_keymaps(buf_id, menu_config)
   -- Store keymap IDs for cleanup
   M.state.menu_keymaps = {}
   
+  -- Get menu navigation keybinds from config
+  local nav_keys = config.get('menus.navigation') or {
+    next = 'j',
+    prev = 'k',
+    next_alt = '<Down>',
+    prev_alt = '<Up>',
+    select = '<CR>',
+    cancel = '<Esc>',
+    cancel_alt = 'q',
+    back = '<BS>'
+  }
+  
   -- Navigation keymaps - use more unique function definitions to avoid conflicts
   local function menu_nav_down()
     if M.state.active and vim.api.nvim_get_current_buf() == buf_id then
@@ -155,19 +168,19 @@ local function setup_menu_keymaps(buf_id, menu_config)
   end
   
   -- Clear any existing navigation keymaps first
-  pcall(vim.keymap.del, 'n', 'j', { buffer = buf_id })
-  pcall(vim.keymap.del, 'n', 'k', { buffer = buf_id })
-  pcall(vim.keymap.del, 'n', '<Down>', { buffer = buf_id })
-  pcall(vim.keymap.del, 'n', '<Up>', { buffer = buf_id })
+  pcall(vim.keymap.del, 'n', nav_keys.next, { buffer = buf_id })
+  pcall(vim.keymap.del, 'n', nav_keys.prev, { buffer = buf_id })
+  pcall(vim.keymap.del, 'n', nav_keys.next_alt, { buffer = buf_id })
+  pcall(vim.keymap.del, 'n', nav_keys.prev_alt, { buffer = buf_id })
   
-  -- Set navigation keymaps
-  vim.keymap.set('n', 'j', menu_nav_down, opts)
-  vim.keymap.set('n', 'k', menu_nav_up, opts)
-  vim.keymap.set('n', '<Down>', menu_nav_down, opts)
-  vim.keymap.set('n', '<Up>', menu_nav_up, opts)
+  -- Set navigation keymaps using configured keys
+  vim.keymap.set('n', nav_keys.next, menu_nav_down, opts)
+  vim.keymap.set('n', nav_keys.prev, menu_nav_up, opts)
+  vim.keymap.set('n', nav_keys.next_alt, menu_nav_down, opts)
+  vim.keymap.set('n', nav_keys.prev_alt, menu_nav_up, opts)
   
-  -- Selection keymaps
-  vim.keymap.set('n', '<CR>', function()
+  -- Selection keymaps using configured keys
+  vim.keymap.set('n', nav_keys.select, function()
     local selected_item = menu_config.items[M.state.selected_index]
     local callback = M.state.on_select
     M.close()
@@ -209,22 +222,22 @@ local function setup_menu_keymaps(buf_id, menu_config)
     end, opts)
   end
   
-  -- Cancel keymaps
-  vim.keymap.set('n', '<Esc>', function()
+  -- Cancel keymaps using configured keys
+  vim.keymap.set('n', nav_keys.cancel, function()
     M.close()
     if M.state.on_cancel then
       M.state.on_cancel()
     end
   end, opts)
   
-  vim.keymap.set('n', 'q', function()
+  vim.keymap.set('n', nav_keys.cancel_alt, function()
     M.close()
     if M.state.on_cancel then
       M.state.on_cancel()
     end
   end, opts)
   
-  vim.keymap.set('n', '<BS>', function()
+  vim.keymap.set('n', nav_keys.back, function()
     -- Store callbacks before closing (since close() clears state)
     local parent_callback = M.state.parent_menu_callback
     local cancel_callback = M.state.on_cancel
@@ -242,9 +255,10 @@ local function setup_menu_keymaps(buf_id, menu_config)
   end, opts)
   
   -- Block all other keys to prevent conflicts with other plugins
-  -- Create a list of allowed keys
+  -- Create a list of allowed keys (use configured navigation keys)
   local allowed_keys = {
-    'j', 'k', '<Down>', '<Up>', '<CR>', '<Esc>', 'q', '<BS>'
+    nav_keys.next, nav_keys.prev, nav_keys.next_alt, nav_keys.prev_alt,
+    nav_keys.select, nav_keys.cancel, nav_keys.cancel_alt, nav_keys.back
   }
   
   -- Add menu item keys to allowed list
@@ -309,6 +323,11 @@ M.show = function(parent_win_id, menu_config, callbacks)
   if not menu_config or not menu_config.items or #menu_config.items == 0 then
     vim.notify("Invalid menu configuration", vim.log.levels.WARN)
     return false
+  end
+  
+  -- Register menu items with keymap registry for help generation
+  if menu_config.id then
+    keymap_registry.register_menu_items(menu_config.id, menu_config.items)
   end
   
   -- Setup highlight groups

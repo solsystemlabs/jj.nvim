@@ -8,12 +8,6 @@
 - File tree view for commits with many changes
 - Quick file filtering and search within diffs
 
-### Interactive Rebase Support
-- Visual rebase interface with commit reordering
-- Squash/fixup operations with preview
-- Edit commit messages during rebase
-- Conflict resolution workflow integration
-
 ### Search & Filter Capabilities
 - Search commits by message, author, or date range
 - Filter by branch, bookmark, or tag
@@ -54,12 +48,6 @@
 - Quick navigation between bookmarks
 - Persistent workspace state
 
-### Advanced Git Operations
-- Interactive staging for partial commits
-- Stash management integration
-- Remote repository operations
-- Branch visualization and management
-
 ## Infrastructure Improvements
 
 ### Testing & Quality
@@ -73,6 +61,10 @@
 - Configuration examples
 - Migration guides for version updates
 - API documentation for extensibility
+
+## Misc 
+- Add support for rebase/new/etc commands based off of bookmarks instead of selected commits
+
 
 ## Completed Features ✓
 

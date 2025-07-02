@@ -238,6 +238,7 @@ end
 -- Show squash options menu after target selection
 M.show_squash_options_menu = function(target, target_type, parent_win_id, source_commit)
   local inline_menu = require('jj-nvim.ui.inline_menu')
+  local config = require('jj-nvim.config')
 
   -- Determine target display name
   local target_display = ""
@@ -255,22 +256,31 @@ M.show_squash_options_menu = function(target, target_type, parent_win_id, source
     source_display = "@"
   end
 
-  -- Define menu configuration
+  -- Get squash menu keys from config
+  local squash_keys = config.get('menus.squash') or {
+    quick = 'q',
+    interactive = 'i',
+    keep_emptied = 'k',
+    custom_message = 'm',
+  }
+
+  -- Define menu configuration using configurable keys
   local menu_config = {
+    id = "squash",
     title = "Squash " .. source_display .. " into " .. target_display,
     items = {
       {
-        key = "q",
+        key = squash_keys.quick,
         description = "Quick squash (standard)",
         action = "quick_squash",
       },
       {
-        key = "i",
+        key = squash_keys.interactive,
         description = "Interactive squash",
         action = "interactive_squash",
       },
       {
-        key = "u",
+        key = squash_keys.custom_message,
         description = "Use destination message & keep source",
         action = "use_dest_keep_squash",
       },

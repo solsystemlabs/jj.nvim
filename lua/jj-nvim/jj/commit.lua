@@ -145,6 +145,7 @@ end
 -- Show commit options menu
 M.show_commit_menu = function(parent_win_id)
   local inline_menu = require('jj-nvim.ui.inline_menu')
+  local config = require('jj-nvim.config')
 
   -- Check if there are any changes to commit
   local status = require('jj-nvim.jj.status')
@@ -160,32 +161,42 @@ M.show_commit_menu = function(parent_win_id)
     return true
   end
 
-  -- Define menu configuration
+  -- Get commit menu keys from config
+  local commit_keys = config.get('menus.commit') or {
+    quick = 'q',
+    interactive = 'i',
+    reset_author = 'r',
+    custom_author = 'a',
+    filesets = 'f',
+  }
+
+  -- Define menu configuration using configurable keys
   local menu_config = {
+    id = "commit",
     title = "Commit Options",
     items = {
       {
-        key = "q",
+        key = commit_keys.quick,
         description = "Quick commit (prompt for message)",
         action = "quick_commit",
       },
       {
-        key = "i",
+        key = commit_keys.interactive,
         description = "Interactive commit (choose changes)",
         action = "interactive_commit",
       },
       {
-        key = "r",
+        key = commit_keys.reset_author,
         description = "Reset author and commit",
         action = "reset_author_commit",
       },
       {
-        key = "a",
+        key = commit_keys.custom_author,
         description = "Commit with custom author",
         action = "custom_author_commit",
       },
       {
-        key = "f",
+        key = commit_keys.filesets,
         description = "Commit specific files (filesets)",
         action = "fileset_commit",
       },

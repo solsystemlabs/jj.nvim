@@ -10,9 +10,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Always look for opportunities to refactor repeated code as long as it doesn't change functionality
 - Ask questions liberally to clarify
 - When you have multiple questions, ask them one by one, and try to answer your own questions based on existing context
-- Keep track of what changes you're making as you go along to use when crafting a commit message.
-- Put all test files in the `tests/` directory for future use
 - Don't mention yourself in commit messages
+- Write tests for new work, integrating with the testing framework in tests/. Prioritize writing official tests to test your own work instead of creating one-off test files that you then remove after running them.
 
 - After you've implemented work, ask if you want to commit the changes. If yes, run 'jj commit' with a message that is a good commit message for the changes made.
 
