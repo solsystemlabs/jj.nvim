@@ -17,11 +17,11 @@ M.execute = function(args, opts)
     table.insert(cmd, '--ignore-immutable')
   end
 
-  local result = vim.system(cmd, { text = true }):wait(3000) -- 3 second timeout
+  local result = vim.system(cmd, { text = true }):wait(30000) -- 30 second timeout
 
   -- Handle timeout case where result is nil
   if not result then
-    local error_msg = 'jj command timed out after 3 seconds'
+    local error_msg = 'jj command timed out after 30 seconds'
     if not opts.silent then
       vim.notify(error_msg, vim.log.levels.ERROR)
     end
@@ -36,6 +36,47 @@ M.execute = function(args, opts)
   end
 
   return result.stdout, nil
+end
+
+-- Async version of execute for long-running operations
+M.execute_async = function(cmd, opts, callback)
+  opts = opts or {}
+  callback = callback or function() end
+  
+  if type(cmd) == 'string' then
+    cmd = vim.split(cmd, ' ')
+  end
+  
+  table.insert(cmd, 1, 'jj')
+  
+  -- Add --ignore-immutable flag if requested
+  if opts.ignore_immutable then
+    table.insert(cmd, '--ignore-immutable')
+  end
+  
+  vim.system(cmd, { text = true }, function(result)
+    vim.schedule(function()
+      if not result then
+        local error_msg = 'jj command failed to execute'
+        if not opts.silent then
+          vim.notify(error_msg, vim.log.levels.ERROR)
+        end
+        callback(nil, error_msg)
+        return
+      end
+      
+      if result.code ~= 0 then
+        local error_msg = result.stderr or 'Unknown error'
+        if not opts.silent then
+          vim.notify('jj command failed: ' .. error_msg, vim.log.levels.ERROR)
+        end
+        callback(nil, error_msg)
+        return
+      end
+      
+      callback(result.stdout, nil)
+    end)
+  end)
 end
 
 M.is_jj_repo = function()

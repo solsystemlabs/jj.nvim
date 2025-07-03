@@ -253,9 +253,11 @@ local function handle_menu_selection(item, win_id)
   elseif item.action == "show_status" then
     actions.show_status()
   elseif item.action == "git_fetch" then
-    if actions.git_fetch() then
-      require('jj-nvim').refresh()
-    end
+    actions.git_fetch_async({}, function(success)
+      if success then
+        require('jj-nvim').refresh()
+      end
+    end)
   elseif item.action == "git_push" then
     if actions.git_push() then
       require('jj-nvim').refresh()

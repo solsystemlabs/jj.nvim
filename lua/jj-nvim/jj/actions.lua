@@ -195,6 +195,58 @@ M.git_fetch = function(options)
   return true
 end
 
+-- Async git fetch operation with progress indication
+M.git_fetch_async = function(options, callback)
+  options = options or {}
+  callback = callback or function() end
+
+  -- Create a timer for progress indication
+  local timer = vim.loop.new_timer()
+  local dots = ""
+  local dot_count = 0
+  
+  -- Start progress indicator immediately
+  timer:start(0, 1000, vim.schedule_wrap(function()
+    dot_count = (dot_count + 1) % 4
+    dots = string.rep(".", dot_count)
+    vim.notify("Fetching from remote" .. dots, vim.log.levels.INFO, { replace = true })
+  end))
+
+  git.git_fetch_async(options, function(result, err)
+    -- Stop progress indicator
+    timer:stop()
+    timer:close()
+    
+    if not result then
+      local error_msg = err or "Unknown error"
+
+      -- Handle common git fetch errors
+      if error_msg:find("Could not resolve hostname") then
+        error_msg = "Network error: could not resolve hostname"
+      elseif error_msg:find("Permission denied") then
+        error_msg = "Permission denied: check your SSH keys or credentials"
+      elseif error_msg:find("not found") then
+        error_msg = "Repository not found or access denied"
+      elseif error_msg:find("timeout") then
+        error_msg = "Connection timeout"
+      end
+
+      vim.notify(string.format("Failed to fetch: %s", error_msg), vim.log.levels.ERROR)
+      callback(false, error_msg)
+      return
+    end
+
+    -- Check if fetch actually got new commits
+    if result:match("^%s*$") then
+      vim.notify("Fetch completed - repository is up to date", vim.log.levels.INFO)
+    else
+      vim.notify("Fetch completed successfully", vim.log.levels.INFO)
+    end
+
+    callback(true, result)
+  end)
+end
+
 -- Git push operation
 M.git_push = function(options)
   options = options or {}

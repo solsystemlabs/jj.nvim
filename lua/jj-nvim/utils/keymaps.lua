@@ -526,9 +526,11 @@ M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, m
   local show_status_key = config.get_first_keybind('keybinds.log_window.git_operations.show_status') or 'S'
   
   vim.keymap.set('n', fetch_key, function()
-    if actions.git_fetch() then
-      require('jj-nvim').refresh()
-    end
+    actions.git_fetch_async({}, function(success)
+      if success then
+        require('jj-nvim').refresh()
+      end
+    end)
   end, opts)
 
   vim.keymap.set('n', push_key, function()
