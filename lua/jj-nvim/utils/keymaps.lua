@@ -23,6 +23,41 @@ local function get_target_commit(win_id, selected_commits, navigation)
   return navigation.get_current_commit(win_id)
 end
 
+-- Helper function to check if an action should be disabled when commits are selected
+local function should_disable_action_for_selections(selected_commits, action_type)
+  local has_selections = selected_commits and #selected_commits > 0
+  local multi_selection = has_selections and #selected_commits > 1
+  
+  if not has_selections then
+    return false  -- No selections, all actions allowed
+  end
+  
+  -- Actions that should be disabled when any commits are selected
+  local always_disabled = {
+    'commit',           -- Commit working copy doesn't relate to selected commits
+    'toggle_description', -- Not specific to selections
+    'bookmarks',        -- Global action, not selection-specific
+    'revsets',          -- Global action, not selection-specific
+  }
+  
+  -- Actions that are only disabled for multiple selections
+  local multi_disabled = {
+    'new_child',        -- Ambiguous with multiple selections
+    'new_change_menu',  -- Ambiguous with multiple selections
+  }
+  
+  if vim.tbl_contains(always_disabled, action_type) then
+    return true
+  end
+  
+  if multi_selection and vim.tbl_contains(multi_disabled, action_type) then
+    return true
+  end
+  
+  return false
+end
+
+
 -- Setup common navigation keymaps used in both target selection and multi-select modes
 M.setup_common_navigation = function(buf_id, win_id, navigation, opts, update_callback)
   local nav_opts = opts or {}
@@ -408,6 +443,10 @@ M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, m
   -- New change creation (simple) - use configured key
   local new_change_key = config.get_first_keybind('keybinds.log_window.commit_operations.new_change') or 'n'
   vim.keymap.set('n', new_change_key, function()
+    if should_disable_action_for_selections(state.selected_commits, 'new_child') then
+      return
+    end
+    
     local commit = get_target_commit(win_id, state.selected_commits, navigation)
     if not commit then
       vim.notify("No commit found", vim.log.levels.WARN)
@@ -433,6 +472,9 @@ M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, m
   -- New change with options menu - use configured key
   local new_change_menu_key = config.get_first_keybind('keybinds.log_window.commit_operations.new_change_menu') or 'N'
   vim.keymap.set('n', new_change_menu_key, function()
+    if should_disable_action_for_selections(state.selected_commits, 'new_change_menu') then
+      return
+    end
     local window_module = require('jj-nvim.ui.window')
     window_module.show_new_change_menu()
   end, opts)
@@ -440,6 +482,9 @@ M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, m
   -- Bookmark operations - use configured key
   local bookmarks_key = config.get_first_keybind('keybinds.log_window.window_controls.bookmarks') or 'b'
   vim.keymap.set('n', bookmarks_key, function()
+    if should_disable_action_for_selections(state.selected_commits, 'bookmarks') then
+      return
+    end
     local window_module = require('jj-nvim.ui.window')
     window_module.show_bookmark_menu()
   end, opts)
@@ -501,12 +546,33 @@ M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, m
   local commit_menu_key = config.get_first_keybind('keybinds.log_window.commit_operations.commit_menu') or 'C'
   
   vim.keymap.set('n', quick_commit_key, function()
+    if should_disable_action_for_selections(state.selected_commits, 'commit') then
+      -- When selections exist, 'c' clears selections instead
+      if #state.selected_commits > 0 then
+        state.selected_commits = {}
+        local window_module = require('jj-nvim.ui.window')
+        window_module.highlight_current_commit()
+        local window_width = window_utils.get_width(win_id)
+        buffer.update_status(buf_id, {
+          selected_count = 0
+        }, window_width)
+        
+        -- Update context window
+        local context_window = require('jj-nvim.ui.context_window')
+        local current_commit = navigation.get_current_commit(win_id)
+        context_window.update(win_id, current_commit, {})
+      end
+      return
+    end
     actions.commit_working_copy({}, function()
       require('jj-nvim').refresh()
     end)
   end, opts)
 
   vim.keymap.set('n', commit_menu_key, function()
+    if should_disable_action_for_selections(state.selected_commits, 'commit') then
+      return
+    end
     actions.show_commit_menu(win_id)
   end, opts)
 
@@ -546,10 +612,16 @@ M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, m
   local revset_input_key = config.get_first_keybind('keybinds.log_window.revsets.custom_input') or 'rr'
   
   vim.keymap.set('n', revset_menu_key, function()
+    if should_disable_action_for_selections(state.selected_commits, 'revsets') then
+      return
+    end
     require('jj-nvim').show_revset_menu()
   end, opts)
 
   vim.keymap.set('n', revset_input_key, function()
+    if should_disable_action_for_selections(state.selected_commits, 'revsets') then
+      return
+    end
     local input = vim.fn.input('Enter revset: ', require('jj-nvim').get_current_revset())
     if input and input ~= '' then
       require('jj-nvim').set_revset(input)

@@ -207,12 +207,23 @@ local function generate_context_content(current_commit, selected_commits)
   
   -- Selection management
   if has_selections then
+    table.insert(lines, "  <Esc> - Clear selections")
     table.insert(lines, "  c - Clear selections")
   end
   
+  -- Only show global actions when no selections (since some are disabled during selections)
+  if not has_selections then
+    table.insert(lines, "")
+    table.insert(lines, "🔧 Global Actions:")
+    table.insert(lines, "  c - Commit working copy")
+    table.insert(lines, "  b - Bookmarks")
+    table.insert(lines, "  rs - Revset menu")
+    table.insert(lines, "  R - Refresh")
+  end
+  
+  -- Always available actions
   table.insert(lines, "")
-  table.insert(lines, "🔧 Global Actions:")
-  table.insert(lines, "  R - Refresh")
+  table.insert(lines, "🌐 Always Available:")
   table.insert(lines, "  S - Show status")
   table.insert(lines, "  f - Git fetch")
   table.insert(lines, "  p - Git push")
