@@ -439,6 +439,23 @@ M.setup_commit_highlighting = function()
     group = vim.api.nvim_create_augroup('JJWindowResize_' .. state.buf_id, { clear = true })
   })
 
+  -- Set up autocmd to restore window size when vim is resized
+  vim.api.nvim_create_autocmd('VimResized', {
+    callback = function()
+      -- Only restore size for our window
+      if state.win_id and vim.api.nvim_win_is_valid(state.win_id) then
+        local configured_width = config.get_window_width()
+        local current_width = vim.api.nvim_win_get_width(state.win_id)
+        
+        -- Restore the configured width if it changed
+        if current_width ~= configured_width then
+          vim.api.nvim_win_set_width(state.win_id, configured_width)
+        end
+      end
+    end,
+    group = vim.api.nvim_create_augroup('JJVimResize_' .. state.buf_id, { clear = true })
+  })
+
   -- Initial highlighting
   M.highlight_current_commit()
 end
