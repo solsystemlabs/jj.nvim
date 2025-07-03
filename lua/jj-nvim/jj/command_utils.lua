@@ -65,6 +65,51 @@ M.execute_with_error_handling = function(cmd_args, error_context, options)
   return result, nil
 end
 
+-- Async version of execute_with_error_handling
+M.execute_with_error_handling_async = function(cmd_args, error_context, options, callback)
+  options = options or {}
+  callback = callback or function() end
+  
+  local commands = require('jj-nvim.jj.commands')
+  
+  -- Handle interactive commands (these can't be async)
+  if options.interactive then
+    -- For interactive commands, we still need to use the sync version
+    -- but we can wrap it in vim.schedule to make it non-blocking
+    vim.schedule(function()
+      local result, err = M.execute_with_error_handling(cmd_args, error_context, options)
+      callback(result, err)
+    end)
+    return
+  end
+  
+  -- For non-interactive commands, use async execution
+  commands.execute_async(cmd_args, { ignore_immutable = options.ignore_immutable }, function(result, err)
+    if not result then
+      local error_msg = err or "Unknown error"
+      
+      -- Apply common error pattern mapping
+      if error_msg:find("Commit .* is immutable") then
+        error_msg = "Cannot modify immutable commit (try --ignore-immutable flag)"
+      elseif error_msg:find("would create a cycle") then
+        error_msg = "Operation would create a cycle in the commit graph"
+      elseif error_msg:find("Commit .* has conflicts") then
+        error_msg = "Commit has conflicts that need to be resolved"
+      elseif error_msg:find("No such revision") then
+        error_msg = "Commit not found or invalid revision"
+      end
+      
+      if not options.silent then
+        vim.notify(string.format("Failed to %s: %s", error_context, error_msg), vim.log.levels.ERROR)
+      end
+      callback(false, error_msg)
+      return
+    end
+    
+    callback(result, nil)
+  end)
+end
+
 -- Validate commit for common operations
 -- Consolidates validation logic scattered across command modules
 M.validate_commit = function(commit, options)

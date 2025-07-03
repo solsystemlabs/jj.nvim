@@ -308,7 +308,7 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
                       config.get('keymaps.abandon') or 'a'
   vim.keymap.set('n', abandon_key, function()
     if #state.selected_commits > 0 then
-      actions.abandon_multiple_commits(state.selected_commits, function()
+      actions.abandon_multiple_commits_async(state.selected_commits, function()
         state.selected_commits = {}
         require('jj-nvim').refresh()
         local window_utils = require('jj-nvim.utils.window')
@@ -334,7 +334,7 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
   local multi_abandon_key = config.get_first_keybind('keybinds.log_window.actions.multi_abandon') or 'A'
   vim.keymap.set('n', multi_abandon_key, function()
     if #state.selected_commits > 0 then
-      actions.abandon_multiple_commits(state.selected_commits, function()
+      actions.abandon_multiple_commits_async(state.selected_commits, function()
         state.selected_commits = {}
         require('jj-nvim').refresh()
         local window_utils = require('jj-nvim.utils.window')
@@ -534,9 +534,11 @@ M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, m
   end, opts)
 
   vim.keymap.set('n', push_key, function()
-    if actions.git_push() then
-      require('jj-nvim').refresh()
-    end
+    actions.git_push_async({}, function(success)
+      if success then
+        require('jj-nvim').refresh()
+      end
+    end)
   end, opts)
 
   vim.keymap.set('n', show_status_key, function()

@@ -157,3 +157,7 @@ Both systems work together to provide maximum discoverability while maintaining 
 ## File Management
 
 - Put all test files in the `tests/` directory for future use
+
+## Design Conventions
+
+- This project uses a structure where the default setting keybinds for actions are lowercase, while the advanced operations that use the menu system use the capital letter version.

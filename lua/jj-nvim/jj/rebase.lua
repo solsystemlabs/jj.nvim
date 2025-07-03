@@ -142,7 +142,7 @@ M.rebase_multiple_commits = function(selected_commit_ids, options)
   -- Extract change IDs for all valid commits
   local change_ids = {}
   for _, commit in ipairs(commits_to_rebase) do
-    local change_id, err = get_change_id(commit)
+    local change_id, err = command_utils.get_change_id(commit)
     if change_id then
       table.insert(change_ids, change_id)
     else
@@ -209,13 +209,13 @@ M.rebase_commit = function(source_commit, options)
     return false
   end
 
-  local source_change_id, err = get_change_id(source_commit)
+  local source_change_id, err = command_utils.get_change_id(source_commit)
   if not source_change_id then
     vim.notify(err, vim.log.levels.ERROR)
     return false
   end
 
-  local display_id = get_short_display_id(source_commit, source_change_id)
+  local display_id = command_utils.get_short_display_id(source_commit, source_change_id)
 
   -- Build rebase options, defaulting to branch mode if none specified
   local rebase_options = { silent = options.silent }

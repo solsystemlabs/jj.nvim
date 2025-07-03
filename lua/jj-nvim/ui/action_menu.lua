@@ -97,6 +97,13 @@ local function generate_menu_items(win_id, current_commit, selected_commits)
       })
       
       table.insert(items, {
+        key = "X",
+        description = "Squash into parent",
+        action = "squash_into_parent",
+        commit = target_commit
+      })
+      
+      table.insert(items, {
         key = "s",
         description = "Split commit",
         action = "split_commit",
@@ -201,7 +208,7 @@ local function handle_menu_selection(item, win_id)
       require('jj-nvim').refresh()
     end)
   elseif item.action == "abandon_multiple" then
-    actions.abandon_multiple_commits(item.commit_ids, function()
+    actions.abandon_multiple_commits_async(item.commit_ids, function()
       -- Clear selections will be handled by the window module
       require('jj-nvim').refresh()
     end)
@@ -211,6 +218,48 @@ local function handle_menu_selection(item, win_id)
       return
     end
     window_module.enter_target_selection_mode("squash", item.commit)
+  elseif item.action == "squash_into_parent" then
+    if item.commit.root then
+      vim.notify("Cannot squash the root commit", vim.log.levels.WARN)
+      return
+    end
+    
+    -- Find parent commit
+    if not item.commit.parents or #item.commit.parents == 0 then
+      vim.notify("No parent commit found", vim.log.levels.WARN)
+      return
+    end
+    
+    if #item.commit.parents > 1 then
+      vim.notify("Commit has multiple parents. Please use regular squash to select target.", vim.log.levels.WARN)
+      return
+    end
+    
+    -- Get all commits to find the parent
+    local buffer_module = require('jj-nvim.ui.buffer')
+    local all_commits = buffer_module.get_commits()
+    local parent_id = item.commit.parents[1]
+    local parent_commit = nil
+    
+    -- Find parent commit by ID
+    for _, commit in ipairs(all_commits) do
+      if commit.short_commit_id == parent_id or 
+         commit.commit_id == parent_id or 
+         commit.short_change_id == parent_id or
+         commit.change_id == parent_id then
+        parent_commit = commit
+        break
+      end
+    end
+    
+    if not parent_commit then
+      vim.notify("Parent commit not found in current view", vim.log.levels.WARN)
+      return
+    end
+    
+    -- Show squash options menu directly with parent as target
+    local squash = require('jj-nvim.jj.squash')
+    squash.show_squash_options_menu(parent_commit, "commit", win_id, item.commit)
   elseif item.action == "split_commit" then
     if item.commit.root then
       vim.notify("Cannot split the root commit", vim.log.levels.WARN)
@@ -259,9 +308,11 @@ local function handle_menu_selection(item, win_id)
       end
     end)
   elseif item.action == "git_push" then
-    if actions.git_push() then
-      require('jj-nvim').refresh()
-    end
+    actions.git_push_async({}, function(success)
+      if success then
+        require('jj-nvim').refresh()
+      end
+    end)
   elseif item.action == "undo_last" then
     if actions.undo_last(function()
       require('jj-nvim').refresh()

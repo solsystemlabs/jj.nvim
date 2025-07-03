@@ -40,6 +40,9 @@ M.abandon_commit = abandon.abandon_commit
 -- Abandon multiple commits
 M.abandon_multiple_commits = abandon.abandon_multiple_commits
 
+-- Abandon multiple commits asynchronously
+M.abandon_multiple_commits_async = abandon.abandon_multiple_commits_async
+
 -- ============================================================================
 -- New Change Operations
 -- ============================================================================
@@ -281,6 +284,59 @@ M.git_push = function(options)
 
   vim.notify(string.format("Push completed successfully%s", branch_info), vim.log.levels.INFO)
   return true
+end
+
+-- Async git push operation with progress indication
+M.git_push_async = function(options, callback)
+  options = options or {}
+  callback = callback or function() end
+
+  -- Get current branch for display
+  local commands = require('jj-nvim.jj.commands')
+  local current_branch = commands.get_current_branch()
+  local branch_info = current_branch and string.format(" (%s)", current_branch) or ""
+
+  -- Create a timer for progress indication
+  local timer = vim.loop.new_timer()
+  local dots = ""
+  local dot_count = 0
+  
+  -- Start progress indicator immediately
+  timer:start(0, 1000, vim.schedule_wrap(function()
+    dot_count = (dot_count + 1) % 4
+    dots = string.rep(".", dot_count)
+    vim.notify(string.format("Pushing to remote%s%s", branch_info, dots), vim.log.levels.INFO, { replace = true })
+  end))
+
+  git.git_push_async(options, function(result, err)
+    -- Stop progress indicator
+    timer:stop()
+    timer:close()
+    
+    if not result then
+      local error_msg = err or "Unknown error"
+
+      -- Handle common git push errors
+      if error_msg:find("rejected") then
+        error_msg = "Push rejected: remote has newer commits (try fetching first)"
+      elseif error_msg:find("Permission denied") then
+        error_msg = "Permission denied: check your SSH keys or credentials"
+      elseif error_msg:find("not found") then
+        error_msg = "Repository not found or access denied"
+      elseif error_msg:find("timeout") then
+        error_msg = "Connection timeout"
+      elseif error_msg:find("non-fast-forward") then
+        error_msg = "Push rejected: would not be a fast-forward (use force push if intended)"
+      end
+
+      vim.notify(string.format("Failed to push: %s", error_msg), vim.log.levels.ERROR)
+      callback(false, error_msg)
+      return
+    end
+
+    vim.notify(string.format("Push completed successfully%s", branch_info), vim.log.levels.INFO)
+    callback(true, result)
+  end)
 end
 
 -- ============================================================================

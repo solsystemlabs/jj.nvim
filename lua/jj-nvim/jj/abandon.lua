@@ -98,4 +98,49 @@ M.abandon_multiple_commits = function(selected_commit_ids, on_success)
   end, { cancel_message = "Abandon cancelled" })
 end
 
+-- Async version of abandon multiple commits
+M.abandon_multiple_commits_async = function(selected_commit_ids, on_success)
+  if not selected_commit_ids or #selected_commit_ids == 0 then
+    vim.notify("No commits selected for abandoning", vim.log.levels.WARN)
+    return
+  end
+
+  local change_ids = {}
+  for _, commit_id in ipairs(selected_commit_ids) do
+    table.insert(change_ids, commit_id)
+  end
+
+  local confirm_msg = string.format("Abandon %d commit(s)?", #change_ids)
+  
+  command_utils.confirm_operation(confirm_msg, function(confirmed)
+    if confirmed then
+      local cmd_args = { 'abandon' }
+      for _, change_id in ipairs(change_ids) do
+        table.insert(cmd_args, change_id)
+      end
+
+      -- Show progress indicator
+      local timer = vim.loop.new_timer()
+      local dots = ""
+      local dot_count = 0
+      
+      timer:start(0, 1000, vim.schedule_wrap(function()
+        dot_count = (dot_count + 1) % 4
+        dots = string.rep(".", dot_count)
+        vim.notify(string.format("Abandoning %d commit(s)%s", #change_ids, dots), vim.log.levels.INFO, { replace = true })
+      end))
+
+      command_utils.execute_with_error_handling_async(cmd_args, "abandon commits", {}, function(result, err)
+        timer:stop()
+        timer:close()
+        
+        if result then
+          command_utils.notify_operation_result("Abandoned", true, #change_ids)
+          if on_success then on_success() end
+        end
+      end)
+    end
+  end, { cancel_message = "Abandon cancelled" })
+end
+
 return M

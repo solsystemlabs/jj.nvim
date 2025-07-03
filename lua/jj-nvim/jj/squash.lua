@@ -104,13 +104,13 @@ M.squash_into_commit = function(target_commit, options)
     return false
   end
 
-  local target_change_id, err = get_change_id(target_commit)
+  local target_change_id, err = command_utils.get_change_id(target_commit)
   if not target_change_id then
     vim.notify(err, vim.log.levels.ERROR)
     return false
   end
 
-  local target_display_id = get_short_display_id(target_commit, target_change_id)
+  local target_display_id = command_utils.get_short_display_id(target_commit, target_change_id)
 
   -- Handle interactive mode with callbacks
   if options.interactive then
@@ -296,7 +296,7 @@ M.handle_squash_options_selection = function(selected_item, target, target_type,
 
   -- Add source commit to options if provided
   if source_commit then
-    local source_change_id, err = get_change_id(source_commit)
+    local source_change_id, err = command_utils.get_change_id(source_commit)
     if source_change_id then
       options.from_revision = source_change_id
     else

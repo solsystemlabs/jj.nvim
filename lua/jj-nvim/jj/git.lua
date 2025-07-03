@@ -63,4 +63,29 @@ M.git_push = function(options)
   return commands.execute(cmd_args, { silent = options.silent })
 end
 
+-- Async JJ git push operation
+M.git_push_async = function(options, callback)
+  options = options or {}
+  callback = callback or function() end
+  
+  local cmd_args = { 'git', 'push' }
+
+  -- Add remote if specified
+  if options.remote then
+    table.insert(cmd_args, options.remote)
+  end
+
+  -- Add branch if specified
+  if options.branch then
+    table.insert(cmd_args, options.branch)
+  end
+
+  -- Add force flag if specified
+  if options.force then
+    table.insert(cmd_args, '--force-with-lease')
+  end
+
+  commands.execute_async(cmd_args, { silent = options.silent }, callback)
+end
+
 return M

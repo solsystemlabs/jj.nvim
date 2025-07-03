@@ -123,13 +123,13 @@ M.split_commit = function(commit, options)
     return false
   end
 
-  local change_id, err = get_change_id(commit)
+  local change_id, err = command_utils.get_change_id(commit)
   if not change_id then
     vim.notify(err, vim.log.levels.ERROR)
     return false
   end
 
-  local display_id = get_short_display_id(commit, change_id)
+  local display_id = command_utils.get_short_display_id(commit, change_id)
 
   -- Handle interactive mode with callbacks
   if options.interactive then
