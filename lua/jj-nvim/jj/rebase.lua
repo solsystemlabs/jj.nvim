@@ -1,26 +1,7 @@
 local M = {}
 
+local command_utils = require('jj-nvim.jj.command_utils')
 local commands = require('jj-nvim.jj.commands')
-local commit_utils = require('jj-nvim.core.commit')
-
--- Helper function to get change ID from commit
-local function get_change_id(commit)
-  if not commit then
-    return nil, "No commit provided"
-  end
-
-  local change_id = commit_utils.get_id(commit)
-  if not change_id or change_id == "" then
-    return nil, "Invalid commit: missing change ID"
-  end
-
-  return change_id, nil
-end
-
--- Helper function to get short display ID from commit
-local function get_short_display_id(commit, change_id)
-  return commit_utils.get_display_id(commit)
-end
 
 -- Rebase operation
 M.rebase = function(options)

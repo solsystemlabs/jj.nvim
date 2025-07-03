@@ -17,27 +17,8 @@ local undo = require('jj-nvim.jj.undo')
 -- Common utilities
 local buffer = require('jj-nvim.ui.buffer')
 local config = require('jj-nvim.config')
-local commit_utils = require('jj-nvim.core.commit')
-local ansi = require('jj-nvim.utils.ansi')
-
--- Helper function to get change ID from commit
-local function get_change_id(commit)
-  if not commit then
-    return nil, "No commit provided"
-  end
-
-  local change_id = commit_utils.get_id(commit)
-  if not change_id or change_id == "" then
-    return nil, "Invalid commit: missing change ID"
-  end
-
-  return change_id, nil
-end
-
--- Helper function to get short display ID from commit
-local function get_short_display_id(commit, change_id)
-  return commit_utils.get_display_id(commit)
-end
+local command_utils = require('jj-nvim.jj.command_utils')
+local buffer_utils = require('jj-nvim.jj.buffer_utils')
 
 -- ============================================================================
 -- Edit Operations
@@ -87,190 +68,35 @@ M.new_simple = new.new_simple
 
 -- Create a diff buffer and display diff content
 local function create_diff_buffer(content, commit_id, diff_type)
-  -- Create a new buffer for the diff
-  local buf_id = vim.api.nvim_create_buf(false, true)
-
-  -- Set buffer name and type (make it unique using buffer ID)
-  local buf_name = string.format('jj-diff-%s-%s', commit_id or 'unknown', buf_id)
-  vim.api.nvim_buf_set_name(buf_id, buf_name)
-
-  -- Configure buffer options
-  vim.api.nvim_buf_set_option(buf_id, 'modifiable', true)
-  vim.api.nvim_buf_set_option(buf_id, 'readonly', false)
-  vim.api.nvim_buf_set_option(buf_id, 'buftype', 'nofile')
-  vim.api.nvim_buf_set_option(buf_id, 'bufhidden', 'wipe')
-  vim.api.nvim_buf_set_option(buf_id, 'swapfile', false)
-
-  -- Set appropriate filetype for syntax highlighting
-  if diff_type == 'stat' then
-    vim.api.nvim_buf_set_option(buf_id, 'filetype', 'diff')
-  else
-    vim.api.nvim_buf_set_option(buf_id, 'filetype', 'git')
-  end
-
-  -- Setup ANSI highlights for colored diff output
-  ansi.setup_highlights()
-
-  -- Process content for ANSI colors and set buffer content
-  local lines = vim.split(content, '\n', { plain = true })
-  local clean_lines = {}
-  local highlights = {}
-
-  -- Check if content has ANSI codes
-  local has_ansi = false
-  for _, line in ipairs(lines) do
-    if line:find('\27%[') then
-      has_ansi = true
-      break
-    end
-  end
-
-  if has_ansi then
-    -- Process ANSI colors
-    for line_nr, line in ipairs(lines) do
-      local segments = ansi.parse_ansi_line(line)
-      local clean_line = ansi.strip_ansi(line)
-
-      table.insert(clean_lines, clean_line)
-
-      local col = 0
-      for _, segment in ipairs(segments) do
-        if segment.highlight and segment.text ~= '' then
-          table.insert(highlights, {
-            line = line_nr - 1,
-            col_start = col,
-            col_end = col + #segment.text,
-            hl_group = segment.highlight
-          })
-        end
-        col = col + #segment.text
-      end
-    end
-  else
-    clean_lines = lines
-  end
-
-  -- Set buffer content
-  vim.api.nvim_buf_set_lines(buf_id, 0, -1, false, clean_lines)
-
-  -- Apply ANSI color highlights
-  for _, hl in ipairs(highlights) do
-    vim.api.nvim_buf_add_highlight(buf_id, -1, hl.hl_group, hl.line, hl.col_start, hl.col_end)
-  end
-
-  -- Make buffer readonly after setting content
-  vim.api.nvim_buf_set_option(buf_id, 'modifiable', false)
-  vim.api.nvim_buf_set_option(buf_id, 'readonly', true)
-
-  return buf_id
+  return buffer_utils.create_diff_buffer(content, commit_id, diff_type)
 end
 
 -- Create floating window configuration
 local function create_float_config(config_key)
-  config_key = config_key or 'diff.float'
-  local float_config = config.get(config_key) or {}
-  local width_ratio = float_config.width or 0.8
-  local height_ratio = float_config.height or 0.8
-  local border = float_config.border or 'rounded'
-
-  local screen_width = vim.o.columns
-  local screen_height = vim.o.lines
-
-  local width = math.floor(screen_width * width_ratio)
-  local height = math.floor(screen_height * height_ratio)
-  local col = math.floor((screen_width - width) / 2)
-  local row = math.floor((screen_height - height) / 2)
-
-  return {
-    relative = 'editor',
-    width = width,
-    height = height,
-    col = col,
-    row = row,
-    style = 'minimal',
-    border = border,
-    zindex = 100,
-  }
-end
-
--- Display diff buffer in a split window
-local function display_diff_buffer_split(buf_id, split_direction)
-  split_direction = split_direction or 'horizontal'
-
-  -- Get current window to return focus later
-  local current_win = vim.api.nvim_get_current_win()
-
-  -- Create split window
-  if split_direction == 'vertical' then
-    vim.cmd('vsplit')
-  else
-    vim.cmd('split')
-  end
-
-  -- Switch to the new buffer
-  vim.api.nvim_win_set_buf(0, buf_id)
-
-  return vim.api.nvim_get_current_win()
-end
-
--- Display diff buffer in a floating window
-local function display_diff_buffer_float(buf_id, config_key)
-  local float_config = create_float_config(config_key)
-  local win_id = vim.api.nvim_open_win(buf_id, true, float_config)
-
-  -- Set window options for better appearance
-  vim.api.nvim_win_set_option(win_id, 'wrap', false)
-  vim.api.nvim_win_set_option(win_id, 'cursorline', true)
-
-  return win_id
+  return buffer_utils.create_float_config(config_key)
 end
 
 -- Display diff buffer based on configuration
 local function display_diff_buffer(buf_id, display_mode, split_direction)
-  local win_id
-
-  if display_mode == 'float' then
-    win_id = display_diff_buffer_float(buf_id, 'diff.float')
-  else
-    win_id = display_diff_buffer_split(buf_id, split_direction)
-  end
-
-  -- Set up keymaps to close diff window using configured keys
-  local config = require('jj-nvim.config')
-  local close_key = config.get_first_keybind('keybinds.diff_window.close') or 'q'
-  local close_alt_key = config.get_first_keybind('keybinds.diff_window.close_alt') or '<Esc>'
-  
-  vim.keymap.set('n', close_key, function()
-    vim.api.nvim_win_close(win_id, false)
-  end, { buffer = buf_id, noremap = true, silent = true })
-
-  vim.keymap.set('n', close_alt_key, function()
-    vim.api.nvim_win_close(win_id, false)
-  end, { buffer = buf_id, noremap = true, silent = true })
-
-  return win_id
+  return buffer_utils.display_diff_buffer(buf_id, display_mode, split_direction)
 end
 
 -- Show diff for the specified commit
 M.show_diff = function(commit, format, options)
-  if not commit then
-    vim.notify("No commit selected", vim.log.levels.WARN)
+  -- Validate commit
+  local is_valid, err = command_utils.validate_commit(commit, { allow_root = false })
+  if not is_valid then
+    vim.notify(err, vim.log.levels.WARN)
     return false
   end
 
-  -- Don't allow diff for root commit (usually has no changes)
-  if commit.root then
-    vim.notify("Cannot show diff for root commit", vim.log.levels.WARN)
-    return false
-  end
-
-  local change_id, err = get_change_id(commit)
+  local change_id, change_err = command_utils.get_change_id(commit)
   if not change_id then
-    vim.notify(err, vim.log.levels.ERROR)
+    vim.notify(change_err, vim.log.levels.ERROR)
     return false
   end
 
-  local display_id = get_short_display_id(commit)
+  local display_id = command_utils.get_short_display_id(commit)
 
   -- Get diff format from config if not specified
   format = format or config.get('diff.format') or 'git'
@@ -411,102 +237,12 @@ end
 
 -- Create a status buffer and display status content
 local function create_status_buffer(content)
-  -- Create a new buffer for the status
-  local buf_id = vim.api.nvim_create_buf(false, true)
-
-  -- Set buffer name and type (make it unique using buffer ID)
-  local buf_name = 'jj-status-' .. buf_id
-  vim.api.nvim_buf_set_name(buf_id, buf_name)
-
-  -- Configure buffer options
-  vim.api.nvim_buf_set_option(buf_id, 'modifiable', true)
-  vim.api.nvim_buf_set_option(buf_id, 'readonly', false)
-  vim.api.nvim_buf_set_option(buf_id, 'buftype', 'nofile')
-  vim.api.nvim_buf_set_option(buf_id, 'bufhidden', 'wipe')
-  vim.api.nvim_buf_set_option(buf_id, 'swapfile', false)
-  vim.api.nvim_buf_set_option(buf_id, 'filetype', 'text')
-
-  -- Setup ANSI highlights for colored status output
-  ansi.setup_highlights()
-
-  -- Process content for ANSI colors and set buffer content
-  local lines = vim.split(content, '\n', { plain = true })
-  local clean_lines = {}
-  local highlights = {}
-
-  -- Check if content has ANSI codes
-  local has_ansi = false
-  for _, line in ipairs(lines) do
-    if line:find('\27%[') then
-      has_ansi = true
-      break
-    end
-  end
-
-  if has_ansi then
-    -- Process ANSI colors
-    for line_nr, line in ipairs(lines) do
-      local segments = ansi.parse_ansi_line(line)
-      local clean_line = ansi.strip_ansi(line)
-
-      table.insert(clean_lines, clean_line)
-
-      local col = 0
-      for _, segment in ipairs(segments) do
-        if segment.highlight and segment.text ~= '' then
-          table.insert(highlights, {
-            line = line_nr - 1,
-            col_start = col,
-            col_end = col + #segment.text,
-            hl_group = segment.highlight
-          })
-        end
-        col = col + #segment.text
-      end
-    end
-  else
-    clean_lines = lines
-  end
-
-  -- Set buffer content
-  vim.api.nvim_buf_set_lines(buf_id, 0, -1, false, clean_lines)
-
-  -- Apply ANSI color highlights
-  for _, hl in ipairs(highlights) do
-    vim.api.nvim_buf_add_highlight(buf_id, -1, hl.hl_group, hl.line, hl.col_start, hl.col_end)
-  end
-
-  -- Make buffer readonly after setting content
-  vim.api.nvim_buf_set_option(buf_id, 'modifiable', false)
-  vim.api.nvim_buf_set_option(buf_id, 'readonly', true)
-
-  return buf_id
+  return buffer_utils.create_status_buffer(content)
 end
 
 -- Display status buffer based on configuration
 local function display_status_buffer(buf_id, display_mode, split_direction)
-  local win_id
-
-  if display_mode == 'float' then
-    win_id = display_diff_buffer_float(buf_id, 'status.float')
-  else
-    win_id = display_diff_buffer_split(buf_id, split_direction)
-  end
-
-  -- Set up keymaps to close status window using configured keys
-  local config = require('jj-nvim.config')
-  local close_key = config.get_first_keybind('keybinds.status_window.close') or 'q'
-  local close_alt_key = config.get_first_keybind('keybinds.status_window.close_alt') or '<Esc>'
-  
-  vim.keymap.set('n', close_key, function()
-    vim.api.nvim_win_close(win_id, false)
-  end, { buffer = buf_id, noremap = true, silent = true })
-
-  vim.keymap.set('n', close_alt_key, function()
-    vim.api.nvim_win_close(win_id, false)
-  end, { buffer = buf_id, noremap = true, silent = true })
-
-  return win_id
+  return buffer_utils.display_status_buffer(buf_id, display_mode, split_direction)
 end
 
 -- Show repository status
@@ -543,24 +279,20 @@ end
 
 -- Set description for a commit
 M.set_description = function(commit, on_success)
-  if not commit then
-    vim.notify("No commit selected", vim.log.levels.WARN)
+  -- Validate commit
+  local is_valid, err = command_utils.validate_commit(commit, { allow_root = false })
+  if not is_valid then
+    vim.notify(err, vim.log.levels.WARN)
     return false
   end
 
-  -- Don't allow describing the root commit
-  if commit.root then
-    vim.notify("Cannot set description for root commit", vim.log.levels.WARN)
-    return false
-  end
-
-  local change_id, err = get_change_id(commit)
+  local change_id, change_err = command_utils.get_change_id(commit)
   if not change_id then
-    vim.notify(err, vim.log.levels.ERROR)
+    vim.notify(change_err, vim.log.levels.ERROR)
     return false
   end
 
-  local display_id = get_short_display_id(commit, change_id)
+  local display_id = command_utils.get_short_display_id(commit, change_id)
   local current_description = commit:get_description_text_only()
 
   -- Show current description if it's not the default
