@@ -103,28 +103,69 @@ M.get_all_bookmarks = function()
           change_id = parts[10] ~= "no_change_id" and parts[10] or nil
         }
 
-        -- Generate display name
-        if bookmark.remote then
-          bookmark.display_name = bookmark.name .. "@" .. bookmark.remote
-        else
-          bookmark.display_name = bookmark.name
-        end
-
-        -- Add status indicators
-        local status_parts = {}
-        if not bookmark.present then
-          table.insert(status_parts, "deleted")
-        end
-        if bookmark.conflict then
-          table.insert(status_parts, "conflict")
-        end
-
-        if #status_parts > 0 then
-          bookmark.display_name = bookmark.display_name .. " (" .. table.concat(status_parts, ", ") .. ")"
-        end
-
         table.insert(bookmarks, bookmark)
       end
+    end
+  end
+
+  -- Detect divergence between local and remote bookmarks
+  local bookmark_names = {}
+  for _, bookmark in ipairs(bookmarks) do
+    if not bookmark_names[bookmark.name] then
+      bookmark_names[bookmark.name] = {}
+    end
+    table.insert(bookmark_names[bookmark.name], bookmark)
+  end
+  
+  -- Check for divergence and mark local bookmarks that differ from their remotes
+  for name, name_bookmarks in pairs(bookmark_names) do
+    local local_bookmark = nil
+    local remote_bookmarks = {}
+    
+    -- Separate local and remote bookmarks
+    for _, bookmark in ipairs(name_bookmarks) do
+      if not bookmark.remote then
+        local_bookmark = bookmark
+      else
+        table.insert(remote_bookmarks, bookmark)
+      end
+    end
+    
+    -- Check if local bookmark diverges from any remote with same name
+    if local_bookmark and local_bookmark.commit_id then
+      for _, remote_bookmark in ipairs(remote_bookmarks) do
+        if remote_bookmark.commit_id and remote_bookmark.commit_id ~= local_bookmark.commit_id then
+          local_bookmark.has_divergence = true
+          break
+        end
+      end
+    end
+  end
+  
+  -- Update display names to include asterisk for divergent local bookmarks
+  for _, bookmark in ipairs(bookmarks) do
+    -- Generate base display name
+    if bookmark.remote then
+      bookmark.display_name = bookmark.name .. "@" .. bookmark.remote
+    else
+      bookmark.display_name = bookmark.name
+      -- Add asterisk for divergent local bookmarks
+      if bookmark.has_divergence then
+        bookmark.display_name = bookmark.display_name .. "*"
+      end
+    end
+    
+    -- Add status indicators
+    local status_parts = {}
+    if not bookmark.present then
+      table.insert(status_parts, "deleted")
+    end
+    if bookmark.conflict then
+      table.insert(status_parts, "conflict")
+    end
+    
+    if #status_parts > 0 then
+      bookmark.display_name = bookmark.display_name .. " (" .. table.concat(status_parts, ", ") .. ")"
     end
   end
 

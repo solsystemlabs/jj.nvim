@@ -1651,8 +1651,7 @@ M.handle_bookmark_menu_selection = function(selected_item)
         local revision = commit.change_id or commit.short_change_id
 
         if bookmark_commands.create_bookmark(name, revision) then
-          -- Clear cache and refresh with latest data
-          bookmark_commands.clear_cache()
+          -- Refresh with latest data
           require('jj-nvim').refresh()
         end
       end
@@ -1915,7 +1914,7 @@ M.handle_bookmark_action = function(selected_item)
 
     if bookmark.name and bookmark.remote then
       if bookmark_commands.track_bookmark(bookmark.name, bookmark.remote) then
-        M.refresh_log()
+        require('jj-nvim').refresh()
       end
     end
   elseif action == "untrack_bookmark" then
@@ -1923,7 +1922,7 @@ M.handle_bookmark_action = function(selected_item)
 
     if bookmark.name and bookmark.remote then
       if bookmark_commands.untrack_bookmark(bookmark.name, bookmark.remote) then
-        M.refresh_log()
+        require('jj-nvim').refresh()
       end
     end
   end
