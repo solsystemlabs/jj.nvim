@@ -2,6 +2,28 @@ local M = {}
 
 local commands = require('jj-nvim.jj.commands')
 
+-- Helper function to get current working copy description
+local function get_current_working_copy_description()
+  local buffer = require('jj-nvim.ui.buffer')
+  local commits = buffer.get_commits()
+  
+  if not commits then
+    return ""
+  end
+  
+  for _, commit in ipairs(commits) do
+    if commit.current_working_copy then
+      local description = commit:get_description_text_only()
+      if description and description ~= "(no description set)" then
+        return description
+      end
+      break
+    end
+  end
+  
+  return ""
+end
+
 -- Commit working copy changes
 M.commit = function(message, options)
   options = options or {}
@@ -114,9 +136,10 @@ M.commit_working_copy = function(options, on_success)
   end
 
   -- Prompt user for commit message
+  local current_description = get_current_working_copy_description()
   vim.ui.input({
     prompt = "Enter commit message:",
-    default = "",
+    default = current_description,
   }, function(message)
     if not message or message:match("^%s*$") then
       vim.notify("Commit cancelled - no message provided", vim.log.levels.INFO)
@@ -241,9 +264,10 @@ M.handle_commit_menu_selection = function(selected_item)
     end
   elseif selected_item.action == "reset_author_commit" then
     -- Commit with reset author
+    local current_description = get_current_working_copy_description()
     vim.ui.input({
       prompt = "Enter commit message (author will be reset):",
-      default = "",
+      default = current_description,
     }, function(message)
       if not message or message:match("^%s*$") then
         vim.notify("Commit cancelled - no message provided", vim.log.levels.INFO)
@@ -270,9 +294,10 @@ M.handle_commit_menu_selection = function(selected_item)
         return
       end
 
+      local current_description = get_current_working_copy_description()
       vim.ui.input({
         prompt = "Enter commit message:",
-        default = "",
+        default = current_description,
       }, function(message)
         if not message or message:match("^%s*$") then
           vim.notify("Commit cancelled - no message provided", vim.log.levels.INFO)
@@ -303,9 +328,10 @@ M.handle_commit_menu_selection = function(selected_item)
       -- Split filesets by spaces
       local filesets = vim.split(filesets_str, "%s+")
 
+      local current_description = get_current_working_copy_description()
       vim.ui.input({
         prompt = "Enter commit message:",
-        default = "",
+        default = current_description,
       }, function(message)
         if not message or message:match("^%s*$") then
           vim.notify("Commit cancelled - no message provided", vim.log.levels.INFO)

@@ -3,6 +3,11 @@ local M = {}
 local command_utils = require('jj-nvim.jj.command_utils')
 local commands = require('jj-nvim.jj.commands')
 
+-- Import helper functions from command_utils
+local get_change_id = command_utils.get_change_id
+local get_short_display_id = command_utils.get_short_display_id
+local execute_with_error_handling = command_utils.execute_with_error_handling
+
 -- Helper function to extract new change ID from jj command output
 local function extract_new_change_id(result)
   if not result then return nil end
