@@ -1670,8 +1670,7 @@ M.handle_bookmark_menu_selection = function(selected_item)
           }, function(choice)
             if choice == 'Yes' then
               if bookmark_commands.delete_bookmark(bookmark.name) then
-                -- Clear cache and refresh with latest data
-                bookmark_commands.clear_cache()
+                -- Refresh with latest data
                 require('jj-nvim').refresh()
               end
             end
@@ -1733,8 +1732,7 @@ M.handle_bookmark_menu_selection = function(selected_item)
 
             if new_name and new_name ~= "" and new_name ~= bookmark.name then
               if bookmark_commands.rename_bookmark(bookmark.name, new_name) then
-                -- Clear cache and refresh with latest data
-                bookmark_commands.clear_cache()
+                -- Refresh with latest data
                 require('jj-nvim').refresh()
               end
             end
@@ -1805,6 +1803,26 @@ M.show_bookmark_action_menu = function(bookmark)
     })
   end
 
+  -- Push bookmark (only for local bookmarks)
+  if not bookmark.remote then
+    table.insert(menu_items, {
+      key = "p",
+      description = "Push bookmark",
+      action = "push_bookmark",
+      data = { bookmark = bookmark }
+    })
+  end
+
+  -- Push options (only for local bookmarks)
+  if not bookmark.remote then
+    table.insert(menu_items, {
+      key = "P",
+      description = "Push options",
+      action = "push_options",
+      data = { bookmark = bookmark }
+    })
+  end
+
   -- Delete bookmark (only for local bookmarks)
   if not bookmark.remote then
     table.insert(menu_items, {
@@ -1815,9 +1833,31 @@ M.show_bookmark_action_menu = function(bookmark)
     })
   end
 
+  -- Forget bookmark (only for local bookmarks)
+  if not bookmark.remote then
+    table.insert(menu_items, {
+      key = "f",
+      description = "Forget bookmark",
+      action = "forget_bookmark",
+      data = { bookmark = bookmark }
+    })
+  end
+
   -- Track/untrack for remote bookmarks
   if bookmark.remote then
-    if bookmark.tracked then
+    -- Get all bookmarks to check if there's a corresponding local bookmark
+    local all_bookmarks = bookmark_commands.get_all_bookmarks()
+    local has_local_bookmark = false
+    
+    for _, b in ipairs(all_bookmarks) do
+      if b.name == bookmark.name and not b.remote then
+        has_local_bookmark = true
+        break
+      end
+    end
+    
+    if has_local_bookmark then
+      -- If there's a local bookmark, offer to untrack the remote
       table.insert(menu_items, {
         key = "u",
         description = "Untrack bookmark",
@@ -1825,6 +1865,7 @@ M.show_bookmark_action_menu = function(bookmark)
         data = { bookmark = bookmark }
       })
     else
+      -- If there's no local bookmark, offer to track the remote
       table.insert(menu_items, {
         key = "t",
         description = "Track bookmark",
@@ -1891,7 +1932,7 @@ M.handle_bookmark_action = function(selected_item)
       bookmark_commands.move_bookmark(bookmark.name, target_commit.id, {
         on_success = function()
           -- Refresh the log to show updated bookmark position
-          M.refresh_log()
+          require('jj-nvim').refresh()
         end
       })
     end
@@ -1904,10 +1945,84 @@ M.handle_bookmark_action = function(selected_item)
       }, function(choice)
         if choice == 'Yes' then
           if bookmark_commands.delete_bookmark(bookmark.name) then
-            M.refresh_log()
+            require('jj-nvim').refresh()
           end
         end
       end)
+    end
+  elseif action == "forget_bookmark" then
+    local bookmark = data.bookmark
+
+    if bookmark.name then
+      vim.ui.select({ 'Yes', 'No' }, {
+        prompt = string.format("Forget bookmark '%s'? This won't delete it on remotes.", bookmark.name),
+      }, function(choice)
+        if choice == 'Yes' then
+          if bookmark_commands.forget_bookmark(bookmark.name) then
+            require('jj-nvim').refresh()
+          end
+        end
+      end)
+    end
+  elseif action == "push_bookmark" then
+    local bookmark = data.bookmark
+
+    if bookmark.name then
+      bookmark_commands.push_bookmark(bookmark.name, {
+        on_success = function()
+          require('jj-nvim').refresh()
+        end
+      })
+    end
+  elseif action == "push_options" then
+    local bookmark = data.bookmark
+    vim.schedule(function()
+      M.show_push_options_menu(bookmark)
+    end)
+  elseif action == "push_force" then
+    local bookmark = data.bookmark
+
+    if bookmark.name then
+      vim.ui.select({ 'Yes', 'No' }, {
+        prompt = string.format("Force push bookmark '%s'? This may overwrite remote changes.", bookmark.name),
+      }, function(choice)
+        if choice == 'Yes' then
+          bookmark_commands.push_bookmark(bookmark.name, {
+            force = true,
+            on_success = function()
+              require('jj-nvim').refresh()
+            end
+          })
+        end
+      end)
+    end
+  elseif action == "push_deleted" then
+    local bookmark = data.bookmark
+
+    if bookmark.name then
+      vim.ui.select({ 'Yes', 'No' }, {
+        prompt = string.format("Push deletion of bookmark '%s' to remote?", bookmark.name),
+      }, function(choice)
+        if choice == 'Yes' then
+          bookmark_commands.push_bookmark(bookmark.name, {
+            deleted = true,
+            on_success = function()
+              require('jj-nvim').refresh()
+            end
+          })
+        end
+      end)
+    end
+  elseif action == "push_dry_run" then
+    local bookmark = data.bookmark
+
+    if bookmark.name then
+      bookmark_commands.push_bookmark(bookmark.name, {
+        dry_run = true,
+        on_success = function()
+          -- No refresh needed for dry run
+        end
+      })
     end
   elseif action == "track_bookmark" then
     local bookmark = data.bookmark
@@ -2095,6 +2210,77 @@ M.show_squash_bookmark_selection = function()
       M.enter_target_selection_mode("squash", source_commit)
     end
   })
+end
+
+-- Show push options submenu for a bookmark
+M.show_push_options_menu = function(bookmark)
+  if not M.is_open() then
+    vim.notify("JJ window is not open", vim.log.levels.WARN)
+    return
+  end
+
+  local menu_items = {}
+
+  -- Push normally (with smart confirmations)
+  table.insert(menu_items, {
+    key = "p",
+    description = "Push normally",
+    action = "push_bookmark",
+    data = { bookmark = bookmark }
+  })
+
+  -- Push with force
+  table.insert(menu_items, {
+    key = "f",
+    description = "Push with force (--force-with-lease)",
+    action = "push_force",
+    data = { bookmark = bookmark }
+  })
+
+  -- Push as deleted
+  table.insert(menu_items, {
+    key = "d",
+    description = "Push as deleted (--deleted)",
+    action = "push_deleted",
+    data = { bookmark = bookmark }
+  })
+
+  -- Dry run preview
+  table.insert(menu_items, {
+    key = "r",
+    description = "Dry run (preview changes)",
+    action = "push_dry_run",
+    data = { bookmark = bookmark }
+  })
+
+  local menu_config = {
+    id = "push_options",
+    title = "Push Options: " .. bookmark.display_name,
+    items = menu_items
+  }
+
+  -- Show the menu
+  local success = inline_menu.show(state.win_id, menu_config, {
+    on_select = function(selected_item)
+      M.handle_bookmark_action(selected_item)
+    end,
+    parent_menu_callback = function()
+      -- Go back to bookmark action menu
+      vim.schedule(function()
+        M.show_bookmark_action_menu(bookmark)
+      end)
+    end,
+    on_cancel = function()
+      -- Go back to bookmark action menu
+      vim.schedule(function()
+        M.show_bookmark_action_menu(bookmark)
+      end)
+    end
+  })
+
+  if not success then
+    vim.notify("Failed to show push options menu", vim.log.levels.ERROR)
+  end
 end
 
 -- Get current window ID for external use

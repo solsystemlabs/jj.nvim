@@ -17,6 +17,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - Don't add feedback via notifications for actions that change the UI somehow. Notifications are redundant and clutter things in these cases since the UI reflects the action taken.
 
+- Don't limit the number of lines you get from help commands with --head. Read the entire help document.
+
 ## Project Overview
 
 A Neovim plugin for interacting with the jujutsu (jj) version control system through an interactive log interface. The plugin displays a graphical commit log with graph visualization, interactive navigation, and commit operations.

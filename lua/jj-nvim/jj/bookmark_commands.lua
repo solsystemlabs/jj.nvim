@@ -213,13 +213,20 @@ M.delete_bookmark = function(name)
 end
 
 -- Forget a bookmark (without propagating deletion)
-M.forget_bookmark = function(name)
+M.forget_bookmark = function(name, options)
   if not name or name == "" then
     vim.notify("Bookmark name required", vim.log.levels.ERROR)
     return false
   end
 
+  options = options or {}
+  
   local cmd_args = { 'bookmark', 'forget', name }
+
+  -- Add --include-remotes flag if specified
+  if options.include_remotes then
+    table.insert(cmd_args, '--include-remotes')
+  end
 
   local result, exec_err = execute_bookmark_command(cmd_args, "forget bookmark")
   if not result then
@@ -389,6 +396,135 @@ M.get_bookmarks_for_commit = function(commit_id)
   end
 
   return commit_bookmarks
+end
+
+-- Push a bookmark with smart error handling and confirmations
+M.push_bookmark = function(name, options)
+  if not name or name == "" then
+    vim.notify("Bookmark name required", vim.log.levels.ERROR)
+    return false
+  end
+
+  options = options or {}
+  
+  local cmd_args = { 'git', 'push' }
+  
+  -- Add remote (default to origin)
+  local remote = options.remote or 'origin'
+  table.insert(cmd_args, remote)
+  
+  -- Add bookmark flag
+  table.insert(cmd_args, '--bookmark')
+  table.insert(cmd_args, name)
+  
+  -- Add optional flags
+  if options.allow_new then
+    table.insert(cmd_args, '--allow-new')
+  end
+  
+  if options.deleted then
+    table.insert(cmd_args, '--deleted')
+  end
+  
+  if options.force then
+    table.insert(cmd_args, '--force-with-lease')
+  end
+  
+  if options.dry_run then
+    table.insert(cmd_args, '--dry-run')
+  end
+  
+  if options.allow_empty_description then
+    table.insert(cmd_args, '--allow-empty-description')
+  end
+  
+  if options.allow_private then
+    table.insert(cmd_args, '--allow-private')
+  end
+
+  local result, exec_err = commands.execute(cmd_args)
+  if not result then
+    local error_msg = exec_err or "Unknown error"
+    
+    -- Smart confirmation for --allow-new flag
+    local is_new_bookmark_error = error_msg:find("Refusing to create new remote bookmark") or 
+                                 error_msg:find("allow%-new")
+    
+    if is_new_bookmark_error and not options.allow_new then
+      vim.ui.select({ 'Yes', 'No' }, {
+        prompt = string.format("Bookmark '%s' is new. Allow pushing new bookmark to remote?", name),
+      }, function(choice)
+        if choice == 'Yes' then
+          -- Retry with --allow-new flag
+          local retry_options = vim.tbl_extend("force", options, { allow_new = true })
+          M.push_bookmark(name, retry_options)
+        else
+          vim.notify("Push cancelled", vim.log.levels.INFO)
+        end
+      end)
+      return false -- Return false for the original attempt
+    end
+    
+    -- Smart confirmation for empty description
+    local is_empty_description_error = error_msg:find("empty descriptions") or 
+                                      error_msg:find("no description")
+    
+    if is_empty_description_error and not options.allow_empty_description then
+      vim.ui.select({ 'Yes', 'No' }, {
+        prompt = string.format("Bookmark '%s' points to commits with empty descriptions. Allow pushing?", name),
+      }, function(choice)
+        if choice == 'Yes' then
+          -- Retry with --allow-empty-description flag
+          local retry_options = vim.tbl_extend("force", options, { allow_empty_description = true })
+          M.push_bookmark(name, retry_options)
+        else
+          vim.notify("Push cancelled", vim.log.levels.INFO)
+        end
+      end)
+      return false
+    end
+    
+    -- Smart confirmation for private commits
+    local is_private_commits_error = error_msg:find("private") and error_msg:find("commit")
+    
+    if is_private_commits_error and not options.allow_private then
+      vim.ui.select({ 'Yes', 'No' }, {
+        prompt = string.format("Bookmark '%s' points to private commits. Allow pushing?", name),
+      }, function(choice)
+        if choice == 'Yes' then
+          -- Retry with --allow-private flag
+          local retry_options = vim.tbl_extend("force", options, { allow_private = true })
+          M.push_bookmark(name, retry_options)
+        else
+          vim.notify("Push cancelled", vim.log.levels.INFO)
+        end
+      end)
+      return false
+    end
+
+    -- For other errors, show the error message
+    vim.notify(string.format("Failed to push bookmark: %s", error_msg), vim.log.levels.ERROR)
+    return false
+  end
+
+  -- Success notification
+  local success_msg = "Pushed bookmark '%s' to %s"
+  if options.dry_run then
+    success_msg = "Push preview for bookmark '%s' to %s (dry run)"
+  elseif options.deleted then
+    success_msg = "Deleted bookmark '%s' on %s"
+  elseif options.allow_new then
+    success_msg = "Pushed new bookmark '%s' to %s"
+  end
+  
+  vim.notify(string.format(success_msg, name, remote), vim.log.levels.INFO)
+
+  -- Call success callback if provided
+  if options.on_success then
+    options.on_success()
+  end
+
+  return true
 end
 
 
