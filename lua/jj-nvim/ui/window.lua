@@ -244,6 +244,10 @@ M.open_with_buffer = function(buf_id)
 end
 
 M.close = function()
+  -- Close context window first
+  local context_window = require('jj-nvim.ui.context_window')
+  context_window.close()
+  
   if state.win_id and vim.api.nvim_win_is_valid(state.win_id) then
     vim.api.nvim_win_close(state.win_id, false)
   end
@@ -2303,6 +2307,27 @@ end
 -- Get current window ID for external use
 M.get_current_win_id = function()
   return state.win_id
+end
+
+-- Get selected commits for external use
+M.get_selected_commits = function()
+  return state.selected_commits or {}
+end
+
+-- Clear selections for external use
+M.clear_selections = function()
+  state.selected_commits = {}
+  if state.buf_id and vim.api.nvim_buf_is_valid(state.buf_id) then
+    local window_width = window_utils.get_width(state.win_id)
+    buffer.update_status(state.buf_id, {
+      selected_count = 0
+    }, window_width)
+    
+    -- Update context window
+    local context_window = require('jj-nvim.ui.context_window')
+    local current_commit = navigation.get_current_commit(state.win_id)
+    context_window.update(state.win_id, current_commit, {})
+  end
 end
 
 return M

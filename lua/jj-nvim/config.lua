@@ -42,6 +42,7 @@ M.defaults = {
         clear_selections = '<Esc>',
         toggle_description = '<Tab>',
         help = '?',
+        action_menu = '<leader>a',
       },
       git_operations = {
         fetch = 'f',
@@ -195,6 +196,14 @@ M.defaults = {
       height = 0.8,       -- Floating window height as percentage of screen
       border = 'rounded', -- 'none', 'single', 'double', 'rounded', 'solid', 'shadow'
     },
+  },
+  context_window = {
+    enabled = true,         -- Show context window when selections are made
+    auto_show = true,       -- Automatically show when selections change
+    position = 'bottom',    -- 'top', 'bottom', 'left', 'right'
+    height = 0.25,         -- Height as percentage of log window (for top/bottom)
+    width = 0.35,          -- Width as percentage of log window (for left/right)
+    border = 'rounded',    -- 'none', 'single', 'double', 'rounded', 'solid', 'shadow'
   },
   interactive = {
     float = {

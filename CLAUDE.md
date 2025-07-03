@@ -92,6 +92,8 @@ lua/jj-nvim/
 │   ├── navigation.lua    # Cursor movement
 │   ├── inline_menu.lua   # Interactive menus
 │   ├── multi_select.lua  # Multi-selection support
+│   ├── action_menu.lua   # Context-sensitive action menu
+│   ├── context_window.lua # Auto-showing context window
 │   └── themes.lua        # Theme management
 ├── themes/               # Color schemes
 └── utils/                # Utility modules
@@ -109,6 +111,29 @@ The plugin uses a dual-parsing approach:
 ### Graph Wrapping Challenge
 
 The plugin previously attempted graph-aware text wrapping but this was disabled due to complexity. See `GRAPH_WRAPPING_RESEARCH.md` for details on the technical challenges discovered.
+
+### Action Menu & Context Window System
+
+The plugin features a discoverable action system with two complementary interfaces:
+
+#### Context Window (`lua/jj-nvim/ui/context_window.lua`)
+Auto-showing floating window that displays available actions within the log window:
+- **Auto-show**: Appears when selections are made, disappears when cleared
+- **Real-time updates**: Updates content based on cursor position and selections
+- **Window-relative**: Positioned within the log window bounds, not the entire screen
+- **Configurable**: Position (top/bottom/left/right), size, and auto-show behavior
+- **Non-intrusive**: Non-focusable, stays out of the way during normal operation
+
+#### Action Menu (`lua/jj-nvim/ui/action_menu.lua`)
+Interactive menu for manual action selection:
+- **Context-aware**: Shows different actions based on current selection state
+- **No selections**: Shows actions for commit under cursor (diff, edit, abandon, etc.)
+- **Single selection**: Shows actions for the selected commit
+- **Multiple selections**: Shows multi-commit actions (abandon multiple, rebase multiple)
+- **Smart validation**: Disables invalid actions (e.g., can't abandon root commit)
+- **Default keybinding**: `<leader>a` (configurable via `keybinds.log_window.actions.action_menu`)
+
+Both systems work together to provide maximum discoverability while maintaining a clean interface.
 
 ### Testing Considerations
 

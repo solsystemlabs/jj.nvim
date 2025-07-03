@@ -1,5 +1,28 @@
 local M = {}
 
+-- Helper function to get the target commit (prioritize selected over cursor)
+local function get_target_commit(win_id, selected_commits, navigation)
+  local has_selections = selected_commits and #selected_commits > 0
+  local single_selection = has_selections and #selected_commits == 1
+  
+  if single_selection then
+    -- Find the selected commit
+    local command_utils = require('jj-nvim.jj.command_utils')
+    local all_commits = command_utils.get_all_commits()
+    if all_commits then
+      for _, commit in ipairs(all_commits) do
+        local commit_id = commit.change_id or commit.short_change_id
+        if commit_id == selected_commits[1] then
+          return commit
+        end
+      end
+    end
+  end
+  
+  -- Fall back to current commit under cursor
+  return navigation.get_current_commit(win_id)
+end
+
 -- Setup common navigation keymaps used in both target selection and multi-select modes
 M.setup_common_navigation = function(buf_id, win_id, navigation, opts, update_callback)
   local nav_opts = opts or {}
@@ -122,9 +145,17 @@ M.setup_main_keymaps = function(buf_id, win_id, state, actions, navigation, mult
   
   vim.keymap.set('n', next_key, function()
     navigation.next_commit(win_id)
+    -- Update context window on navigation
+    local context_window = require('jj-nvim.ui.context_window')
+    local current_commit = navigation.get_current_commit(win_id)
+    context_window.update(win_id, current_commit, state.selected_commits)
   end, opts)
   vim.keymap.set('n', prev_key, function()
     navigation.prev_commit(win_id)
+    -- Update context window on navigation
+    local context_window = require('jj-nvim.ui.context_window')
+    local current_commit = navigation.get_current_commit(win_id)
+    context_window.update(win_id, current_commit, state.selected_commits)
   end, opts)
 
   -- Additional navigation - use configured keys
@@ -165,11 +196,19 @@ M.setup_main_keymaps = function(buf_id, win_id, state, actions, navigation, mult
       buffer.update_status(buf_id, {
         selected_count = #state.selected_commits
       }, window_width)
+      
+      -- Update context window
+      local context_window = require('jj-nvim.ui.context_window')
+      context_window.update(win_id, commit, state.selected_commits)
     else
       local window_width = window_utils.get_width(win_id)
       buffer.update_status(buf_id, {
         selected_count = 0
       }, window_width)
+      
+      -- Update context window with no commit
+      local context_window = require('jj-nvim.ui.context_window')
+      context_window.update(win_id, nil, {})
     end
   end, opts)
 
@@ -184,30 +223,36 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
   local show_diff_key = config.get_first_keybind('keybinds.log_window.actions.show_diff') or 
                         config.get('keymaps.show_diff') or '<CR>'
   vim.keymap.set('n', show_diff_key, function()
-    local commit = navigation.get_current_commit(win_id)
-    actions.show_diff(commit)
+    local commit = get_target_commit(win_id, state.selected_commits, navigation)
+    if commit then
+      actions.show_diff(commit)
+    end
   end, opts)
 
   -- Show diff (alternative binding) - use configured key
   local show_diff_alt_key = config.get_first_keybind('keybinds.log_window.actions.show_diff_alt') or 'd'
   vim.keymap.set('n', show_diff_alt_key, function()
-    local commit = navigation.get_current_commit(win_id)
-    actions.show_diff(commit, 'git')
+    local commit = get_target_commit(win_id, state.selected_commits, navigation)
+    if commit then
+      actions.show_diff(commit, 'git')
+    end
   end, opts)
 
   -- Show diff summary/stats - use configured key
   local show_diff_summary_key = config.get_first_keybind('keybinds.log_window.actions.show_diff_summary') or 'D'
   vim.keymap.set('n', show_diff_summary_key, function()
-    local commit = navigation.get_current_commit(win_id)
-    actions.show_diff_summary(commit)
+    local commit = get_target_commit(win_id, state.selected_commits, navigation)
+    if commit then
+      actions.show_diff_summary(commit)
+    end
   end, opts)
 
   -- Edit commit - use configured key (with backward compatibility)
   local edit_key = config.get_first_keybind('keybinds.log_window.actions.edit_message') or 
                    config.get('keymaps.edit_message') or 'e'
   vim.keymap.set('n', edit_key, function()
-    local commit = navigation.get_current_commit(win_id)
-    if actions.edit_commit(commit) then
+    local commit = get_target_commit(win_id, state.selected_commits, navigation)
+    if commit and actions.edit_commit(commit) then
       require('jj-nvim').refresh()
     end
   end, opts)
@@ -215,10 +260,12 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
   -- Set description for commit - use configured key
   local set_description_key = config.get_first_keybind('keybinds.log_window.actions.set_description') or 'm'
   vim.keymap.set('n', set_description_key, function()
-    local commit = navigation.get_current_commit(win_id)
-    actions.set_description(commit, function()
-      require('jj-nvim').refresh()
-    end)
+    local commit = get_target_commit(win_id, state.selected_commits, navigation)
+    if commit then
+      actions.set_description(commit, function()
+        require('jj-nvim').refresh()
+      end)
+    end
   end, opts)
 
   -- Abandon commit(s) - use configured key (with backward compatibility)
@@ -271,55 +318,55 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
   local squash_key = config.get_first_keybind('keybinds.log_window.actions.squash') or 
                      config.get('keymaps.squash') or 'x'
   vim.keymap.set('n', squash_key, function()
-    local current_commit = navigation.get_current_commit(win_id)
-    if not current_commit then
-      vim.notify("No commit under cursor to squash", vim.log.levels.WARN)
+    local commit = get_target_commit(win_id, state.selected_commits, navigation)
+    if not commit then
+      vim.notify("No commit to squash", vim.log.levels.WARN)
       return
     end
 
-    if current_commit.root then
+    if commit.root then
       vim.notify("Cannot squash the root commit", vim.log.levels.WARN)
       return
     end
 
     local window_module = require('jj-nvim.ui.window')
-    window_module.enter_target_selection_mode("squash", current_commit)
+    window_module.enter_target_selection_mode("squash", commit)
   end, opts)
 
   -- Split commit - use configured key (with backward compatibility)
   local split_key = config.get_first_keybind('keybinds.log_window.actions.split') or 
                     config.get('keymaps.split') or 's'
   vim.keymap.set('n', split_key, function()
-    local current_commit = navigation.get_current_commit(win_id)
-    if not current_commit then
-      vim.notify("No commit under cursor to split", vim.log.levels.WARN)
+    local commit = get_target_commit(win_id, state.selected_commits, navigation)
+    if not commit then
+      vim.notify("No commit to split", vim.log.levels.WARN)
       return
     end
 
-    if current_commit.root then
+    if commit.root then
       vim.notify("Cannot split the root commit", vim.log.levels.WARN)
       return
     end
 
-    actions.show_split_options_menu(current_commit, win_id)
+    actions.show_split_options_menu(commit, win_id)
   end, opts)
 
   -- Rebase commit - use configured key (with backward compatibility)
   local rebase_key = config.get_first_keybind('keybinds.log_window.actions.rebase') or 
                      config.get('keymaps.rebase') or 'r'
   vim.keymap.set('n', rebase_key, function()
-    local current_commit = navigation.get_current_commit(win_id)
-    if not current_commit then
-      vim.notify("No commit under cursor to rebase", vim.log.levels.WARN)
+    local commit = get_target_commit(win_id, state.selected_commits, navigation)
+    if not commit then
+      vim.notify("No commit to rebase", vim.log.levels.WARN)
       return
     end
 
-    if current_commit.root then
+    if commit.root then
       vim.notify("Cannot rebase the root commit", vim.log.levels.WARN)
       return
     end
 
-    actions.show_rebase_options_menu(current_commit, win_id)
+    actions.show_rebase_options_menu(commit, win_id)
   end, opts)
 end
 
@@ -340,6 +387,11 @@ M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, m
       buffer.update_status(buf_id, {
         selected_count = #state.selected_commits
       }, window_width)
+      
+      -- Update context window
+      local context_window = require('jj-nvim.ui.context_window')
+      local current_commit = navigation.get_current_commit(win_id)
+      context_window.update(win_id, current_commit, {})
     else
       local window_module = require('jj-nvim.ui.window')
       window_module.close()
@@ -356,9 +408,9 @@ M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, m
   -- New change creation (simple) - use configured key
   local new_change_key = config.get_first_keybind('keybinds.log_window.commit_operations.new_change') or 'n'
   vim.keymap.set('n', new_change_key, function()
-    local current_commit = navigation.get_current_commit(win_id)
-    if not current_commit then
-      vim.notify("No commit found at cursor position", vim.log.levels.WARN)
+    local commit = get_target_commit(win_id, state.selected_commits, navigation)
+    if not commit then
+      vim.notify("No commit found", vim.log.levels.WARN)
       return
     end
 
@@ -372,7 +424,7 @@ M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, m
         options.message = description
       end
 
-      if actions.new_child(current_commit, options) then
+      if actions.new_child(commit, options) then
         require('jj-nvim').refresh()
       end
     end)
@@ -480,6 +532,13 @@ M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, m
   local help_key = config.get_first_keybind('keybinds.log_window.actions.help') or '?'
   vim.keymap.set('n', help_key, function()
     help.show(win_id)
+  end, opts)
+
+  -- Action menu - use configured key
+  local action_menu_key = config.get_first_keybind('keybinds.log_window.actions.action_menu') or '<leader>a'
+  vim.keymap.set('n', action_menu_key, function()
+    local action_menu = require('jj-nvim.ui.action_menu')
+    action_menu.show(win_id)
   end, opts)
 
   -- Revset operations - use configured keys
