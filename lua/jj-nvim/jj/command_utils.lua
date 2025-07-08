@@ -268,4 +268,100 @@ M.notify_operation_result = function(operation_name, success, commit_count, disp
   end
 end
 
+-- Helper function to create standard interactive command callbacks
+-- Consolidates callback patterns from squash.lua, split.lua, commit.lua
+M.create_interactive_callbacks = function(operation_name, display_id)
+  return {
+    on_success = function()
+      vim.notify(string.format("Interactive %s completed", operation_name), vim.log.levels.INFO)
+    end,
+    on_error = function(exit_code)
+      -- Error message already shown by interactive terminal
+    end,
+    on_cancel = function()
+      vim.notify(string.format("Interactive %s cancelled", operation_name), vim.log.levels.INFO)
+    end
+  }
+end
+
+-- Helper function to standardize input prompting
+-- Consolidates vim.ui.input patterns from commit.lua, split.lua, etc.
+M.prompt_for_input = function(config)
+  -- config: { prompt, default, validator, on_success, on_cancel, cancel_message }
+  vim.ui.input({
+    prompt = config.prompt,
+    default = config.default or "",
+  }, function(input)
+    if not input or input:match("^%s*$") then
+      local cancel_msg = config.cancel_message or "Operation cancelled"
+      vim.notify(cancel_msg, vim.log.levels.INFO)
+      if config.on_cancel then config.on_cancel() end
+      return
+    end
+    
+    if config.validator and not config.validator(input) then
+      local error_msg = config.validation_error or "Invalid input"
+      vim.notify(error_msg, vim.log.levels.ERROR)
+      if config.on_cancel then config.on_cancel() end
+      return
+    end
+    
+    if config.on_success then config.on_success(input) end
+  end)
+end
+
+-- Helper function to get target display name
+-- Consolidates display name logic from squash.lua, split.lua, rebase.lua
+M.get_target_display_name = function(target, target_type)
+  if target_type == "commit" then
+    return target.short_change_id or target.change_id:sub(1, 8)
+  elseif target_type == "bookmark" then
+    return "bookmark '" .. (target.display_name or target.name) .. "'"
+  else
+    return tostring(target)
+  end
+end
+
+-- Helper function to build command arguments with common flags
+-- Consolidates command building patterns from split.lua, squash.lua, rebase.lua
+M.build_command_args = function(base_command, common_options, specific_options)
+  local cmd_args = { base_command }
+  
+  -- Add common options
+  if common_options then
+    if common_options.interactive then
+      table.insert(cmd_args, '--interactive')
+    end
+    
+    if common_options.tool then
+      table.insert(cmd_args, '--tool')
+      table.insert(cmd_args, common_options.tool)
+    end
+    
+    if common_options.message then
+      table.insert(cmd_args, '--message')
+      table.insert(cmd_args, common_options.message)
+    end
+    
+    if common_options.revision then
+      table.insert(cmd_args, '--revision')
+      table.insert(cmd_args, common_options.revision)
+    end
+    
+    if common_options.destination then
+      table.insert(cmd_args, '--destination')
+      table.insert(cmd_args, common_options.destination)
+    end
+  end
+  
+  -- Add specific options
+  if specific_options then
+    for _, arg in ipairs(specific_options) do
+      table.insert(cmd_args, arg)
+    end
+  end
+  
+  return cmd_args
+end
+
 return M

@@ -6,27 +6,25 @@ local commands = require('jj-nvim.jj.commands')
 -- Interactive split
 M.split_interactive = function(commit_id, options)
   options = options or {}
-  local cmd_args = { 'split', '--interactive' }
-
-  if commit_id and commit_id ~= "" then
-    table.insert(cmd_args, '-r')
-    table.insert(cmd_args, commit_id)
-  end
-
-  -- Add diff tool if specified
-  if options.tool then
-    table.insert(cmd_args, '--tool')
-    table.insert(cmd_args, options.tool)
-  end
-
+  
+  -- Build command arguments using utility function
+  local common_options = {
+    interactive = true,
+    tool = options.tool,
+    revision = commit_id and commit_id ~= "" and commit_id or nil
+  }
+  
+  local specific_options = {}
+  
   -- Add filesets/paths if specified
   if options.filesets and #options.filesets > 0 then
     for _, fileset in ipairs(options.filesets) do
-      table.insert(cmd_args, fileset)
+      table.insert(specific_options, fileset)
     end
   end
-
-  return commands.execute_interactive_with_immutable_prompt(cmd_args, options)
+  
+  local cmd_args = command_utils.build_command_args('split', common_options, specific_options)
+  return command_utils.execute_with_error_handling(cmd_args, "split", { interactive = true })
 end
 
 -- Split source revision

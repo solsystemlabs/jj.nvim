@@ -411,6 +411,7 @@ M.push_bookmark = function(name, options)
   
   -- Add remote (default to origin)
   local remote = options.remote or 'origin'
+  table.insert(cmd_args, '--remote')
   table.insert(cmd_args, remote)
   
   -- Add bookmark flag

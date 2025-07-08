@@ -25,6 +25,8 @@ A Neovim plugin for interacting with the jujutsu (jj) version control system thr
 
 ## Architecture
 
+**📖 For detailed architecture documentation, command execution flows, and optimization recommendations, see [ARCHITECTURE.md](ARCHITECTURE.md).**
+
 ### Core Components
 
 - **Entry Point** (`lua/jj-nvim/init.lua`\): Main plugin interface with `setup()`, `toggle()`, `show_log()`, and `close()` functions
@@ -52,6 +54,8 @@ A Neovim plugin for interacting with the jujutsu (jj) version control system thr
 - **Template-Based Parsing**: Uses jj's template system for reliable structured data extraction
 - **Graph Preservation**: Maintains ASCII graph structure from jj's native output
 - **Error Handling**: Comprehensive error checking with user-friendly messages
+- **Unified Command Execution**: Consolidated command building, error handling, and execution patterns (see ARCHITECTURE.md)
+- **Utility-First Design**: Common patterns extracted into reusable utility modules
 
 ## Development Commands
 
