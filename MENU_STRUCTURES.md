@@ -16,18 +16,7 @@ This document defines the menu structures for all commands that involve target s
 **Current Behavior**: Immediately enters target selection mode
 **New Behavior**: Show menu first with selection method options
 
-**Step 1: Target Selection Method**
-```
-┌─────────────────────────────────────┐
-│ Squash @ - Select Target            │
-├─────────────────────────────────────┤
-│ l │ Select from log window          │
-│ b │ Select from bookmarks           │
-│ q │ Cancel                          │
-└─────────────────────────────────────┘
-```
-
-**Step 2: After target selected, show squash options menu (existing)**
+**Step 1: Show Squash Menu (existing)**
 ```
 ┌─────────────────────────────────────┐
 │ Squash @ into [target]              │
@@ -39,9 +28,21 @@ This document defines the menu structures for all commands that involve target s
 └─────────────────────────────────────┘
 ```
 
+**Step 2: Show target selection menu**
+```
+┌─────────────────────────────────────┐
+│ Squash @ - Select Target            │
+├─────────────────────────────────────┤
+│ l │ Select from log window          │
+│ b │ Select from bookmarks           │
+│ q │ Cancel                          │
+└─────────────────────────────────────┘
+```
+
 **Implementation**: 
 - Add `show_squash_target_selection_menu()` function
-- After target selection method chosen, proceed to existing squash options menu
+- Show existing squash options
+- After squash option chosen, proceed to target selection menu (except for quick squash, which uses the parent)
 - Maintain existing squash options (quick, interactive, keep emptied, custom message)
 
 ### Rebase Command (`r` key)
@@ -188,45 +189,92 @@ This document defines the menu structures for all commands that involve target s
 - Add `show_abandon_selection_menu()` for `A` key
 - Provide both log and bookmark selection for multi-abandon
 
-## Selection Mode Flows
+## Unified Selection System
 
-### General Menu Navigation
+### Design Goal
 
-All menus follow consistent navigation patterns:
-- **j/k or ↑/↓**: Navigate menu items
-- **Enter**: Select current item
-- **Esc or q**: Cancel/go back to previous menu
-- **Backspace**: Go back to parent menu (where applicable)
+Instead of separate "log vs bookmark" submenus, use a unified selection interface where the log window can toggle between different views:
+- **Log View**: Shows commit history (current behavior)
+- **Bookmark View**: Shows bookmarks as selectable items in the same interface
 
-### Log Window Selection Flow
+### Unified Selection Flow
 
-When "Select from log window" is chosen:
-1. Enter target selection mode with visual indicators
-2. User navigates with j/k, confirms with Enter, cancels with Esc
-3. Return to next step in command flow after target selected
+**Enter Selection Mode**:
+1. Command triggers selection mode (target, multi-select, etc.)
+2. Log window enters selection mode with visual indicators
+3. User can toggle between log and bookmark views
 
-### Bookmark Selection Flow
+**Selection Interface**:
+- **j/k**: Navigate items (commits or bookmarks)
+- **Space**: Toggle selection (for multi-select modes)
+- **Enter**: Confirm selection and proceed
+- **Esc**: Cancel selection mode
+- **Ctrl+T**: Toggle between log view and bookmark view
+- **Tab**: Alternative toggle key (more discoverable)
 
-When "Select from bookmarks" is chosen:
-1. Show bookmark list in floating menu
-2. User selects bookmark with j/k navigation
-3. Confirm selection and proceed to next step in command flow
-4. No additional target selection needed
+**Visual Indicators**:
+- Status bar shows current view: "Log View" or "Bookmark View"
+- Status bar shows selection count: "2 commits selected" or "1 bookmark selected"
+- Different highlighting for bookmarks vs commits
+- Clear indication of current selection mode
 
-### Multi-Commit Selection Flow
+### View Toggle Implementation
 
-For commands that support multiple commits (merge parents, multi-abandon):
-1. Enter multi-select mode with visual indicators
-2. User toggles commits with Space, confirms with Enter, cancels with Esc
-3. Show selected commit count in status
-4. Proceed to command execution after confirmation
+**Log View**: 
+- Shows commit history with graph (current behavior)
+- Selection works on commits
+- Shows commit metadata (author, date, description)
 
-### Menu Flow Examples
+**Bookmark View**:
+- Shows bookmarks as a list in the log window
+- Each bookmark shows: name, target commit, description (if any)
+- Selection works on bookmarks
+- Format: `[bookmark_name] → commit_id (description)`
 
-**Squash Flow**: `x` → Target Selection Method → Log/Bookmark Selection → Squash Options → Execute
-**Rebase Flow**: `r` → Operation Type → Target Selection Method → Log/Bookmark Selection → Execute
-**Split Flow**: `s` → Split Method → (If target needed) Target Selection Method → Log/Bookmark Selection → Execute
-**New Change Flow**: `N` → Change Type → Parent Selection Method → Log/Bookmark Selection → Execute
+### Mixed Selection Support
+
+For merge commit creation:
+1. User can select some commits from log view
+2. Toggle to bookmark view with Ctrl+T
+3. Select additional bookmarks
+4. Status shows: "3 parents selected (2 commits, 1 bookmark)"
+5. Confirm with Enter to create merge
+
+### Simplified Menu Flows (with Unified Selection)
+
+**Squash Flow**: `x` → Squash Options → Unified Selection (toggle log/bookmark with Ctrl+T) → Execute
+**Rebase Flow**: `r` → Operation Type → (if target needed) Unified Selection → Execute  
+**Split Flow**: `s` → Split Method → (if target needed) Unified Selection → Execute
+**New Change Flow**: `N` → Change Type → Unified Selection (supports mixed selection for merge) → Execute
+**Abandon Flow**: `A` → Unified Selection (multi-select mode) → Execute
+
+### Updated Command Structures
+
+Since we're eliminating the "log vs bookmark" submenus, the command structures become simpler:
+
+**Squash Command (`x`)**:
+1. Show squash options menu (quick, interactive, etc.)
+2. If target needed, enter unified selection mode
+3. Execute squash
+
+**Rebase Command (`r`)**:
+1. Show rebase operation menu (branch, source, revisions, etc.)
+2. If target needed, enter unified selection mode
+3. Execute rebase
+
+**Split Command (`s`)**:
+1. Show split method menu (interactive, parallel, insert after, etc.)
+2. If target needed, enter unified selection mode  
+3. Execute split
+
+**New Change Command (`N`)**:
+1. Show new change type menu (after, before, merge)
+2. Enter unified selection mode (supports mixed selection for merge)
+3. Execute new change
+
+**Abandon Command (`A`)**:
+1. Enter unified selection mode (multi-select)
+2. Execute abandon
 
 ## Removed Functionality
 
@@ -252,12 +300,42 @@ For commands that support multiple commits (merge parents, multi-abandon):
 - `lua/jj-nvim/ui/multi_select.lua`: Replace hardcoded color with theme-based color
 - `lua/jj-nvim/ui/themes.lua`: Add selection highlight definitions
 
-## Implementation Order
+## Implementation Plan
 
-1. Create this documentation
-2. Fix selection highlight colors
-3. Remove Space key from main window
-4. Implement menu-first squash command
-5. Enhance rebase and split menus with bookmark options
-6. Test all command flows
-7. Update CLAUDE.md to reference this document
+### Phase 1: Foundation
+1. **Create documentation** (✓ Complete)
+2. **Fix selection highlight colors** - Replace hardcoded colors with theme-aware colors
+3. **Remove Space key from main window** - Eliminate standalone selection mode
+
+### Phase 2: Unified Selection System
+4. **Implement view toggle system**:
+   - Add `Ctrl+T`/`Tab` keybinds for view switching in selection mode
+   - Create bookmark view renderer for log window
+   - Add status indicators for current view and selection count
+   - Handle mixed selection state (commits + bookmarks)
+
+5. **Enhance selection modes**:
+   - Update target selection mode to support view toggling
+   - Update multi-select mode to support view toggling
+   - Add bookmark selection highlighting and navigation
+
+### Phase 3: Menu Simplification
+6. **Update command menus** to remove "log vs bookmark" submenus:
+   - Squash: Show options first, then unified selection
+   - Rebase: Show operation type, then unified selection if needed
+   - Split: Show method, then unified selection if needed
+   - New Change: Show type, then unified selection (with mixed support)
+   - Abandon: Direct to unified selection for multi-abandon
+
+### Phase 4: Integration & Testing
+7. **Test all command flows** with unified selection
+8. **Update help and context systems** to explain view toggling
+9. **Performance optimization** for bookmark view rendering
+
+### Key Technical Challenges
+
+1. **State Management**: Track selections across view switches
+2. **Rendering**: Efficiently switch between log and bookmark display
+3. **Mixed Selection**: Handle commit IDs vs bookmark names in selection state
+4. **User Feedback**: Clear status and visual indicators for current mode
+5. **Backward Compatibility**: Ensure existing selection logic still works
