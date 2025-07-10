@@ -219,33 +219,6 @@ M.setup_main_keymaps = function(buf_id, win_id, state, actions, navigation, mult
     navigation.goto_current_commit(win_id)
   end, opts)
 
-  -- Commit selection - use configured key
-  local toggle_selection_key = config.get_first_keybind('keybinds.log_window.navigation.toggle_selection') or '<Space>'
-  vim.keymap.set('n', toggle_selection_key, function()
-    local commit = navigation.get_current_commit(win_id)
-    if commit then
-      state.selected_commits = multi_select.toggle_commit_selection(commit, state.selected_commits)
-      local window_module = require('jj-nvim.ui.window')
-      window_module.highlight_current_commit()
-      local window_width = window_utils.get_width(win_id)
-      buffer.update_status(buf_id, {
-        selected_count = #state.selected_commits
-      }, window_width)
-      
-      -- Update context window
-      local context_window = require('jj-nvim.ui.context_window')
-      context_window.update(win_id, commit, state.selected_commits)
-    else
-      local window_width = window_utils.get_width(win_id)
-      buffer.update_status(buf_id, {
-        selected_count = 0
-      }, window_width)
-      
-      -- Update context window with no commit
-      local context_window = require('jj-nvim.ui.context_window')
-      context_window.update(win_id, nil, {})
-    end
-  end, opts)
 
   return opts
 end

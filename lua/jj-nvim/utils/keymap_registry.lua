@@ -135,7 +135,6 @@ M.initialize = function(config)
   })
   
   M.register_batch("selection", {
-    ["<Space>"] = "Toggle commit selection",
     ["<Esc>"] = "Clear selections or close",
     ["<Tab>"] = "Toggle description expansion"
   })

@@ -266,7 +266,7 @@ function M.build_status_content(window_width)
   end
   
   -- Line 3: Help hints (log-window specific) with intelligent wrapping
-  local help_segments = {"Tab: expand", "Space: select", "rs: revsets", "rr: custom", "?: help"}
+  local help_segments = {"Tab: expand", "rs: revsets", "rr: custom", "?: help"}
   local help_wrapped = wrap_text_intelligently(help_segments, content_width)
   for _, line in ipairs(help_wrapped) do
     table.insert(content_lines, line)

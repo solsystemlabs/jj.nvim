@@ -23,8 +23,6 @@ M.defaults = {
         goto_first = 'gg',
         goto_last = 'G',
         goto_current = '@',
-        -- Selection
-        toggle_selection = '<Space>',
       },
       actions = {
         close = 'q',
