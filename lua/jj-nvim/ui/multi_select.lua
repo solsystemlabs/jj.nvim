@@ -68,8 +68,13 @@ end
 
 -- Setup highlight groups for multi-select
 local function setup_multi_select_highlights()
-  -- Background highlight for selected commits - similar to navigation highlighting but distinct
-  vim.api.nvim_set_hl(0, 'JJSelectedCommitBg', { bg = '#4a4a4a' })  -- Subtle gray background, preserve original text colors
+  local themes = require('jj-nvim.ui.themes')
+  
+  -- Get theme-aware selection background color
+  local selection_bg = themes.get_selection_color('background')
+  
+  -- Background highlight for selected commits - theme-aware
+  vim.api.nvim_set_hl(0, 'JJSelectedCommitBg', { bg = selection_bg })
 end
 
 -- Highlight selected commits with background color (full window width like navigation)

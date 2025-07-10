@@ -24,6 +24,10 @@ M.themes = {
       bright_cyan = '#81ecec',
       bright_black = '#666666',
       white = '#ffffff',
+    },
+    selection = {
+      background = '#4a4a4a',  -- Subtle gray background for selected commits
+      border = '#666666',      -- Border color for selection indicators
     }
   },
   
@@ -49,6 +53,10 @@ M.themes = {
       bright_cyan = '#8ec07c',
       bright_black = '#928374',
       white = '#ebdbb2',
+    },
+    selection = {
+      background = '#504945',  -- gruvbox bg2 for selected commits
+      border = '#665c54',      -- gruvbox gray for selection indicators
     }
   },
   
@@ -74,6 +82,10 @@ M.themes = {
       bright_cyan = '#94e2d5',
       bright_black = '#6c7086',
       white = '#cdd6f4',
+    },
+    selection = {
+      background = '#45475a',  -- catppuccin surface2 for selected commits
+      border = '#6c7086',      -- catppuccin overlay2 for selection indicators
     }
   },
   
@@ -99,6 +111,10 @@ M.themes = {
       bright_cyan = '#7dcfff',
       bright_black = '#565f89',
       white = '#c0caf5',
+    },
+    selection = {
+      background = '#3b4261',  -- tokyo night bg_highlight for selected commits
+      border = '#565f89',      -- tokyo night comment for selection indicators
     }
   },
   
@@ -124,6 +140,10 @@ M.themes = {
       bright_cyan = '#88c0d0',
       bright_black = '#4c566a',
       white = '#eceff4',
+    },
+    selection = {
+      background = '#3b4252',  -- nord polar night for selected commits
+      border = '#4c566a',      -- nord bright_black for selection indicators
     }
   }
 }
@@ -152,6 +172,38 @@ M.get_border_color = function(color_name, theme_name)
   
   -- Ultimate fallback
   return '#666666'
+end
+
+-- Get theme-aware selection color
+M.get_selection_color = function(color_name, theme_name)
+  theme_name = theme_name or M.detect_theme()
+  
+  -- Get theme definition
+  local theme = M.themes[theme_name] or M.themes.default
+  
+  -- Direct hex color support
+  if color_name and color_name:match('^#%x%x%x%x%x%x$') then
+    return color_name
+  end
+  
+  -- Theme-aware color lookup
+  if theme.selection and theme.selection[color_name] then
+    return theme.selection[color_name]
+  end
+  
+  -- Fallback to default theme
+  if M.themes.default.selection and M.themes.default.selection[color_name] then
+    return M.themes.default.selection[color_name]
+  end
+  
+  -- Ultimate fallback
+  if color_name == 'background' then
+    return '#4a4a4a'
+  elseif color_name == 'border' then
+    return '#666666'
+  end
+  
+  return '#4a4a4a'
 end
 
 -- Auto-detect theme from colorscheme (future enhancement)
