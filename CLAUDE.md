@@ -27,6 +27,8 @@ A Neovim plugin for interacting with the jujutsu (jj) version control system thr
 
 **📖 For detailed architecture documentation, command execution flows, and optimization recommendations, see [ARCHITECTURE.md](ARCHITECTURE.md).**
 
+**📋 For command menu structures and user interaction flows, see [MENU_STRUCTURES.md](MENU_STRUCTURES.md).**
+
 ### Core Components
 
 - **Entry Point** (`lua/jj-nvim/init.lua`\): Main plugin interface with `setup()`, `toggle()`, `show_log()`, and `close()` functions
