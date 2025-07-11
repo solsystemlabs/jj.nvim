@@ -4,22 +4,28 @@ local commit_utils = require('jj-nvim.core.commit')
 local validation = require('jj-nvim.utils.validation')
 local window_utils = require('jj-nvim.utils.window')
 
--- Check if a commit is selected
-local function is_commit_selected(commit, selected_commits)
-  if not commit then
+-- Check if a content item (commit or bookmark) is selected
+local function is_content_item_selected(item, selected_commits)
+  if not item then
     return false
   end
   
   -- Default to empty selection if not provided
   selected_commits = selected_commits or {}
   
-  local commit_id = commit_utils.get_id(commit)
-  if not commit_id then
+  local item_id = nil
+  if item.content_type == "bookmark" then
+    item_id = item.commit_id or item.change_id
+  else
+    item_id = commit_utils.get_id(item)
+  end
+  
+  if not item_id then
     return false
   end
   
   for _, selected_id in ipairs(selected_commits) do
-    if selected_id == commit_id then
+    if selected_id == item_id then
       return true
     end
   end
@@ -97,17 +103,25 @@ M.highlight_selected_commits = function(buf_id, mixed_entries, selected_commits,
   local buffer = require('jj-nvim.ui.buffer')
   
   for _, entry in ipairs(mixed_entries) do
-    -- Check if this is a commit object (most commits don't have .type field)
-    local is_commit = (entry.change_id ~= nil or entry.short_change_id ~= nil) and entry.type ~= "elided"
+    -- Check if this is a selectable content item (commit or bookmark)
+    local is_selectable = entry.content_type == "commit" or entry.content_type == "bookmark" or 
+                         ((entry.change_id ~= nil or entry.short_change_id ~= nil) and entry.type ~= "elided")
     
-    if is_commit then
-      local commit = entry
-      local is_selected = is_commit_selected(commit, selected_commits)
+    if is_selectable then
+      local content_item = entry
+      local is_selected = is_content_item_selected(content_item, selected_commits)
       
-      if is_selected and commit.line_start and commit.line_end then
-        -- Convert log line numbers to display line numbers for highlighting
-        local display_start = buffer.get_display_line_number(commit.line_start, window_width)
-        local display_end = buffer.get_display_line_number(commit.line_end, window_width)
+      if is_selected and content_item.line_start and content_item.line_end then
+        -- For bookmarks, line positions are already display-relative
+        -- For commits, convert log line numbers to display line numbers
+        local display_start, display_end
+        if content_item.content_type == "bookmark" then
+          display_start = content_item.line_start
+          display_end = content_item.line_end
+        else
+          display_start = buffer.get_display_line_number(content_item.line_start, window_width)
+          display_end = buffer.get_display_line_number(content_item.line_end, window_width)
+        end
         
         -- Add background highlighting for selected commits with full window width
         for line_idx = display_start, display_end do

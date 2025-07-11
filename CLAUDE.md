@@ -36,9 +36,9 @@ A Neovim plugin for interacting with the jujutsu (jj) version control system thr
 - **Renderer** (`lua/jj-nvim/core/renderer.lua`\): Renders parsed commits with syntax highlighting and graph visualization
 - **Commands** (`lua/jj-nvim/jj/commands.lua`\): Wrapper for executing jj CLI commands via `vim.system()`
 - **UI Components**:
-  - **Buffer** (`lua/jj-nvim/ui/buffer.lua`\): Creates and manages the log buffer
-  - **Window** (`lua/jj-nvim/ui/window.lua`\): Handles window creation and positioning
-  - **Navigation** (`lua/jj-nvim/ui/navigation.lua`\): Cursor movement and selection
+  - **Buffer** (`lua/jj-nvim/ui/buffer.lua`\): Creates and manages the log buffer with unified content support
+  - **Window** (`lua/jj-nvim/ui/window.lua`\): Handles window creation, view management, and unified selection modes
+  - **Navigation** (`lua/jj-nvim/ui/navigation.lua`\): View-aware cursor movement and selection
 - **Configuration** (`lua/jj-nvim/config.lua`\): Plugin settings with persistence support
 
 ### Data Flow
@@ -57,6 +57,8 @@ A Neovim plugin for interacting with the jujutsu (jj) version control system thr
 - **Graph Preservation**: Maintains ASCII graph structure from jj's native output
 - **Error Handling**: Comprehensive error checking with user-friendly messages
 - **Unified Command Execution**: Consolidated command building, error handling, and execution patterns (see ARCHITECTURE.md)
+- **Unified Content Interface**: Common object structure for commits and bookmarks enabling seamless view switching
+- **Single Render Cycle**: Atomic status and content updates to prevent conflicts
 - **Utility-First Design**: Common patterns extracted into reusable utility modules
 
 ## Development Commands
@@ -129,6 +131,7 @@ Auto-showing floating window that displays available actions within the log wind
 - **Window-relative**: Positioned within the log window bounds, not the entire screen
 - **Configurable**: Position (top/bottom/left/right), size, and auto-show behavior
 - **Non-intrusive**: Non-focusable, stays out of the way during normal operation
+- **View-aware**: Shows appropriate actions for current view (log or bookmark)
 
 #### Action Menu (`lua/jj-nvim/ui/action_menu.lua`)
 Interactive menu for manual action selection:
@@ -138,8 +141,35 @@ Interactive menu for manual action selection:
 - **Multiple selections**: Shows multi-commit actions (abandon multiple, rebase multiple)
 - **Smart validation**: Disables invalid actions (e.g., can't abandon root commit)
 - **Default keybinding**: `<leader>a` (configurable via `keybinds.log_window.actions.action_menu`)
+- **Mixed selection support**: Handles operations involving both commits and bookmarks
 
 Both systems work together to provide maximum discoverability while maintaining a clean interface.
+
+### Unified View Toggle System
+
+The plugin features a unified view toggle system that allows switching between commit log and bookmark views:
+
+#### Architecture
+- **Unified Content Interface**: Both commits and bookmarks implement the same interface (`line_start`, `line_end`, `content_type`)
+- **View-Aware Navigation**: Navigation functions automatically handle commit vs bookmark navigation
+- **Single Render Cycle**: Status and content update atomically to prevent overwrites
+- **Tight Coupling**: Navigation, highlighting, and rendering use identical object instances
+
+#### View Types
+- **Log View**: Standard commit log with graph visualization
+- **Bookmark View**: Clean list of present bookmarks in jj-native format (`name@remote change_id`)
+
+#### Usage
+- **Keybinds**: `Ctrl+T` or `Tab` to toggle between views
+- **Availability**: Only enabled in target selection and multi-select modes
+- **Smart Filtering**: Bookmark view shows only present/valid bookmarks
+- **Color Consistency**: Bookmarks use same colors as in commit log (bold purple)
+
+#### Implementation Details
+- Navigation calculates correct line positions for each view type
+- Highlighting system works transparently with both content types
+- Bookmark objects include positioning metadata for seamless integration
+- Status window shows current view type and appropriate counts
 
 ### Testing Considerations
 

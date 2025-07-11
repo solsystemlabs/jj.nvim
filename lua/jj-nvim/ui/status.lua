@@ -25,6 +25,8 @@ local STATUS_HIGHLIGHTS = {
 local status_state = {
   selected_count = 0,
   current_mode = "NORMAL",
+  current_view = "log", -- Track current view: "log" or "bookmark"
+  bookmark_count = 0,   -- Track number of bookmarks in bookmark view
   current_commit_id = nil,
   current_commit_description = nil,
   repository_info = "",
@@ -225,20 +227,35 @@ function M.build_status_content(window_width)
   -- Content lines (ensure we have at least MIN_CONTENT_LINES)
   local content_lines = {}
   
-  -- Line 1: Selection and mode information
+  -- Line 1: View, selection and mode information
+  local view_text = string.format("View: %s", status_state.current_view)
+  
   local selection_text = ""
-  if status_state.selected_count > 0 then
-    selection_text = string.format("Selected: %d commit%s", 
-      status_state.selected_count, 
-      status_state.selected_count > 1 and "s" or "")
+  if status_state.current_view == "bookmark" then
+    -- In bookmark view, show bookmark count and selection
+    local bookmark_text = string.format("%d bookmark%s", 
+      status_state.bookmark_count, 
+      status_state.bookmark_count ~= 1 and "s" or "")
+    if status_state.selected_count > 0 then
+      selection_text = string.format("%s (Selected: %d)", bookmark_text, status_state.selected_count)
+    else
+      selection_text = bookmark_text .. " (None selected)"
+    end
   else
-    selection_text = "No commits selected"
+    -- In log view, show commit selection
+    if status_state.selected_count > 0 then
+      selection_text = string.format("Selected: %d commit%s", 
+        status_state.selected_count, 
+        status_state.selected_count > 1 and "s" or "")
+    else
+      selection_text = "No commits selected"
+    end
   end
   
   local mode_text = string.format("Mode: %s", status_state.current_mode)
   
   -- Use intelligent wrapping for line 1
-  local line1_segments = {selection_text, mode_text}
+  local line1_segments = {view_text, selection_text, mode_text}
   local line1_wrapped = wrap_text_intelligently(line1_segments, content_width)
   for _, line in ipairs(line1_wrapped) do
     table.insert(content_lines, line)
@@ -301,6 +318,12 @@ function M.update_status(updates)
   end
   if updates.current_mode then
     status_state.current_mode = updates.current_mode
+  end
+  if updates.current_view then
+    status_state.current_view = updates.current_view
+  end
+  if updates.bookmark_count ~= nil then
+    status_state.bookmark_count = updates.bookmark_count
   end
   if updates.current_commit_id then
     status_state.current_commit_id = updates.current_commit_id

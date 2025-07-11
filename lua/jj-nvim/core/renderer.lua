@@ -522,6 +522,9 @@ M.render_commits = function(mixed_entries, mode, window_width)
       -- Set the starting line for this commit
       commit.line_start = line_number
 
+      -- Mark as commit type for interface compatibility
+      commit.content_type = "commit"
+
       -- Render the commit with window width for wrapping
       local commit_lines = render_commit(commit, mode_config, window_width)
 

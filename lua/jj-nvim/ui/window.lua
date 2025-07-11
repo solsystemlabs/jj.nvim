@@ -33,13 +33,21 @@ local MODES = {
   MULTI_SELECT = 'multi_select',   -- Multi-parent selection mode
 }
 
+-- View types for unified selection system
+local VIEW_TYPES = {
+  LOG = 'log',         -- Standard commit log view
+  BOOKMARK = 'bookmark' -- Bookmark list view
+}
+
 local state = {
   win_id = nil,
   buf_id = nil,
   mode = MODES.NORMAL,
   mode_data = {},        -- Mode-specific data storage
-  selected_commits = {}, -- For multi-select mode
-  menu_stack = {}        -- Stack to track menu navigation history
+  selected_commits = {}, -- For multi-select mode (includes bookmark target commits)
+  menu_stack = {},       -- Stack to track menu navigation history
+  current_view = VIEW_TYPES.LOG, -- Current view type (log or bookmark)
+  view_toggle_enabled = false, -- Whether view toggling is currently allowed
 }
 
 -- Menu stack management
@@ -319,7 +327,12 @@ M.adjust_width = function(delta)
   require('jj-nvim').refresh()
 end
 
--- Function to highlight the current commit (extracted for reuse)
+-- Helper function to get current view type
+local function get_current_view()
+  return state.current_view
+end
+
+-- Function to highlight the current content item (commit or bookmark)
 M.highlight_current_commit = function()
   if not state.buf_id or not state.win_id or not vim.api.nvim_win_is_valid(state.win_id) then return end
 
@@ -336,41 +349,54 @@ M.highlight_current_commit = function()
   local cursor = vim.api.nvim_win_get_cursor(state.win_id)
   local display_line_number = cursor[1]
 
-  -- Get the commit at this line (using proper offset conversion)
-  local commit = buffer.get_current_commit(state.buf_id)
-  local cursor_commit_id = nil
-  if commit then
-    cursor_commit_id = commit.change_id or commit.short_change_id
-  end
-
-  -- Apply multi-select highlighting first for all selected commits EXCEPT the one under cursor
-  if #state.selected_commits > 0 then
-    local commits = buffer.get_commits(state.buf_id)
-    if commits then
-      local window_width = window_utils.get_width(state.win_id)
-      -- Filter out the commit under cursor to avoid duplicate highlighting
-      local filtered_selected = {}
-      for _, selected_id in ipairs(state.selected_commits) do
-        if selected_id ~= cursor_commit_id then
-          table.insert(filtered_selected, selected_id)
-        end
-      end
-      multi_select.highlight_selected_commits(state.buf_id, commits, filtered_selected, window_width)
+  -- Get the content item at this line (commit or bookmark)
+  local content_item = navigation.get_current_commit(state.win_id)
+  local cursor_item_id = nil
+  if content_item then
+    -- Get ID based on content type
+    if content_item.content_type == "bookmark" then
+      cursor_item_id = content_item.commit_id or content_item.change_id
+    else
+      cursor_item_id = content_item.change_id or content_item.short_change_id
     end
   end
 
-  -- Apply cursor highlighting only to the commit under cursor
-  if not commit then return end
+  -- Apply multi-select highlighting first for all selected items EXCEPT the one under cursor
+  if #state.selected_commits > 0 then
+    local current_view = get_current_view()
+    local content_items = nil
+    
+    if current_view == "bookmark" then
+      content_items = state.bookmark_data
+    else
+      content_items = buffer.get_commits(state.buf_id)
+    end
+    
+    if content_items then
+      local window_width = window_utils.get_width(state.win_id)
+      -- Filter out the item under cursor to avoid duplicate highlighting
+      local filtered_selected = {}
+      for _, selected_id in ipairs(state.selected_commits) do
+        if selected_id ~= cursor_item_id then
+          table.insert(filtered_selected, selected_id)
+        end
+      end
+      multi_select.highlight_selected_commits(state.buf_id, content_items, filtered_selected, window_width)
+    end
+  end
 
-  if commit.line_start and commit.line_end then
+  -- Apply cursor highlighting only to the content item under cursor
+  if not content_item then return end
+
+  if content_item.line_start and content_item.line_end then
     local window_width = window_utils.get_width(state.win_id)
 
-    -- Check if this commit is selected
-    local is_selected_commit = false
+    -- Check if this item is selected
+    local is_selected_item = false
     if state.selected_commits then
       for _, selected_id in ipairs(state.selected_commits) do
-        if selected_id == cursor_commit_id then
-          is_selected_commit = true
+        if selected_id == cursor_item_id then
+          is_selected_item = true
           break
         end
       end
@@ -380,15 +406,22 @@ M.highlight_current_commit = function()
     local highlight_group
     if M.is_mode(MODES.TARGET_SELECT) then
       highlight_group = 'JJTargetSelection'
-    elseif is_selected_commit then
-      highlight_group = 'JJSelectedCommitCursor' -- Special highlight for selected commit under cursor
+    elseif is_selected_item then
+      highlight_group = 'JJSelectedCommitCursor' -- Special highlight for selected item under cursor
     else
       highlight_group = 'JJCommitSelected'
     end
 
-    -- Convert log line numbers to display line numbers for highlighting
-    local display_start = buffer.get_display_line_number(commit.line_start, window_width)
-    local display_end = buffer.get_display_line_number(commit.line_end, window_width)
+    -- For bookmarks, line positions are already display-relative
+    -- For commits, convert log line numbers to display line numbers
+    local display_start, display_end
+    if content_item.content_type == "bookmark" then
+      display_start = content_item.line_start
+      display_end = content_item.line_end
+    else
+      display_start = buffer.get_display_line_number(content_item.line_start, window_width)
+      display_end = buffer.get_display_line_number(content_item.line_end, window_width)
+    end
 
     for line_idx = display_start, display_end do
       -- Get the actual line content to see its length
@@ -414,10 +447,11 @@ end
 M.setup_commit_highlighting = function()
   if not state.buf_id or not state.win_id then return end
 
-  -- Define highlight groups for selected commit
-  vim.api.nvim_set_hl(0, 'JJCommitSelected', { bg = '#3c3836' })                               -- Dark background for normal selection
-  vim.api.nvim_set_hl(0, 'JJTargetSelection', { bg = '#1d2021', fg = '#fb4934', bold = true }) -- Red background for target selection
-  vim.api.nvim_set_hl(0, 'JJSelectedCommitCursor', { bg = '#5a5a5a' })                         -- Lighter background for selected commit under cursor
+  -- Define subtle highlight groups for cursor highlighting
+  -- Just a subtle light gray background, no foreground color changes
+  vim.api.nvim_set_hl(0, 'JJCommitSelected', { bg = '#404040' })              -- Subtle light gray for normal cursor
+  vim.api.nvim_set_hl(0, 'JJTargetSelection', { bg = '#505050' })             -- Slightly lighter gray for target selection
+  vim.api.nvim_set_hl(0, 'JJSelectedCommitCursor', { bg = '#484848' })        -- Medium gray for selected item under cursor
 
   -- Set up autocmd to highlight on cursor movement
   vim.api.nvim_create_autocmd({ 'CursorMoved', 'CursorMovedI' }, {
@@ -492,6 +526,68 @@ M.is_mode = function(mode)
   return state.mode == mode
 end
 
+-- View management functions
+M.enable_view_toggle = function()
+  state.view_toggle_enabled = true
+end
+
+M.disable_view_toggle = function()
+  state.view_toggle_enabled = false
+  -- Always reset to log view when disabling
+  state.current_view = VIEW_TYPES.LOG
+end
+
+M.get_view = function()
+  return state.current_view
+end
+
+M.is_view = function(view_type)
+  return state.current_view == view_type
+end
+
+M.set_view = function(view_type)
+  if view_type == VIEW_TYPES.LOG or view_type == VIEW_TYPES.BOOKMARK then
+    state.current_view = view_type
+    return true
+  end
+  return false
+end
+
+M.toggle_view = function()
+  if not state.view_toggle_enabled then
+    return false
+  end
+  
+  local new_view = state.current_view == VIEW_TYPES.LOG and VIEW_TYPES.BOOKMARK or VIEW_TYPES.LOG
+  M.set_view(new_view)
+  
+  -- Re-render the buffer with the new view using unified render system
+  M.refresh_current_view()
+  
+  return true
+end
+
+M.refresh_current_view = function()
+  if not state.win_id or not vim.api.nvim_win_is_valid(state.win_id) then
+    return
+  end
+  
+  if state.current_view == VIEW_TYPES.LOG then
+    -- Update status to reflect log view
+    local status = require('jj-nvim.ui.status')
+    status.update_status({
+      current_view = "log",
+      bookmark_count = 0,
+      selected_count = #state.selected_commits
+    })
+    -- Refresh with normal commit log
+    require('jj-nvim').refresh()
+  else
+    -- Render bookmark view using unified system
+    M.render_unified_bookmark_view()
+  end
+end
+
 M.reset_mode = function()
   -- Clear any target selection UI feedback
   if state.win_id and vim.api.nvim_win_is_valid(state.win_id) then
@@ -546,6 +642,9 @@ M.enter_target_selection_mode = function(action_type, source_commit)
 
   M.set_mode(MODES.TARGET_SELECT, mode_data)
 
+  -- Enable view toggling for target selection mode
+  M.enable_view_toggle()
+
   -- Update keymaps for target selection
   M.setup_target_selection_keymaps()
 
@@ -587,6 +686,9 @@ M.enter_rebase_multi_select_mode = function(initial_commit)
     action = "rebase_revisions_select",
     original_selection = vim.deepcopy(state.selected_commits)
   })
+
+  -- Enable view toggling for multi-select mode
+  M.enable_view_toggle()
 
   -- Setup multi-select keymaps
   M.setup_rebase_multi_select_keymaps()
@@ -875,6 +977,7 @@ M.confirm_target_selection = function()
     end
     -- Return to normal mode
     M.reset_mode()
+    M.disable_view_toggle() -- Disable view toggling
     M.setup_keymaps() -- Restore normal keymaps
   elseif action_type == "before" then
     success = actions.new_before(target_commit)
@@ -883,11 +986,13 @@ M.confirm_target_selection = function()
     end
     -- Return to normal mode
     M.reset_mode()
+    M.disable_view_toggle() -- Disable view toggling
     M.setup_keymaps() -- Restore normal keymaps
   elseif action_type == "squash" then
     -- For squash, don't execute immediately - show options menu first
     local source_commit = mode_data.source_commit
     M.reset_mode()
+    M.disable_view_toggle() -- Disable view toggling
     M.setup_keymaps() -- Restore normal keymaps
 
     -- Show squash options menu with source commit information
@@ -1105,6 +1210,7 @@ M.cancel_target_selection = function()
 
   -- Return to normal mode
   M.reset_mode()
+  M.disable_view_toggle() -- Disable view toggling
   M.setup_keymaps() -- Restore normal keymaps
 
   vim.notify("Target selection cancelled", vim.log.levels.INFO)
@@ -1299,6 +1405,7 @@ M.confirm_multi_selection = function()
 
       -- Return to normal mode
       M.reset_mode()
+      M.disable_view_toggle() -- Disable view toggling
       M.setup_keymaps() -- Restore normal keymaps
     else
       vim.notify("Merge commit creation cancelled", vim.log.levels.INFO)
@@ -1321,6 +1428,7 @@ M.cancel_multi_selection = function()
 
   -- Return to normal mode
   M.reset_mode()
+  M.disable_view_toggle() -- Disable view toggling
   M.setup_keymaps() -- Restore normal keymaps
 
   vim.notify("Multi-selection cancelled", vim.log.levels.INFO)
@@ -2328,6 +2436,336 @@ M.clear_selections = function()
     local current_commit = navigation.get_current_commit(state.win_id)
     context_window.update(state.win_id, current_commit, {})
   end
+end
+
+-- Unified bookmark view renderer that works with the existing buffer system
+M.render_unified_bookmark_view = function()
+  if not state.win_id or not vim.api.nvim_win_is_valid(state.win_id) then
+    return
+  end
+  
+  local bookmark_commands = require('jj-nvim.jj.bookmark_commands')
+  local buffer = require('jj-nvim.ui.buffer')
+  local status = require('jj-nvim.ui.status')
+  local window_utils = require('jj-nvim.utils.window')
+  
+  -- Get all bookmarks
+  local bookmarks = bookmark_commands.get_all_bookmarks()
+  if not bookmarks then
+    bookmarks = {}
+  end
+  
+  -- Filter out deleted/absent bookmarks since they're not valid targets
+  local present_bookmarks = {}
+  for _, bookmark in ipairs(bookmarks) do
+    if bookmark.present then
+      table.insert(present_bookmarks, bookmark)
+    end
+  end
+  
+  -- Update status state for bookmark view (count only present bookmarks)
+  status.update_status({
+    current_view = "bookmark",
+    bookmark_count = #present_bookmarks
+  })
+  
+  -- Get window width for rendering
+  local window_width = window_utils.get_width(state.win_id)
+  local raw_width = window_width
+  local effective_width = raw_width - 2  -- Account for gutter columns
+  
+  -- Generate status lines
+  local status_lines = status.build_status_content(raw_width)
+  local status_height = #status_lines
+  
+  -- Build bookmark content lines
+  local bookmark_lines = {}
+  
+  if #present_bookmarks == 0 then
+    -- Empty state
+    table.insert(bookmark_lines, "")
+    table.insert(bookmark_lines, "No bookmarks found")
+    table.insert(bookmark_lines, "")
+    table.insert(bookmark_lines, "Create bookmarks with:")
+    table.insert(bookmark_lines, "  jj bookmark create <name>")
+    table.insert(bookmark_lines, "")
+  else
+    -- Format each present bookmark in jj's native style
+    for i, bookmark in ipairs(present_bookmarks) do
+      -- Build bookmark name with remote suffix
+      local bookmark_name = bookmark.name
+      if bookmark.remote then
+        bookmark_name = bookmark_name .. "@" .. bookmark.remote
+      end
+      
+      -- Add asterisk for divergent local bookmarks  
+      if not bookmark.remote and bookmark.has_divergence then
+        bookmark_name = bookmark_name .. "*"
+      end
+      
+      local line_parts = {}
+      table.insert(line_parts, bookmark_name)
+      
+      -- Add change ID if present (no arrow, just the ID)
+      if bookmark.present and bookmark.change_id and bookmark.change_id ~= "no_change_id" then
+        table.insert(line_parts, bookmark.change_id)
+      elseif not bookmark.present then
+        table.insert(line_parts, "(absent)")
+      end
+      
+      -- Add status indicators
+      local status_parts = {}
+      if bookmark.conflict then
+        table.insert(status_parts, "conflict")
+      end
+      if bookmark.tracked and (bookmark.tracking_ahead_count > 0 or bookmark.tracking_behind_count > 0) then
+        local ahead = bookmark.tracking_ahead_count > 0 and ("+" .. bookmark.tracking_ahead_count) or ""
+        local behind = bookmark.tracking_behind_count > 0 and ("-" .. bookmark.tracking_behind_count) or ""
+        local tracking_status = ahead .. behind
+        if tracking_status ~= "" then
+          table.insert(status_parts, tracking_status)
+        end
+      end
+      
+      if #status_parts > 0 then
+        table.insert(line_parts, "(" .. table.concat(status_parts, ", ") .. ")")
+      end
+      
+      local display_line = table.concat(line_parts, " ")
+      table.insert(bookmark_lines, display_line)
+      
+      -- Store positioning metadata for unified content interface
+      local line_position = #bookmark_lines + status_height  -- Account for status lines
+      bookmark.line_number = line_position
+      bookmark.line_start = line_position  -- Single-line bookmark, start = end
+      bookmark.line_end = line_position
+      bookmark.header_line = line_position  -- For navigation consistency
+      bookmark.display_line = display_line
+      
+      -- Mark as bookmark type for interface compatibility
+      bookmark.content_type = "bookmark"
+    end
+    
+    table.insert(bookmark_lines, "")
+    table.insert(bookmark_lines, "Press Ctrl+T or Tab to toggle back to log view")
+  end
+  
+  -- Store bookmark data for selection logic (only present bookmarks)
+  state.bookmark_data = present_bookmarks
+  
+  -- Use the unified buffer rendering system
+  vim.api.nvim_buf_set_option(state.buf_id, 'modifiable', true)
+  vim.api.nvim_buf_set_option(state.buf_id, 'readonly', false)
+  
+  -- Clear existing content and highlights
+  vim.api.nvim_buf_clear_namespace(state.buf_id, -1, 0, -1)
+  
+  -- Build final content: status lines + bookmark lines
+  local final_lines = {}
+  
+  -- Add status lines
+  for _, status_line in ipairs(status_lines) do
+    table.insert(final_lines, status_line)
+  end
+  
+  -- Add bookmark content
+  for _, bookmark_line in ipairs(bookmark_lines) do
+    table.insert(final_lines, bookmark_line)
+  end
+  
+  -- Set buffer content
+  vim.api.nvim_buf_set_lines(state.buf_id, 0, -1, false, final_lines)
+  
+  -- Apply status highlighting
+  status.apply_status_highlighting(state.buf_id, status_height)
+  
+  -- Apply bookmark highlighting
+  M.setup_bookmark_highlighting(status_height)
+  
+  -- Apply selection highlighting for any selected bookmarks
+  M.update_bookmark_selection_display()
+  
+  -- Restore buffer settings
+  vim.api.nvim_buf_set_option(state.buf_id, 'modifiable', false)
+  vim.api.nvim_buf_set_option(state.buf_id, 'readonly', true)
+end
+
+-- Setup bookmark highlighting with status offset
+M.setup_bookmark_highlighting = function(status_height)
+  if not state.buf_id or not vim.api.nvim_buf_is_valid(state.buf_id) then
+    return
+  end
+  
+  -- Create namespace for bookmark highlighting
+  local ns_id = vim.api.nvim_create_namespace('jj_bookmark_view')
+  vim.api.nvim_buf_clear_namespace(state.buf_id, ns_id, 0, -1)
+  
+  -- Set up bookmark-specific highlight groups (theme-aware)
+  -- Using colors that match the log view (bold purple for all bookmarks)
+  local themes = require('jj-nvim.ui.themes')
+  local theme = themes.get_theme()
+  
+  -- All bookmarks: bold purple (matches log view exactly)
+  vim.api.nvim_set_hl(0, 'JJBookmarkName', { fg = theme.colors.magenta, bold = true })
+  -- Change IDs: blue (consistent with commit IDs)
+  vim.api.nvim_set_hl(0, 'JJBookmarkChangeId', { fg = theme.colors.bright_blue })
+  -- Status indicators: yellow
+  vim.api.nvim_set_hl(0, 'JJBookmarkStatus', { fg = theme.colors.yellow })
+  -- Tracking info: bright_black (subtle)
+  vim.api.nvim_set_hl(0, 'JJBookmarkTracking', { fg = theme.colors.bright_black })
+  
+  -- Apply syntax highlighting to bookmark lines (offset by status_height)
+  status_height = status_height or 0
+  
+  -- Apply highlighting to each bookmark line
+  if state.bookmark_data then
+    for i, bookmark in ipairs(state.bookmark_data) do
+      local line_nr = status_height + i - 1  -- 0-based line indexing
+      local line_content = vim.api.nvim_buf_get_lines(state.buf_id, line_nr, line_nr + 1, false)[1]
+      
+      if line_content then
+        M.apply_bookmark_line_highlighting(line_nr, line_content, bookmark)
+      end
+    end
+  end
+end
+
+-- Apply highlighting to a specific bookmark line
+M.apply_bookmark_line_highlighting = function(line_nr, line_content, bookmark)
+  local ns_id = vim.api.nvim_create_namespace('jj_bookmark_view')
+  local col = 0
+  
+  -- Highlight bookmark name (including @remote suffix if present)
+  local bookmark_name = bookmark.name
+  if bookmark.remote then
+    bookmark_name = bookmark_name .. "@" .. bookmark.remote
+  end
+  if not bookmark.remote and bookmark.has_divergence then
+    bookmark_name = bookmark_name .. "*"
+  end
+  
+  local bookmark_end = col + #bookmark_name
+  -- All bookmarks use the same color (bold purple like in log view)
+  vim.api.nvim_buf_add_highlight(state.buf_id, ns_id, 'JJBookmarkName', line_nr, col, bookmark_end)
+  col = bookmark_end
+  
+  -- Skip space
+  if line_content:sub(col + 1, col + 1) == " " then
+    col = col + 1
+  end
+  
+  -- Highlight change ID
+  if bookmark.change_id and bookmark.change_id ~= "no_change_id" then
+    local change_id_start = col
+    local change_id_end = col + #bookmark.change_id
+    vim.api.nvim_buf_add_highlight(state.buf_id, ns_id, 'JJBookmarkChangeId', line_nr, change_id_start, change_id_end)
+    col = change_id_end
+  elseif not bookmark.present then
+    -- Highlight "(absent)" status
+    local absent_start = line_content:find("%(absent%)", col)
+    if absent_start then
+      local absent_end = absent_start + 8  -- length of "(absent)"
+      vim.api.nvim_buf_add_highlight(state.buf_id, ns_id, 'JJBookmarkStatus', line_nr, absent_start - 1, absent_end)
+    end
+  end
+  
+  -- Highlight status indicators like (conflict, +2-1)
+  local status_start = line_content:find("%(", col)
+  if status_start then
+    local status_end = line_content:find("%)", status_start)
+    if status_end then
+      vim.api.nvim_buf_add_highlight(state.buf_id, ns_id, 'JJBookmarkTracking', line_nr, status_start - 1, status_end)
+    end
+  end
+end
+
+-- Update bookmark selection display
+M.update_bookmark_selection_display = function()
+  if state.current_view ~= VIEW_TYPES.BOOKMARK or not state.bookmark_data then
+    return
+  end
+  
+  -- Create namespace for bookmark selection highlighting
+  local ns_id = vim.api.nvim_create_namespace('jj_bookmark_selection')
+  vim.api.nvim_buf_clear_namespace(state.buf_id, ns_id, 0, -1)
+  
+  local themes = require('jj-nvim.ui.themes')
+  local selection_bg = themes.get_selection_color('background')
+  
+  -- Highlight bookmarks whose target commits are selected
+  for _, bookmark in ipairs(state.bookmark_data) do
+    if bookmark.commit_id and bookmark.line_number then
+      for _, selected_id in ipairs(state.selected_commits) do
+        if selected_id == bookmark.commit_id then
+          -- Highlight the entire line
+          vim.api.nvim_buf_add_highlight(state.buf_id, ns_id, 'JJSelectedCommitBg', 
+                                        bookmark.line_number - 1, 0, -1)
+          break
+        end
+      end
+    end
+  end
+end
+
+-- Toggle bookmark selection (adds bookmark's target commit to selected_commits)
+M.toggle_bookmark_selection = function()
+  if state.current_view ~= VIEW_TYPES.BOOKMARK then
+    return false
+  end
+  
+  -- Get current cursor position
+  local cursor = vim.api.nvim_win_get_cursor(state.win_id)
+  local line_number = cursor[1]
+  
+  -- Find the bookmark at this line
+  if not state.bookmark_data then
+    return false
+  end
+  
+  local selected_bookmark = nil
+  for _, bookmark in ipairs(state.bookmark_data) do
+    if bookmark.line_number == line_number then
+      selected_bookmark = bookmark
+      break
+    end
+  end
+  
+  if not selected_bookmark or not selected_bookmark.commit_id then
+    return false
+  end
+  
+  -- Toggle selection using the bookmark's target commit ID
+  local commit_id = selected_bookmark.commit_id
+  local was_selected = false
+  
+  -- Check if this commit is already selected and remove it
+  for i = #state.selected_commits, 1, -1 do
+    if state.selected_commits[i] == commit_id then
+      table.remove(state.selected_commits, i)
+      was_selected = true
+      break
+    end
+  end
+  
+  -- If not selected, add it
+  if not was_selected then
+    table.insert(state.selected_commits, commit_id)
+  end
+  
+  -- Update visual display
+  M.update_bookmark_selection_display()
+  
+  return true
+end
+
+-- Get current view type
+M.get_current_view = function()
+  return state.current_view
+end
+
+-- Get bookmark data for navigation
+M.get_bookmark_data = function()
+  return state.bookmark_data
 end
 
 return M

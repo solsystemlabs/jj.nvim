@@ -99,6 +99,28 @@ actions.{operation}_multiple_commits()
 Bulk command execution → init.refresh()
 ```
 
+### 5. Unified View Toggle Flow
+```
+User triggers view toggle (Ctrl+T/Tab) → window.toggle_view()
+  ↓
+View state management → window.set_view()
+  ├─ Log View: Uses commit parsing and rendering
+  └─ Bookmark View: Uses bookmark fetching and unified rendering
+  ↓
+Unified content interface
+  ├─ Navigation: view-aware line calculation
+  ├─ Highlighting: unified object highlighting
+  └─ Selection: content-type aware operations
+  ↓
+Single render cycle → status + content update atomically
+```
+
+#### Unified Content Object Interface
+- **Commits**: `{line_start, line_end, content_type: "commit", change_id, ...}`
+- **Bookmarks**: `{line_start, line_end, content_type: "bookmark", commit_id, ...}`
+- **Navigation**: `get_navigable_lines()` returns view-appropriate line positions
+- **Highlighting**: Works transparently with both content types using same properties
+
 ## Consolidated Patterns
 
 ### 1. Command Execution Utilities (`command_utils.lua`)
@@ -250,13 +272,16 @@ local display_config = {
 - ✅ **Standardized Input Patterns**: Eliminated repetitive vim.ui.input code
 - ✅ **Interactive Callback Consolidation**: Unified callback patterns
 - ✅ **Buffer Management Unification**: Single buffer creation and display workflow
+- ✅ **Unified View System**: Seamless toggling between log and bookmark views
+- ✅ **Content Interface Standardization**: Common properties for all content types
+- ✅ **Single Render Cycle**: Atomic status and content updates
 
 ### 2. Future Optimization Opportunities
 
-#### Phase 1: Menu System Enhancement
-- Create dynamic menu generation based on operation metadata
-- Implement menu state persistence and restoration
-- Add keyboard navigation improvements
+#### Phase 1: Advanced View System Enhancement
+- Implement view state persistence across sessions
+- Add custom view filtering and sorting options
+- Enhanced bookmark management capabilities
 
 #### Phase 2: Command Registry System
 ```lua
@@ -273,15 +298,17 @@ local operation_registry = {
 }
 ```
 
-#### Phase 3: Refresh Coordination
+#### Phase 3: Performance Enhancement
 - Implement refresh batching to avoid redundant parsing
 - Add refresh failure recovery mechanisms
 - Smart refresh triggers based on operation impact
+- Optimize view switching performance for large repositories
 
 #### Phase 4: Error Handling Enhancement
 - Operation-specific error recovery strategies
 - Better conflict resolution workflows
 - Enhanced error context and suggestions
+- View-aware error handling and recovery
 
 ### 3. Code Quality Metrics
 
@@ -290,12 +317,16 @@ local operation_registry = {
 - **Error Handling**: Inconsistent error message formatting and handling
 - **Input Prompts**: 15+ similar vim.ui.input patterns with minor variations
 - **Command Building**: Repetitive argument construction in 6+ modules
+- **View Management**: Separate rendering paths for different content types
 
-#### After Refactoring
+#### After Refactoring + Unified View System
 - **Code Reduction**: ~150 lines consolidated into utility functions
 - **Consistency**: Standardized error messages and user experience
 - **Maintainability**: Single source of truth for common patterns
 - **Extensibility**: Clear extension points for new operations
+- **Unified Interface**: Single rendering system for all content types
+- **View Toggle**: Seamless switching between log and bookmark views
+- **Performance**: Single render cycle eliminates content conflicts
 
 ## Testing Strategy
 

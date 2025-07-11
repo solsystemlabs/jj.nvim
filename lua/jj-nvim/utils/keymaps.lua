@@ -337,8 +337,8 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
       return
     end
 
-    local window_module = require('jj-nvim.ui.window')
-    window_module.enter_target_selection_mode("squash", commit)
+    local actions = require('jj-nvim.jj.actions')
+    actions.show_squash_options_menu(commit, "commit", win_id)
   end, opts)
 
   -- Split commit - use configured key (with backward compatibility)
@@ -633,6 +633,17 @@ M.setup_target_selection_keymaps = function(buf_id, win_id, navigation, opts)
     end, opts)
   end
 
+  -- View toggle keybinds for target selection mode
+  vim.keymap.set('n', '<C-t>', function()
+    local window_module = require('jj-nvim.ui.window')
+    window_module.toggle_view()
+  end, opts)
+  
+  vim.keymap.set('n', '<Tab>', function()
+    local window_module = require('jj-nvim.ui.window')
+    window_module.toggle_view()
+  end, opts)
+
   -- Setup common navigation keymaps
   M.setup_common_navigation(buf_id, win_id, navigation, opts)
 
@@ -665,6 +676,17 @@ M.setup_multi_select_keymaps = function(buf_id, win_id, navigation, opts)
   vim.keymap.set('n', cancel_key, function()
     local window_module = require('jj-nvim.ui.window')
     window_module.cancel_multi_selection()
+  end, opts)
+
+  -- View toggle keybinds for multi-select mode
+  vim.keymap.set('n', '<C-t>', function()
+    local window_module = require('jj-nvim.ui.window')
+    window_module.toggle_view()
+  end, opts)
+  
+  vim.keymap.set('n', '<Tab>', function()
+    local window_module = require('jj-nvim.ui.window')
+    window_module.toggle_view()
   end, opts)
 
   -- Setup common navigation keymaps with update callback
