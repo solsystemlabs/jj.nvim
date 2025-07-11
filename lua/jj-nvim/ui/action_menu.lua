@@ -302,9 +302,13 @@ local function handle_menu_selection(item, win_id)
   elseif item.action == "show_status" then
     actions.show_status()
   elseif item.action == "git_fetch" then
-    actions.git_fetch_async({}, function(success)
-      if success then
-        require('jj-nvim').refresh()
+    local command_flow = require('jj-nvim.ui.command_flow')
+    local current_win = vim.api.nvim_get_current_win()
+    -- Add a small delay to ensure the action menu is fully closed before showing command flow menu
+    vim.schedule(function()
+      local flow_success, flow_error = pcall(command_flow.start_flow, "git_fetch", current_win)
+      if not flow_success then
+        vim.notify("Error starting git fetch flow: " .. tostring(flow_error), vim.log.levels.ERROR)
       end
     end)
   elseif item.action == "git_push" then

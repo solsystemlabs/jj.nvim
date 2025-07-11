@@ -44,6 +44,7 @@ M.defaults = {
       },
       git_operations = {
         fetch = 'f',
+        fetch_menu = 'F',
         push = 'p',
         push_menu = 'P',
         show_status = 'S',

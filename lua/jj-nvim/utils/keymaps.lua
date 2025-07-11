@@ -495,6 +495,7 @@ M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, m
 
   -- Git operations - use configured keys
   local fetch_key = config.get_first_keybind('keybinds.log_window.git_operations.fetch') or 'f'
+  local fetch_menu_key = config.get_first_keybind('keybinds.log_window.git_operations.fetch_menu') or 'F'
   local push_key = config.get_first_keybind('keybinds.log_window.git_operations.push') or 'p'
   local push_menu_key = config.get_first_keybind('keybinds.log_window.git_operations.push_menu') or 'P'
   local show_status_key = config.get_first_keybind('keybinds.log_window.git_operations.show_status') or 'S'
@@ -505,6 +506,12 @@ M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, m
         require('jj-nvim').refresh()
       end
     end)
+  end, opts)
+
+  vim.keymap.set('n', fetch_menu_key, function()
+    local command_flow = require('jj-nvim.ui.command_flow')
+    local current_win = vim.api.nvim_get_current_win()
+    command_flow.start_flow("git_fetch", current_win)
   end, opts)
 
   vim.keymap.set('n', push_key, function()

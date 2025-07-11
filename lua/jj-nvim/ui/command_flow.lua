@@ -47,6 +47,38 @@ local function generate_git_push_targets()
   return targets
 end
 
+-- Generate dynamic remote targets for git fetch
+local function generate_git_fetch_targets()
+  local remotes = commands.get_git_remotes()
+  local targets = {}
+  
+  -- Generate targets for each remote
+  for i, remote_name in ipairs(remotes) do
+    local key = string.sub(remote_name, 1, 1)  -- Use first letter as key
+    -- Handle key conflicts by using numbers
+    while vim.tbl_contains(vim.tbl_map(function(t) return t.key end, targets), key) do
+      key = tostring(i)
+    end
+    
+    table.insert(targets, {
+      key = key,
+      description = "Fetch from remote '" .. remote_name .. "'",
+      value = { remote = remote_name }
+    })
+  end
+  
+  -- Add "all remotes" option if there are multiple remotes
+  if #remotes > 1 then
+    table.insert(targets, {
+      key = "a",
+      description = "Fetch from all remotes",
+      value = { remote = "all" }
+    })
+  end
+  
+  return targets
+end
+
 -- Command flow definitions
 M.flows = {
   git_push = {
@@ -61,6 +93,22 @@ M.flows = {
         flags = {
           { key = "f", flag = "--force-with-lease", type = "toggle", description = "Force with lease", default = false },
           { key = "n", flag = "--allow-new", type = "toggle", description = "Allow new", default = false },
+          { key = "b", flag = "--branch", type = "input", description = "Specific branch", default = nil },
+        }
+      }
+    }
+  },
+  
+  git_fetch = {
+    type = "unified",        -- unified or sequential
+    command_base = "jj git fetch",
+    generate_targets = generate_git_fetch_targets,  -- Dynamic target generation
+    steps = {
+      {
+        type = "unified_menu",
+        title = "Git Fetch",
+        targets = nil, -- Will be populated dynamically
+        flags = {
           { key = "b", flag = "--branch", type = "input", description = "Specific branch", default = nil },
         }
       }
@@ -111,7 +159,11 @@ local function build_command_preview()
     if key == "remote" and value ~= "all" then
       table.insert(parts, "--remote " .. value)
     elseif key == "remote" and value == "all" then
-      table.insert(parts, "--all-remotes")
+      if M.state.flow_config.command_base:find("push") then
+        table.insert(parts, "--all-remotes")
+      else -- git fetch uses different flag
+        table.insert(parts, "--all-remotes")
+      end
     end
   end
   
@@ -395,6 +447,7 @@ M.handle_menu_selection = function(item)
     
   elseif item.action == "toggle_flag" then
     local flag_def = item.data
+    vim.notify("Flag type: " .. tostring(flag_def.type) .. " for key: " .. tostring(flag_def.key), vim.log.levels.INFO)
     if flag_def.type == "toggle" then
       M.state.flags[flag_def.key] = not M.state.flags[flag_def.key]
       -- Re-render current step to show updated flag states
@@ -403,6 +456,7 @@ M.handle_menu_selection = function(item)
         M.show_current_step()
       end, 100) -- Longer delay to ensure menu is fully closed
     elseif flag_def.type == "input" then
+      vim.notify("Calling prompt_flag_input...", vim.log.levels.INFO)
       M.prompt_flag_input(flag_def)
       return -- Don't re-render yet, wait for input
     end
@@ -490,6 +544,38 @@ M.execute_command = function()
         end)
       else
         vim.notify("Git push failed: " .. (error_msg or "Unknown error"), vim.log.levels.ERROR)
+      end
+    end)
+  elseif command_type == "git_fetch" then
+    table.insert(cmd_args, "git")
+    table.insert(cmd_args, "fetch")
+    
+    -- Add remote
+    local remote = base_options.remote
+    if remote == "all" then
+      table.insert(cmd_args, "--all-remotes")
+    elseif remote then
+      table.insert(cmd_args, "--remote")
+      table.insert(cmd_args, remote)
+    end
+    
+    -- Add flags
+    if flags.b and flags.b ~= "" then  -- specific branch
+      table.insert(cmd_args, "--branch")
+      table.insert(cmd_args, flags.b)
+    end
+    
+    -- Execute the command
+    vim.notify("Executing: " .. final_command, vim.log.levels.INFO)
+    commands.execute_async(cmd_args, {}, function(result, error_msg)
+      if result then
+        vim.notify("Git fetch completed successfully", vim.log.levels.INFO)
+        -- Refresh the jj log
+        vim.schedule(function()
+          require('jj-nvim').refresh()
+        end)
+      else
+        vim.notify("Git fetch failed: " .. (error_msg or "Unknown error"), vim.log.levels.ERROR)
       end
     end)
   else
