@@ -291,8 +291,11 @@ M.handle_squash_options_selection = function(selected_item, target, target_type,
   elseif selected_item.action == "use_dest_keep_squash" then
     options.use_destination_message = true
     options.keep_emptied = true
+  elseif selected_item.action == "quick_squash" then
+    -- For quick squash, we want to squash @ into @- (current into parent)
+    -- This means we don't use the selected target, but use @- as target
+    options.quick_squash = true
   end
-  -- quick_squash uses default options (empty table)
 
   -- Add source commit to options if provided
   if source_commit then
@@ -311,11 +314,32 @@ M.handle_squash_options_selection = function(selected_item, target, target_type,
 
   local success = false
 
-  -- Execute squash based on target type
-  if target_type == "commit" then
-    success = M.squash_into_commit(target, options)
-  elseif target_type == "bookmark" then
-    success = M.squash_into_bookmark(target, options)
+  -- Execute squash based on selection type
+  if options.quick_squash then
+    -- For quick squash, squash current commit (@) into its parent (@-)
+    local result, exec_err = M.squash("@-", { from_revision = "@" })
+    if not result then
+      local error_msg = exec_err or "Unknown error"
+      if error_msg:find("No such revision") then
+        error_msg = "Parent commit not found"
+      elseif error_msg:find("would create a cycle") then
+        error_msg = "Cannot squash - would create a cycle in commit graph"
+      elseif error_msg:find("not in workspace") then
+        error_msg = "Not in a jj workspace"
+      end
+      vim.notify(string.format("Failed to quick squash: %s", error_msg), vim.log.levels.ERROR)
+      success = false
+    else
+      vim.notify("Quick squash completed", vim.log.levels.INFO)
+      success = true
+    end
+  else
+    -- Execute squash based on target type
+    if target_type == "commit" then
+      success = M.squash_into_commit(target, options)
+    elseif target_type == "bookmark" then
+      success = M.squash_into_bookmark(target, options)
+    end
   end
 
   if success then
