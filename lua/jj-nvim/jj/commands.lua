@@ -99,6 +99,23 @@ M.get_current_branch = function()
   return nil
 end
 
+M.get_git_remotes = function()
+  local result, err = M.execute('git remote list', { silent = true })
+  if not result then
+    return {}
+  end
+
+  local remotes = {}
+  for line in result:gmatch('[^\r\n]+') do
+    local remote_name = line:match('^([^%s]+)')
+    if remote_name then
+      table.insert(remotes, remote_name)
+    end
+  end
+
+  return remotes
+end
+
 -- Execute interactive command using terminal interface
 M.execute_interactive = function(cmd_args, options)
   local interactive_terminal = require('jj-nvim.ui.interactive_terminal')

@@ -1,140 +1,196 @@
-# Dynamic Flag Toggling System for jj-nvim Menu Enhancement
+# Sequential Command Flow with Flag Toggle Menu
 
-## Current Architecture Analysis
+## Desired Command Flow
 
-### Menu System Structure
-The plugin has a sophisticated menu system with these key components:
+Every complex command should follow this sequential pattern:
 
-1. **Action Menu** (`lua/jj-nvim/ui/action_menu.lua`): Context-aware menu showing actions based on selection state
-2. **Inline Menu** (`lua/jj-nvim/ui/inline_menu.lua`): Core menu implementation with floating windows
-3. **Command-specific Menus**: Specialized menus for operations like squash, rebase, split
+1. **Command Keystroke** - User presses command key (e.g., `r` for rebase)
+2. **Target/Option Menu** - Shows non-flag options (targets, modes, etc.)
+3. **Selection Step** - If needed, prompt user to select targets
+4. **Flag Toggle Menu** - Final step to toggle command flags before execution
+5. **Command Execution** - Execute the fully configured command
 
-### Command Execution Patterns
-Commands follow a consistent pattern:
-- **Simple execution**: Direct command building with flags
-- **Options-based approach**: Commands accept option objects that map to CLI flags
-- **Interactive vs non-interactive**: Commands can run in terminal or background
-- **Immutable error handling**: Automatic retry prompts for immutable commit errors
+## Menu Types
 
-### Current "Toggle-like" Implementations
-The plugin already has several toggle patterns:
-1. **View Toggle**: Switch between commit log and bookmark views
-2. **Filter Toggle**: Cycle through bookmark filters (local → remote → all)
-3. **Selection Toggle**: Multi-select mode for commits
-4. **Description Toggle**: Expand/collapse commit descriptions
+### Unified Menu
+For commands that don't require target selection (like git push), combine targets and flags in a single menu to avoid unnecessary steps.
 
-## Pain Points Identified
+### Sequential Menu  
+For commands that require interactive target selection (like rebase destination), use the full 5-step flow.
 
-### Commands That Would Benefit from Dynamic Flag Toggling
+## Example Flows
 
-1. **Git Push** (`jj git push`):
-   - `--remote <remote>` (cycle through available remotes)
-   - `--force-with-lease` (toggle force push)
-   - `--allow-new` (toggle new bookmark creation)
-   - `--branch <branch>` (select specific branch)
+### Git Push Flow (Unified Menu)
 
-2. **Git Fetch** (`jj git fetch`):
-   - `--remote <remote>` (cycle through available remotes)
-   - `--branch <branch>` (select specific branch)
+- Note: Use 'jj git remote list' to get the list of configured remotes. Generate a menu item for each item in the list.
 
-3. **Rebase** (`jj rebase`):
-   - Source mode: `-b` (branch) ↔ `-s` (source) ↔ `-r` (revisions)
-   - Destination: `-d` ↔ `-A` (after) ↔ `-B` (before)
-   - `--skip-emptied` (toggle)
-   - `--keep-divergent` (toggle)
+  ```
+  Step 1: User presses 'P' (git push)
+  Step 2: Git Push Unified Menu       [Current: jj git push --remote origin]
+  
+  Targets:
+  r - Push to remote 'origin'
+  u - Push to remote 'upstream'  
+  a - Push to all remotes
+  ────────────────────────────
+  Flags:
+  f - Force with lease: ✗     [toggle --force-with-lease]
+  n - Allow new: ✗            [toggle --allow-new]
+  b - Specific branch: ✗      [toggle + input branch name]
+  ────────────────────────────
+  Enter - Execute push
 
-4. **Split** (`jj split`):
-   - `--interactive` (toggle)
-   - `--parallel` (toggle)
-   - Destination: `-d` ↔ `-A` ↔ `-B`
+  Step 3: Execute: jj git push --remote origin
+  ```
 
-5. **Squash** (`jj squash`):
-   - `--interactive` (toggle)
-   - `--keep-emptied` (toggle)
-   - `--use-destination-message` (toggle)
+### Git Fetch Flow (Unified Menu)
 
-6. **New** (`jj new`):
-   - Multiple parent support
-   - Insert positioning options
+  ```
+  Step 1: User presses 'F' (git fetch)
+  Step 2: Git Fetch Unified Menu      [Current: jj git fetch --remote origin]
+  
+  Targets:
+  r - Fetch from remote 'origin'
+  u - Fetch from remote 'upstream'
+  a - Fetch from all remotes
+  ────────────────────────────
+  Flags:
+  b - Specific branch: ✗      [toggle + input branch name]
+  ────────────────────────────
+  Enter - Execute fetch
 
-## Implementation Plan
+  Step 3: Execute: jj git fetch --remote origin
+  ```
 
-### Phase 1: Core Dynamic Menu Framework
+### Rebase Flow
 
-1. **Create Dynamic Menu Component** (`lua/jj-nvim/ui/dynamic_menu.lua`):
-   - Extend inline_menu with stateful flag tracking
-   - Support for toggle flags, cycle flags, and input flags
-   - Real-time menu regeneration on flag changes
-   - Visual indicators for active flags
+```
+Step 1: User presses 'r' (rebase)
+Step 2: Rebase Source Menu
+        b - Rebase branch (current selection)
+        s - Rebase source commits
+        r - Rebase specific revisions
 
-2. **Flag State Management**:
-   - Per-command flag state storage
-   - Persistence across menu sessions
-   - Reset/clear functionality
+Step 3: [Selection step - choose destination commit/bookmark]
 
-3. **Menu Item Types**:
-   - **Toggle Items**: Binary on/off flags (✓/✗ indicators)
-   - **Cycle Items**: Multi-value flags (show current value)
-   - **Input Items**: Prompt for values
-   - **Action Items**: Execute with current flag state
+Step 4: Rebase Flags Menu           [Current: jj rebase -b abc123 -d main]
+        e - Skip emptied: ✗         [toggle --skip-emptied]
+        k - Keep divergent: ✗       [toggle --keep-divergent]
+        i - Interactive: ✗          [toggle --interactive]
+        ────────────────────────────
+        Enter - Execute rebase
 
-### Phase 2: Enhanced Git Commands
+Step 5: Execute: jj rebase -b abc123 -d main
+```
 
-1. **Dynamic Git Push Menu**:
-   ```
-   Git Push Options              [Current: jj git push --remote origin]
-   
-   r - Remote: origin ↺          [toggle through: origin, upstream, none]
-   f - Force: ✗                  [toggle --force-with-lease]
-   n - Allow new: ✗              [toggle --allow-new]
-   b - Branch: <none>            [input prompt]
-   ────────────────────────────
-   Enter - Execute push
-   Space - Preview command
-   ```
+### Squash Flow
 
-2. **Dynamic Git Fetch Menu**:
-   - Similar structure with fetch-specific options
+```
+Step 1: User presses 's' (squash)
+Step 2: Squash Target Menu
+        p - Squash into parent
+        i - Choose destination
 
-### Phase 3: Enhanced Operation Commands
+Step 3: [Selection step if needed - choose destination]
 
-1. **Dynamic Rebase Menu**:
-   ```
-   Rebase Options               [Current: jj rebase -b abc123 -d main]
-   
-   s - Source mode: Branch ↺     [cycle: branch(-b) → source(-s) → revisions(-r)]
-   d - Destination: main         [input prompt or target selection]
-   t - Target type: Dest ↺       [cycle: dest(-d) → after(-A) → before(-B)]
-   e - Skip emptied: ✗           [toggle --skip-emptied]
-   k - Keep divergent: ✗         [toggle --keep-divergent]
-   ────────────────────────────
-   Enter - Execute rebase
-   Space - Preview command
-   ```
+Step 4: Squash Flags Menu           [Current: jj squash -i]
+        k - Keep emptied: ✗         [toggle --keep-emptied]
+        m - Use dest message: ✗     [toggle --use-destination-message]
+        r - Interactive mode: ✓     [toggle --interactive]
+        ────────────────────────────
+        Enter - Execute squash
 
-2. **Dynamic Split Menu**: Similar approach with split-specific flags
-3. **Dynamic Squash Menu**: Enhanced version of current squash menu
+Step 5: Execute: jj squash -i --interactive
+```
 
-### Phase 4: Advanced Features
+## Implementation Architecture
 
-1. **Command Preview**: Show full command before execution
-2. **Flag Presets**: Save/load common flag combinations
-3. **Smart Defaults**: Context-aware flag suggestions
-4. **Flag Validation**: Prevent invalid flag combinations
+### Core Components
+
+1. **Command Flow Manager** (`lua/jj-nvim/ui/command_flow.lua`\):
+   - Orchestrates the sequential menu flow
+   - Manages state between steps
+   - Handles step transitions and cancellation
+
+2. **Flag Toggle Menu** (`lua/jj-nvim/ui/flag_menu.lua`\):
+   - Generic flag toggling interface
+   - Per-command flag definitions
+   - Visual flag state indicators
+   - Command preview generation
+
+3. **Enhanced Command Definitions**:
+   - Separate target/option menus from flag menus
+   - Flag metadata (type, default, description)
+   - Step-by-step flow definitions
+
+### Menu Flow State Management
+
+```lua
+CommandFlowState = {
+  command = "rebase",           -- Command being built
+  step = 3,                     -- Current step (1-5)
+  base_options = {              -- Non-flag options from steps 1-3
+    source_type = "branch",
+    destination = "main"
+  },
+  flags = {                     -- Flag state from step 4
+    skip_emptied = false,
+    keep_divergent = true,
+    interactive = false
+  },
+  command_preview = "jj rebase -b abc123 -d main --keep-divergent"
+}
+```
+
+### Flag Menu Features
+
+1. **Visual Indicators**:
+   - `✓` for enabled flags
+   - `✗` for disabled flags
+   - `↺` for cycle flags showing current value
+   - Live command preview at top
+
+2. **Flag Types**:
+   - **Toggle**: Binary on/off (most flags)
+   - **Cycle**: Multiple values (e.g., source type: branch → source → revisions)
+   - **Input**: Prompt for string value (e.g., branch name, message)
+
+3. **Smart Defaults**:
+   - Context-aware flag suggestions
+   - Remember previous flag combinations per command
+   - Validate flag combinations and disable invalid options
 
 ### Implementation Strategy
 
-1. **Backward Compatibility**: Keep existing simple menus as default
-2. **Opt-in Enhancement**: Add config option to enable dynamic menus
-3. **Progressive Enhancement**: Start with git commands, expand to others
-4. **Consistent UX**: Follow existing toggle patterns and key conventions
+1. **Incremental Rollout**: Start with one command (git push) as proof of concept
+2. **Backward Compatibility**: Keep simple commands as single-step when no flags needed
+3. **Consistent Keybinds**: Use same flag keys across commands where possible
+4. **Escape Hatch**: Allow quick execution with defaults (bypass flag menu)
 
 ### Key Benefits
 
-1. **Reduced Context Switching**: No need to remember complex flag combinations
-2. **Discoverability**: Users can see all available options at once
-3. **Safety**: Preview commands before execution
-4. **Efficiency**: Quick flag adjustments without menu navigation
-5. **Learning**: Users learn command structure through interaction
+1. **Predictable Flow**: Every complex command follows same pattern
+2. **Separation of Concerns**: Targets/options separate from flags
+3. **Discoverability**: Users learn available flags through interaction
+4. **Safety**: Always preview final command before execution
+5. **Flexibility**: Can toggle multiple flags without menu navigation
 
-This implementation would significantly enhance the user experience for complex jj operations while maintaining the plugin's current elegant simplicity for basic operations.
+### Commands Requiring This Flow
+
+**High Priority**:
+
+- Git push/fetch (multiple remotes, force options)
+- Rebase (source types, positioning, behavior flags)
+- Split (interactive, parallel, positioning)
+
+**Medium Priority**:
+
+- Squash (interactive, message handling, emptied commits)
+- New (multiple parents, positioning)
+- Abandon (recursive, interactive confirmation)
+
+**Low Priority**:
+
+- Edit (interactive vs direct)
+- Describe (interactive vs message input)
+

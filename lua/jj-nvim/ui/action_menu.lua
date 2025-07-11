@@ -308,9 +308,19 @@ local function handle_menu_selection(item, win_id)
       end
     end)
   elseif item.action == "git_push" then
-    actions.git_push_async({}, function(success)
-      if success then
-        require('jj-nvim').refresh()
+    local success, command_flow = pcall(require, 'jj-nvim.ui.command_flow')
+    if not success then
+      vim.notify("Error loading command flow: " .. tostring(command_flow), vim.log.levels.ERROR)
+      return
+    end
+    
+    local current_win = vim.api.nvim_get_current_win()
+    
+    -- Add a small delay to ensure the action menu is fully closed before showing command flow menu
+    vim.schedule(function()
+      local flow_success, flow_error = pcall(command_flow.start_flow, "git_push", current_win)
+      if not flow_success then
+        vim.notify("Error starting git push flow: " .. tostring(flow_error), vim.log.levels.ERROR)
       end
     end)
   elseif item.action == "undo_last" then

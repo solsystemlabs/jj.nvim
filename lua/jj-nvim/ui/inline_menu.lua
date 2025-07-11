@@ -50,6 +50,7 @@ local function create_menu_window(parent_win_id, menu_config)
   local buf_id = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_option(buf_id, 'bufhidden', 'wipe')
   vim.api.nvim_buf_set_option(buf_id, 'filetype', 'jj-menu')
+  vim.api.nvim_buf_set_option(buf_id, 'modifiable', true)
   
   -- Window configuration - use editor positioning since parent is a split, not floating
   local win_config = {
@@ -220,9 +221,16 @@ local function setup_menu_keymaps(buf_id, menu_config)
   vim.keymap.set('n', nav_keys.select, function()
     local selected_item = menu_config.items[M.state.selected_index]
     local callback = M.state.on_select
-    M.close()
-    if callback and selected_item then
-      callback(selected_item)
+    -- For toggle actions, don't close the menu immediately
+    if selected_item and selected_item.action == "toggle_filter" then
+      if callback then
+        callback(selected_item)
+      end
+    else
+      M.close()
+      if callback and selected_item then
+        callback(selected_item)
+      end
     end
   end, opts)
   
