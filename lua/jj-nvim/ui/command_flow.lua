@@ -750,14 +750,17 @@ M.execute_command = function()
   elseif command_type == "rebase" then
     table.insert(cmd_args, "rebase")
     
-    -- Add source type
+    -- Add source type and revset
     local source_type = base_options.source_type
     if source_type == "branch" then
       table.insert(cmd_args, "-b")
+      table.insert(cmd_args, "@")  -- Rebase current commit/branch
     elseif source_type == "source" then
       table.insert(cmd_args, "-s")
+      table.insert(cmd_args, "@")  -- Rebase current commit as source
     elseif source_type == "revisions" then
       table.insert(cmd_args, "-r")
+      table.insert(cmd_args, "@")  -- Rebase current commit as revision
     end
     
     -- Add destination
