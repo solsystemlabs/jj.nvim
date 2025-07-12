@@ -93,7 +93,7 @@ M.flows = {
         flags = {
           { key = "f", flag = "--force-with-lease", type = "toggle", description = "Force with lease", default = false },
           { key = "n", flag = "--allow-new", type = "toggle", description = "Allow new", default = false },
-          { key = "b", flag = "--branch", type = "input", description = "Specific branch", default = nil },
+          { key = "b", flag = "--branch", type = "selection", description = "Specific branch", default = nil, get_options = "get_local_bookmarks" },
         }
       }
     }
@@ -109,7 +109,7 @@ M.flows = {
         title = "Git Fetch",
         targets = nil, -- Will be populated dynamically
         flags = {
-          { key = "b", flag = "--branch", type = "input", description = "Specific branch", default = nil },
+          { key = "b", flag = "--branch", type = "selection", description = "Specific branch", default = nil, get_options = "get_remote_bookmarks" },
         }
       }
     }
@@ -316,6 +316,8 @@ M.show_unified_menu = function(step_config)
         indicator = flag_value and "✓" or "✗"
       elseif flag_def.type == "input" then
         indicator = (flag_value and flag_value ~= "") and (":" .. flag_value) or ": <none>"
+      elseif flag_def.type == "selection" then
+        indicator = (flag_value and flag_value ~= "") and (":" .. flag_value) or ": <none>"
       else
         indicator = flag_value and tostring(flag_value) or "✗"
       end
@@ -459,6 +461,13 @@ M.handle_menu_selection = function(item)
       vim.notify("Calling prompt_flag_input...", vim.log.levels.INFO)
       M.prompt_flag_input(flag_def)
       return -- Don't re-render yet, wait for input
+    elseif flag_def.type == "selection" then
+      vim.notify("Calling show_flag_selection...", vim.log.levels.INFO)
+      -- The menu will close (due to selection) and we'll show selection menu after delay
+      vim.defer_fn(function()
+        M.show_flag_selection(flag_def)
+      end, 100)
+      return -- Don't re-render yet, wait for selection
     end
     
   elseif item.action == "execute" then
@@ -479,6 +488,72 @@ M.prompt_flag_input = function(flag_def)
     -- Re-render current step
     M.show_current_step()
   end)
+end
+
+-- Show selection menu for flag options
+M.show_flag_selection = function(flag_def)
+  local bookmark_commands = require('jj-nvim.jj.bookmark_commands')
+  local options = {}
+  
+  -- Get bookmark options based on the get_options function
+  if flag_def.get_options == "get_local_bookmarks" then
+    local bookmarks = bookmark_commands.get_local_bookmarks()
+    for i, bookmark in ipairs(bookmarks) do
+      local key = string.sub(tostring(i), 1, 1)  -- Use number as key
+      if i > 9 then key = string.char(96 + i - 9) end  -- a, b, c... for items 10+
+      
+      table.insert(options, {
+        key = key,
+        description = bookmark.name,
+        value = bookmark.name
+      })
+    end
+  elseif flag_def.get_options == "get_remote_bookmarks" then
+    local bookmarks = bookmark_commands.get_remote_bookmarks()
+    for i, bookmark in ipairs(bookmarks) do
+      local key = string.sub(tostring(i), 1, 1)  -- Use number as key
+      if i > 9 then key = string.char(96 + i - 9) end  -- a, b, c... for items 10+
+      
+      table.insert(options, {
+        key = key,
+        description = bookmark.display_name or bookmark.name,
+        value = bookmark.name
+      })
+    end
+  end
+  
+  -- Add "none" option
+  table.insert(options, 1, {
+    key = "n",
+    description = "None (clear selection)",
+    value = nil
+  })
+  
+  if #options <= 1 then  -- Only "none" option
+    vim.notify("No " .. (flag_def.get_options == "get_local_bookmarks" and "local bookmarks" or "remote bookmarks") .. " found", vim.log.levels.WARN)
+    return
+  end
+  
+  local menu_config = {
+    title = "Select " .. flag_def.description,
+    items = options
+  }
+  
+  inline_menu.show(M.state.parent_win_id, menu_config, {
+    on_select = function(item)
+      M.state.flags[flag_def.key] = item.value
+      -- Re-render current step with delay to ensure menu is closed
+      vim.defer_fn(function()
+        M.show_current_step()
+      end, 100)
+    end,
+    on_cancel = function()
+      -- Re-render current step without changes with delay
+      vim.defer_fn(function()
+        M.show_current_step()
+      end, 100)
+    end
+  })
 end
 
 -- Advance to next step
