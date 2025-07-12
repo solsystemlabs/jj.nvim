@@ -3,6 +3,36 @@ local M = {}
 local inline_menu = require('jj-nvim.ui.inline_menu')
 local commands = require('jj-nvim.jj.commands')
 
+-- Centralized menu helper to handle timing issues
+local function show_menu_with_transition(menu_config, callbacks)
+  return inline_menu.show(M.state.parent_win_id, menu_config, {
+    on_select = function(item)
+      if callbacks.on_select then
+        -- Wrap the callback with delay if it leads to another menu
+        if callbacks.needs_delay then
+          vim.defer_fn(function()
+            callbacks.on_select(item)
+          end, 100)
+        else
+          callbacks.on_select(item)
+        end
+      end
+    end,
+    on_cancel = function()
+      if callbacks.on_cancel then
+        -- Wrap cancel callback with delay if needed
+        if callbacks.needs_delay then
+          vim.defer_fn(function()
+            callbacks.on_cancel()
+          end, 100)
+        else
+          callbacks.on_cancel()
+        end
+      end
+    end
+  })
+end
+
 -- Command flow state
 M.state = {
   active = false,
@@ -363,9 +393,10 @@ M.show_unified_menu = function(step_config)
     items = menu_items
   }
   
-  inline_menu.show(M.state.parent_win_id, menu_config, {
+  show_menu_with_transition(menu_config, {
     on_select = M.handle_menu_selection,
-    on_cancel = M.close
+    on_cancel = M.close,
+    needs_delay = false  -- Unified menus handle their own transitions in M.handle_menu_selection
   })
 end
 
@@ -388,10 +419,11 @@ M.show_option_menu = function(step_config)
     items = menu_items
   }
   
-  vim.notify("Calling inline_menu.show for option menu...", vim.log.levels.INFO)
-  local success = inline_menu.show(M.state.parent_win_id, menu_config, {
+  vim.notify("Calling show_menu_with_transition for option menu...", vim.log.levels.INFO)
+  local success = show_menu_with_transition(menu_config, {
     on_select = M.handle_menu_selection,
-    on_cancel = M.close
+    on_cancel = M.close,
+    needs_delay = true  -- Option menus lead to other menus
   })
   vim.notify("Option menu show result: " .. tostring(success), vim.log.levels.INFO)
 end
@@ -431,9 +463,10 @@ M.show_flag_menu = function(step_config)
     items = menu_items
   }
   
-  inline_menu.show(M.state.parent_win_id, menu_config, {
+  show_menu_with_transition(menu_config, {
     on_select = M.handle_menu_selection,
-    on_cancel = M.close
+    on_cancel = M.close,
+    needs_delay = false  -- Flag menus handle their own transitions in M.handle_menu_selection
   })
 end
 
@@ -471,21 +504,19 @@ M.show_selection_step = function(step_config)
     items = options
   }
   
-  vim.notify("Calling inline_menu.show for selection...", vim.log.levels.INFO)
-  local success = inline_menu.show(M.state.parent_win_id, menu_config, {
+  vim.notify("Calling show_menu_with_transition for selection...", vim.log.levels.INFO)
+  local success = show_menu_with_transition(menu_config, {
     on_select = function(item)
       vim.notify("Selection made: " .. tostring(item.value.destination), vim.log.levels.INFO)
       -- Store the destination selection
       for key, value in pairs(item.value) do
         M.state.base_options[key] = value
       end
-      -- Advance to next step (flags menu) with delay to ensure menu is closed
-      vim.defer_fn(function()
-        vim.notify("Advancing to next step after selection", vim.log.levels.INFO)
-        M.advance_step()
-      end, 100)
+      vim.notify("Advancing to next step after selection", vim.log.levels.INFO)
+      M.advance_step()
     end,
-    on_cancel = M.close
+    on_cancel = M.close,
+    needs_delay = true  -- Selection leads to flag menu
   })
   vim.notify("Selection menu show result: " .. tostring(success), vim.log.levels.INFO)
 end
@@ -512,11 +543,8 @@ M.handle_menu_selection = function(item)
     for key, value in pairs(item.data) do
       M.state.base_options[key] = value
     end
-    -- Advance to next step with delay to ensure menu is closed
-    vim.defer_fn(function()
-      vim.notify("Advancing after option selection", vim.log.levels.INFO)
-      M.advance_step()
-    end, 100)
+    vim.notify("Advancing after option selection", vim.log.levels.INFO)
+    M.advance_step()
     
   elseif item.action == "toggle_flag" then
     local flag_def = item.data
@@ -610,20 +638,15 @@ M.show_flag_selection = function(flag_def)
     items = options
   }
   
-  inline_menu.show(M.state.parent_win_id, menu_config, {
+  show_menu_with_transition(menu_config, {
     on_select = function(item)
       M.state.flags[flag_def.key] = item.value
-      -- Re-render current step with delay to ensure menu is closed
-      vim.defer_fn(function()
-        M.show_current_step()
-      end, 100)
+      M.show_current_step()
     end,
     on_cancel = function()
-      -- Re-render current step without changes with delay
-      vim.defer_fn(function()
-        M.show_current_step()
-      end, 100)
-    end
+      M.show_current_step()
+    end,
+    needs_delay = true  -- Flag selection leads back to main menu
   })
 end
 
