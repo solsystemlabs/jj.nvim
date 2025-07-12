@@ -363,18 +363,12 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
   local rebase_key = config.get_first_keybind('keybinds.log_window.actions.rebase') or 
                      config.get('keymaps.rebase') or 'r'
   vim.keymap.set('n', rebase_key, function()
-    local commit = get_target_commit(win_id, state.selected_commits, navigation)
-    if not commit then
-      vim.notify("No commit to rebase", vim.log.levels.WARN)
-      return
-    end
-
-    if commit.root then
-      vim.notify("Cannot rebase the root commit", vim.log.levels.WARN)
-      return
-    end
-
-    actions.show_rebase_options_menu(commit, win_id)
+    local command_flow = require('jj-nvim.ui.command_flow')
+    local current_win = vim.api.nvim_get_current_win()
+    -- Add a small delay to ensure any existing menus are closed
+    vim.schedule(function()
+      command_flow.start_flow("rebase", current_win)
+    end)
   end, opts)
 end
 

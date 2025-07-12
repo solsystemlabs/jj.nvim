@@ -164,6 +164,14 @@ local function build_command_preview()
       else -- git fetch uses different flag
         table.insert(parts, "--all-remotes")
       end
+    elseif key == "source_type" and value == "branch" then
+      table.insert(parts, "-b")
+    elseif key == "source_type" and value == "source" then
+      table.insert(parts, "-s")
+    elseif key == "source_type" and value == "revisions" then
+      table.insert(parts, "-r")
+    elseif key == "destination" then
+      table.insert(parts, "-d " .. value)
     end
   end
   
@@ -209,6 +217,8 @@ end
 
 -- Start a command flow
 M.start_flow = function(command_name, parent_win_id)
+  vim.notify("Starting rebase flow...", vim.log.levels.INFO)
+  
   -- Close any existing flow
   if M.state.active then
     M.close()
@@ -219,6 +229,8 @@ M.start_flow = function(command_name, parent_win_id)
     vim.notify("Unknown command flow: " .. command_name, vim.log.levels.ERROR)
     return false
   end
+  
+  vim.notify("Rebase flow config found, type: " .. flow_config.type, vim.log.levels.INFO)
   
   -- Generate dynamic targets if function is provided
   if flow_config.generate_targets then
@@ -246,6 +258,7 @@ M.start_flow = function(command_name, parent_win_id)
   end
   
   -- Start first step
+  vim.notify("Starting step " .. M.state.step, vim.log.levels.INFO)
   M.show_current_step()
   
   return true
@@ -253,7 +266,10 @@ end
 
 -- Show the current step's menu
 M.show_current_step = function()
+  vim.notify("show_current_step called, step: " .. tostring(M.state.step), vim.log.levels.INFO)
+  
   if not M.state.active or not M.state.flow_config then
+    vim.notify("Flow not active or no config", vim.log.levels.ERROR)
     return false
   end
   
@@ -269,6 +285,8 @@ M.show_current_step = function()
     vim.notify("Invalid step: " .. M.state.step, vim.log.levels.ERROR)
     return false
   end
+  
+  vim.notify("Step config type: " .. step_config.type, vim.log.levels.INFO)
   
   -- Update command preview
   M.state.command_preview = build_command_preview()
@@ -353,6 +371,7 @@ end
 
 -- Show option menu (non-flag options)
 M.show_option_menu = function(step_config)
+  vim.notify("Creating option menu with " .. #step_config.options .. " options", vim.log.levels.INFO)
   local menu_items = {}
   
   for _, option in ipairs(step_config.options) do
@@ -369,10 +388,12 @@ M.show_option_menu = function(step_config)
     items = menu_items
   }
   
-  inline_menu.show(M.state.parent_win_id, menu_config, {
+  vim.notify("Calling inline_menu.show for option menu...", vim.log.levels.INFO)
+  local success = inline_menu.show(M.state.parent_win_id, menu_config, {
     on_select = M.handle_menu_selection,
     on_cancel = M.close
   })
+  vim.notify("Option menu show result: " .. tostring(success), vim.log.levels.INFO)
 end
 
 -- Show flag menu
@@ -416,11 +437,57 @@ M.show_flag_menu = function(step_config)
   })
 end
 
--- Show selection step (placeholder - will integrate with existing selection logic)
+-- Show selection step - choose target commit/bookmark
 M.show_selection_step = function(step_config)
-  vim.notify("Selection step not yet implemented", vim.log.levels.INFO)
-  -- For now, just advance to next step
-  M.advance_step()
+  vim.notify("Creating selection step menu...", vim.log.levels.INFO)
+  local bookmark_commands = require('jj-nvim.jj.bookmark_commands')
+  local options = {}
+  
+  -- Get all present bookmarks as destination options
+  local bookmarks = bookmark_commands.get_all_present_bookmarks()
+  vim.notify("Found " .. #bookmarks .. " bookmarks for selection", vim.log.levels.INFO)
+  for i, bookmark in ipairs(bookmarks) do
+    local key = string.sub(tostring(i), 1, 1)  -- Use number as key
+    if i > 9 then key = string.char(96 + i - 9) end  -- a, b, c... for items 10+
+    
+    table.insert(options, {
+      key = key,
+      description = bookmark.display_name or bookmark.name,
+      value = { destination = bookmark.name }
+    })
+  end
+  
+  -- TODO: Could also add recent commits here as options
+  
+  if #options == 0 then
+    vim.notify("No bookmark destinations found", vim.log.levels.WARN)
+    return
+  end
+  
+  vim.notify("Creating selection menu with " .. #options .. " options", vim.log.levels.INFO)
+  
+  local menu_config = {
+    title = step_config.title,
+    items = options
+  }
+  
+  vim.notify("Calling inline_menu.show for selection...", vim.log.levels.INFO)
+  local success = inline_menu.show(M.state.parent_win_id, menu_config, {
+    on_select = function(item)
+      vim.notify("Selection made: " .. tostring(item.value.destination), vim.log.levels.INFO)
+      -- Store the destination selection
+      for key, value in pairs(item.value) do
+        M.state.base_options[key] = value
+      end
+      -- Advance to next step (flags menu) with delay to ensure menu is closed
+      vim.defer_fn(function()
+        vim.notify("Advancing to next step after selection", vim.log.levels.INFO)
+        M.advance_step()
+      end, 100)
+    end,
+    on_cancel = M.close
+  })
+  vim.notify("Selection menu show result: " .. tostring(success), vim.log.levels.INFO)
 end
 
 -- Handle menu selection
@@ -445,7 +512,11 @@ M.handle_menu_selection = function(item)
     for key, value in pairs(item.data) do
       M.state.base_options[key] = value
     end
-    M.advance_step()
+    -- Advance to next step with delay to ensure menu is closed
+    vim.defer_fn(function()
+      vim.notify("Advancing after option selection", vim.log.levels.INFO)
+      M.advance_step()
+    end, 100)
     
   elseif item.action == "toggle_flag" then
     local flag_def = item.data
@@ -651,6 +722,49 @@ M.execute_command = function()
         end)
       else
         vim.notify("Git fetch failed: " .. (error_msg or "Unknown error"), vim.log.levels.ERROR)
+      end
+    end)
+  elseif command_type == "rebase" then
+    table.insert(cmd_args, "rebase")
+    
+    -- Add source type
+    local source_type = base_options.source_type
+    if source_type == "branch" then
+      table.insert(cmd_args, "-b")
+    elseif source_type == "source" then
+      table.insert(cmd_args, "-s")
+    elseif source_type == "revisions" then
+      table.insert(cmd_args, "-r")
+    end
+    
+    -- Add destination
+    if base_options.destination then
+      table.insert(cmd_args, "-d")
+      table.insert(cmd_args, base_options.destination)
+    end
+    
+    -- Add flags
+    if flags.skip_emptied then
+      table.insert(cmd_args, "--skip-emptied")
+    end
+    if flags.keep_divergent then
+      table.insert(cmd_args, "--keep-divergent")
+    end
+    if flags.interactive then
+      table.insert(cmd_args, "--interactive")
+    end
+    
+    -- Execute the command
+    vim.notify("Executing: " .. final_command, vim.log.levels.INFO)
+    commands.execute_async(cmd_args, {}, function(result, error_msg)
+      if result then
+        vim.notify("Rebase completed successfully", vim.log.levels.INFO)
+        -- Refresh the jj log
+        vim.schedule(function()
+          require('jj-nvim').refresh()
+        end)
+      else
+        vim.notify("Rebase failed: " .. (error_msg or "Unknown error"), vim.log.levels.ERROR)
       end
     end)
   else
