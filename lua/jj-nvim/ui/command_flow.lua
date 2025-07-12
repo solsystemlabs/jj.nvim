@@ -247,8 +247,6 @@ end
 
 -- Start a command flow
 M.start_flow = function(command_name, parent_win_id)
-  vim.notify("Starting rebase flow...", vim.log.levels.INFO)
-  
   -- Close any existing flow
   if M.state.active then
     M.close()
@@ -259,8 +257,6 @@ M.start_flow = function(command_name, parent_win_id)
     vim.notify("Unknown command flow: " .. command_name, vim.log.levels.ERROR)
     return false
   end
-  
-  vim.notify("Rebase flow config found, type: " .. flow_config.type, vim.log.levels.INFO)
   
   -- Generate dynamic targets if function is provided
   if flow_config.generate_targets then
@@ -288,7 +284,6 @@ M.start_flow = function(command_name, parent_win_id)
   end
   
   -- Start first step
-  vim.notify("Starting step " .. M.state.step, vim.log.levels.INFO)
   M.show_current_step()
   
   return true
@@ -296,8 +291,6 @@ end
 
 -- Show the current step's menu
 M.show_current_step = function()
-  vim.notify("show_current_step called, step: " .. tostring(M.state.step), vim.log.levels.INFO)
-  
   if not M.state.active or not M.state.flow_config then
     vim.notify("Flow not active or no config", vim.log.levels.ERROR)
     return false
@@ -315,8 +308,6 @@ M.show_current_step = function()
     vim.notify("Invalid step: " .. M.state.step, vim.log.levels.ERROR)
     return false
   end
-  
-  vim.notify("Step config type: " .. step_config.type, vim.log.levels.INFO)
   
   -- Update command preview
   M.state.command_preview = build_command_preview()
@@ -402,7 +393,6 @@ end
 
 -- Show option menu (non-flag options)
 M.show_option_menu = function(step_config)
-  vim.notify("Creating option menu with " .. #step_config.options .. " options", vim.log.levels.INFO)
   local menu_items = {}
   
   for _, option in ipairs(step_config.options) do
@@ -419,13 +409,11 @@ M.show_option_menu = function(step_config)
     items = menu_items
   }
   
-  vim.notify("Calling show_menu_with_transition for option menu...", vim.log.levels.INFO)
-  local success = show_menu_with_transition(menu_config, {
+  show_menu_with_transition(menu_config, {
     on_select = M.handle_menu_selection,
     on_cancel = M.close,
     needs_delay = true  -- Option menus lead to other menus
   })
-  vim.notify("Option menu show result: " .. tostring(success), vim.log.levels.INFO)
 end
 
 -- Show flag menu
@@ -472,13 +460,11 @@ end
 
 -- Show selection step - choose target commit/bookmark
 M.show_selection_step = function(step_config)
-  vim.notify("Creating selection step menu...", vim.log.levels.INFO)
   local bookmark_commands = require('jj-nvim.jj.bookmark_commands')
   local options = {}
   
   -- Get all present bookmarks as destination options
   local bookmarks = bookmark_commands.get_all_present_bookmarks()
-  vim.notify("Found " .. #bookmarks .. " bookmarks for selection", vim.log.levels.INFO)
   for i, bookmark in ipairs(bookmarks) do
     local key = string.sub(tostring(i), 1, 1)  -- Use number as key
     if i > 9 then key = string.char(96 + i - 9) end  -- a, b, c... for items 10+
@@ -497,28 +483,22 @@ M.show_selection_step = function(step_config)
     return
   end
   
-  vim.notify("Creating selection menu with " .. #options .. " options", vim.log.levels.INFO)
-  
   local menu_config = {
     title = step_config.title,
     items = options
   }
   
-  vim.notify("Calling show_menu_with_transition for selection...", vim.log.levels.INFO)
-  local success = show_menu_with_transition(menu_config, {
+  show_menu_with_transition(menu_config, {
     on_select = function(item)
-      vim.notify("Selection made: " .. tostring(item.value.destination), vim.log.levels.INFO)
       -- Store the destination selection
       for key, value in pairs(item.value) do
         M.state.base_options[key] = value
       end
-      vim.notify("Advancing to next step after selection", vim.log.levels.INFO)
       M.advance_step()
     end,
     on_cancel = M.close,
     needs_delay = true  -- Selection leads to flag menu
   })
-  vim.notify("Selection menu show result: " .. tostring(success), vim.log.levels.INFO)
 end
 
 -- Handle menu selection
@@ -543,12 +523,10 @@ M.handle_menu_selection = function(item)
     for key, value in pairs(item.data) do
       M.state.base_options[key] = value
     end
-    vim.notify("Advancing after option selection", vim.log.levels.INFO)
     M.advance_step()
     
   elseif item.action == "toggle_flag" then
     local flag_def = item.data
-    vim.notify("Flag type: " .. tostring(flag_def.type) .. " for key: " .. tostring(flag_def.key), vim.log.levels.INFO)
     if flag_def.type == "toggle" then
       M.state.flags[flag_def.key] = not M.state.flags[flag_def.key]
       -- Re-render current step to show updated flag states
@@ -557,11 +535,9 @@ M.handle_menu_selection = function(item)
         M.show_current_step()
       end, 100) -- Longer delay to ensure menu is fully closed
     elseif flag_def.type == "input" then
-      vim.notify("Calling prompt_flag_input...", vim.log.levels.INFO)
       M.prompt_flag_input(flag_def)
       return -- Don't re-render yet, wait for input
     elseif flag_def.type == "selection" then
-      vim.notify("Calling show_flag_selection...", vim.log.levels.INFO)
       -- The menu will close (due to selection) and we'll show selection menu after delay
       vim.defer_fn(function()
         M.show_flag_selection(flag_def)
