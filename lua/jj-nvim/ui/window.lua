@@ -311,6 +311,14 @@ M.setup_multi_select_keymaps = function()
   keymaps.setup_multi_select_keymaps(state.buf_id, state.win_id, navigation, opts)
 end
 
+-- Setup keymaps for abandon-specific multi-select mode
+M.setup_abandon_select_keymaps = function()
+  if not state.buf_id then return end
+
+  local opts = { noremap = true, silent = true, buffer = state.buf_id }
+  keymaps.setup_abandon_select_keymaps(state.buf_id, state.win_id, navigation, opts)
+end
+
 M.adjust_width = function(delta)
   if not M.is_open() then return end
 
@@ -1389,6 +1397,34 @@ M.enter_multi_select_mode = function()
   vim.notify("Multi-select mode: Use Space to toggle selection, Enter to confirm, Esc to cancel", vim.log.levels.INFO)
 end
 
+-- Enter multi-select mode specifically for abandon workflow
+M.enter_abandon_select_mode = function()
+  if not M.is_open() then
+    vim.notify("JJ window is not open", vim.log.levels.WARN)
+    return
+  end
+
+  -- Store current cursor position
+  local current_line = vim.api.nvim_win_get_cursor(state.win_id)[1]
+
+  M.set_mode(MODES.MULTI_SELECT, {
+    original_line = current_line,
+    workflow = 'abandon'  -- Mark this as abandon workflow
+  })
+
+  -- Initialize selection state
+  state.selected_commits = {}
+
+  -- Update keymaps for multi-select with abandon-specific confirmation
+  M.setup_abandon_select_keymaps()
+
+  -- Refresh buffer to show selection highlighting
+  M.refresh_buffer()
+
+  -- Show status message
+  vim.notify("Abandon mode: Use Space to select commits, Enter to abandon selected, Esc to cancel", vim.log.levels.INFO)
+end
+
 -- Toggle commit selection in multi-select mode
 M.toggle_commit_selection = function()
   if not M.is_mode(MODES.MULTI_SELECT) then
@@ -1464,6 +1500,36 @@ M.confirm_multi_selection = function()
       vim.notify("Merge commit creation cancelled", vim.log.levels.INFO)
     end
   end)
+end
+
+-- Confirm abandon selection and show abandon options
+M.confirm_abandon_selection = function()
+  if not M.is_mode(MODES.MULTI_SELECT) then
+    return
+  end
+
+  local mixed_entries = buffer.get_commits(state.buf_id)
+  if not mixed_entries then
+    vim.notify("No commits available", vim.log.levels.WARN)
+    return
+  end
+
+  -- Check if we have at least 1 commit selected
+  if not state.selected_commits or #state.selected_commits < 1 then
+    vim.notify("At least 1 commit must be selected for abandon", vim.log.levels.WARN)
+    return
+  end
+
+  -- Execute abandon operation directly with single confirmation
+  local actions = require('jj-nvim.jj.actions')
+  actions.abandon_multiple_commits_async(state.selected_commits, function()
+    require('jj-nvim').refresh()
+  end)
+
+  -- Return to normal mode
+  M.reset_mode()
+  M.disable_view_toggle() -- Disable view toggling
+  M.setup_keymaps() -- Restore normal keymaps
 end
 
 -- Cancel multi-selection and return to normal mode

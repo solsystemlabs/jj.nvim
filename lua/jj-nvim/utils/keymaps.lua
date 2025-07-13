@@ -306,20 +306,10 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
   -- Explicit multi-abandon - use configured key
   local multi_abandon_key = config.get_first_keybind('keybinds.log_window.actions.multi_abandon') or 'A'
   vim.keymap.set('n', multi_abandon_key, function()
-    if #state.selected_commits > 0 then
-      actions.abandon_multiple_commits_async(state.selected_commits, function()
-        state.selected_commits = {}
-        require('jj-nvim').refresh()
-        local window_utils = require('jj-nvim.utils.window')
-        local buffer = require('jj-nvim.ui.buffer')
-        local window_width = window_utils.get_width(win_id)
-        buffer.update_status(buf_id, {
-          selected_count = #state.selected_commits
-        }, window_width)
-      end)
-    else
-      vim.notify("No commits selected for multi-abandon", vim.log.levels.WARN)
-    end
+    local window_module = require('jj-nvim.ui.window')
+    
+    -- Enter multi-select mode for abandon workflow
+    window_module.enter_abandon_select_mode()
   end, opts)
 
   -- Squash commit - use configured key (with backward compatibility)
@@ -690,6 +680,52 @@ M.setup_multi_select_keymaps = function(buf_id, win_id, navigation, opts)
 
   -- Disable other actions during multi-select mode
   M.setup_disabled_actions(buf_id, "Press Esc to cancel multi-selection, Enter to confirm", opts)
+end
+
+-- Setup keymaps for abandon-specific multi-select mode
+M.setup_abandon_select_keymaps = function(buf_id, win_id, navigation, opts)
+  -- First, explicitly remove conflicting keymaps
+  M.clear_conflicting_keymaps(buf_id)
+
+  -- Toggle commit selection using configured key
+  local config = require('jj-nvim.config')
+  local toggle_selection_key = config.get_first_keybind('keybinds.log_window.special_modes.multi_select.toggle_selection') or '<Space>'
+  vim.keymap.set('n', toggle_selection_key, function()
+    local window_module = require('jj-nvim.ui.window')
+    window_module.toggle_commit_selection()
+  end, opts)
+
+  -- Confirm abandon selection using configured key
+  local confirm_key = config.get_first_keybind('keybinds.log_window.special_modes.multi_select.confirm') or '<CR>'
+  vim.keymap.set('n', confirm_key, function()
+    local window_module = require('jj-nvim.ui.window')
+    window_module.confirm_abandon_selection()
+  end, opts)
+
+  -- Cancel abandon-select mode using configured key
+  local cancel_key = config.get_first_keybind('keybinds.log_window.special_modes.multi_select.cancel') or '<Esc>'
+  vim.keymap.set('n', cancel_key, function()
+    local window_module = require('jj-nvim.ui.window')
+    window_module.cancel_multi_selection()
+  end, opts)
+
+  -- View toggle keybinds for abandon-select mode
+  vim.keymap.set('n', '<C-t>', function()
+    local window_module = require('jj-nvim.ui.window')
+    window_module.toggle_view()
+  end, opts)
+  
+  vim.keymap.set('n', '<Tab>', function()
+    local window_module = require('jj-nvim.ui.window')
+    window_module.toggle_view()
+  end, opts)
+
+  -- Setup common navigation keymaps with update callback
+  local window_module = require('jj-nvim.ui.window')
+  M.setup_common_navigation(buf_id, win_id, navigation, opts, window_module.update_multi_select_display)
+
+  -- Disable other actions during abandon-select mode
+  M.setup_disabled_actions(buf_id, "Press Esc to cancel abandon mode, Enter to abandon selected", opts)
 end
 
 return M
