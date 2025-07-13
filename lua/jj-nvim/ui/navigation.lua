@@ -443,4 +443,50 @@ M.snap_to_commit_header = function(win_id)
   return false
 end
 
+-- Navigate to a commit by change_id or commit_id
+M.goto_commit_by_id = function(win_id, target_id)
+  if not validation.window(win_id) then
+    return false
+  end
+  
+  if not target_id then
+    return false
+  end
+  
+  local commits = buffer.get_all_commits()
+  if not commits then
+    return false
+  end
+  
+  -- Find the commit with matching ID and get its line position directly
+  for i, commit in ipairs(commits) do
+    if commit.change_id == target_id or 
+       commit.short_change_id == target_id or
+       commit.id == target_id or
+       commit.short_id == target_id then
+      
+      -- Get the commit's line position directly from the commit object
+      local target_line = commit.line_start
+      if target_line then
+        -- Add status area height to get absolute buffer position
+        local window_width = window_utils.get_width(win_id)
+        local status_height = buffer.get_status_height(window_width)
+        local absolute_line = target_line + status_height
+        
+        local buf_id = vim.api.nvim_win_get_buf(win_id)
+        local line_count = vim.api.nvim_buf_line_count(buf_id)
+        if absolute_line > 0 and absolute_line <= line_count then
+          vim.api.nvim_win_set_cursor(win_id, {absolute_line, 0})
+          return true
+        end
+      end
+      
+      -- Fallback to index-based navigation if line_start is not available
+      return M.goto_commit(win_id, i - 1) -- Convert to 0-based index
+    end
+  end
+  
+  return false
+end
+
 return M

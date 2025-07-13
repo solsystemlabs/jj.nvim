@@ -8,10 +8,14 @@ local get_change_id = command_utils.get_change_id
 local get_short_display_id = command_utils.get_short_display_id
 local execute_with_error_handling = command_utils.execute_with_error_handling
 
--- Helper function to extract new change ID from jj command output
-local function extract_new_change_id(result)
-  if not result then return nil end
-  return result:match("Working copy now at: (%w+)")
+-- Helper function to get the current working copy change ID
+local function get_current_working_copy_id()
+  local result, err = commands.execute({ 'log', '--template', 'change_id', '--no-graph', '-r', '@', '--limit', '1' }, { silent = true })
+  if result and result ~= "" then
+    -- Trim whitespace and return the change ID
+    return result:gsub("^%s*(.-)%s*$", "%1")
+  end
+  return nil
 end
 
 -- Create a new child change from the specified parent commit
@@ -56,8 +60,9 @@ M.new_child = function(parent_commit, options)
     return false
   end
 
-  -- Parse output for additional information
-  local new_change_id = extract_new_change_id(result)
+  -- Get the current working copy change ID (which is the newly created change)
+  local new_change_id = get_current_working_copy_id()
+  
   if new_change_id then
     vim.notify(string.format("Created new change %s as child of %s",
       new_change_id:sub(1, 8), display_id), vim.log.levels.INFO)
@@ -65,7 +70,7 @@ M.new_child = function(parent_commit, options)
     vim.notify(string.format("Created new child change of %s", display_id), vim.log.levels.INFO)
   end
 
-  return true
+  return true, new_change_id
 end
 
 -- Get a user-friendly description of what the new child command will do
@@ -116,8 +121,9 @@ M.new_after = function(target_commit, options)
     return false
   end
 
-  -- Parse output for additional information
-  local new_change_id = extract_new_change_id(result)
+  -- Get the current working copy change ID (which is the newly created change)
+  local new_change_id = get_current_working_copy_id()
+  
   if new_change_id then
     vim.notify(string.format("Created new change %s after %s",
       new_change_id:sub(1, 8), display_id), vim.log.levels.INFO)
@@ -125,7 +131,7 @@ M.new_after = function(target_commit, options)
     vim.notify(string.format("Created new change after %s", display_id), vim.log.levels.INFO)
   end
 
-  return true
+  return true, new_change_id
 end
 
 -- Create a new change before the specified commit (insert)
@@ -166,8 +172,9 @@ M.new_before = function(target_commit, options)
     return false
   end
 
-  -- Parse output for additional information
-  local new_change_id = extract_new_change_id(result)
+  -- Get the current working copy change ID (which is the newly created change)
+  local new_change_id = get_current_working_copy_id()
+  
   if new_change_id then
     vim.notify(string.format("Created new change %s before %s",
       new_change_id:sub(1, 8), display_id), vim.log.levels.INFO)
@@ -175,7 +182,7 @@ M.new_before = function(target_commit, options)
     vim.notify(string.format("Created new change before %s", display_id), vim.log.levels.INFO)
   end
 
-  return true
+  return true, new_change_id
 end
 
 -- Create a new change with multiple parents using change IDs directly
@@ -214,8 +221,9 @@ M.new_with_change_ids = function(change_ids, options)
     return false
   end
 
-  -- Parse output for additional information
-  local new_change_id = extract_new_change_id(result)
+  -- Get the current working copy change ID (which is the newly created change)
+  local new_change_id = get_current_working_copy_id()
+  
   if new_change_id then
     vim.notify(string.format("Created merge commit %s with parents: %s",
       new_change_id:sub(1, 8), changes_str), vim.log.levels.INFO)
@@ -223,7 +231,7 @@ M.new_with_change_ids = function(change_ids, options)
     vim.notify(string.format("Created merge commit with parents: %s", changes_str), vim.log.levels.INFO)
   end
 
-  return true
+  return true, new_change_id
 end
 
 -- Create a simple new change (jj new)
@@ -244,7 +252,10 @@ M.new_simple = function(options)
     return false
   end
 
-  return true
+  -- Get the current working copy change ID (which is the newly created change)
+  local new_change_id = get_current_working_copy_id()
+  
+  return true, new_change_id
 end
 
 return M

@@ -24,7 +24,7 @@ M.edit_commit = function(commit)
   end
 
   vim.notify(string.format("Now editing commit %s", display_id), vim.log.levels.INFO)
-  return true
+  return true, change_id
 end
 
 -- Get a user-friendly description of what the edit command will do

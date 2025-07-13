@@ -196,8 +196,9 @@ local function handle_menu_selection(item, win_id)
   elseif item.action == "show_diff_summary" then
     actions.show_diff_summary(item.commit)
   elseif item.action == "edit_commit" then
-    if actions.edit_commit(item.commit) then
-      require('jj-nvim').refresh()
+    local success, change_id = actions.edit_commit(item.commit)
+    if success then
+      require('jj-nvim').refresh(change_id)
     end
   elseif item.action == "set_description" then
     actions.set_description(item.commit, function()
@@ -296,8 +297,9 @@ local function handle_menu_selection(item, win_id)
         options.message = description
       end
       
-      if actions.new_child(item.commit, options) then
-        require('jj-nvim').refresh()
+      local success, change_id = actions.new_child(item.commit, options)
+      if success then
+        require('jj-nvim').refresh(change_id)
       end
     end)
   elseif item.action == "clear_selections" then

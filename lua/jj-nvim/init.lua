@@ -82,7 +82,7 @@ end
 
 -- Centralized refresh function that all operations should call
 -- This ensures the renderer collects fresh data every time
-M.refresh = function()
+M.refresh = function(target_commit_id)
   -- Only refresh if window is open
   if not window.is_open() then
     return false
@@ -102,6 +102,19 @@ M.refresh = function()
   -- Update the buffer with fresh data - this will automatically collect
   -- fresh status information including current working copy ID
   local success = buffer.update_from_fresh_data(commits, selected_revset)
+  
+  -- Position cursor at target commit if specified
+  if success and target_commit_id and window.is_open() then
+    local navigation = require('jj-nvim.ui.navigation')
+    local win_id = window.get_current_win_id()
+    if win_id then
+      local positioned = navigation.goto_commit_by_id(win_id, target_commit_id)
+      if not positioned then
+        -- Fallback to current working copy if target not found
+        navigation.goto_current_commit(win_id)
+      end
+    end
+  end
   
   return success
 end

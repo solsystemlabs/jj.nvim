@@ -1007,20 +1007,21 @@ M.confirm_target_selection = function()
 
   local action_type = mode_data.action
   local success = false
+  local change_id
 
   if action_type == "after" then
-    success = actions.new_after(target_commit)
+    success, change_id = actions.new_after(target_commit)
     if success then
-      require('jj-nvim').refresh()
+      require('jj-nvim').refresh(change_id)
     end
     -- Return to normal mode
     M.reset_mode()
     M.disable_view_toggle() -- Disable view toggling
     M.setup_keymaps() -- Restore normal keymaps
   elseif action_type == "before" then
-    success = actions.new_before(target_commit)
+    success, change_id = actions.new_before(target_commit)
     if success then
-      require('jj-nvim').refresh()
+      require('jj-nvim').refresh(change_id)
     end
     -- Return to normal mode
     M.reset_mode()
@@ -1348,8 +1349,9 @@ M.handle_new_change_selection = function(selected_item)
     -- New child creation with custom message
     vim.ui.input({ prompt = "Commit description: " }, function(message)
       if message and message ~= "" then
-        if actions.new_child(selected_item.data.parent, { message = message }) then
-          require('jj-nvim').refresh()
+        local success, change_id = actions.new_child(selected_item.data.parent, { message = message })
+        if success then
+          require('jj-nvim').refresh(change_id)
         end
       else
         vim.notify("New change cancelled", vim.log.levels.INFO)
@@ -1486,10 +1488,10 @@ M.confirm_multi_selection = function()
   }, function(choice)
     if choice == 'Yes' then
       -- Create the merge commit directly using the selected change IDs
-      local success = actions.new_with_change_ids(state.selected_commits)
+      local success, change_id = actions.new_with_change_ids(state.selected_commits)
 
       if success then
-        require('jj-nvim').refresh()
+        require('jj-nvim').refresh(change_id)
       end
 
       -- Return to normal mode

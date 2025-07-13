@@ -260,8 +260,11 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
                    config.get('keymaps.edit_message') or 'e'
   vim.keymap.set('n', edit_key, function()
     local commit = get_target_commit(win_id, state.selected_commits, navigation)
-    if commit and actions.edit_commit(commit) then
-      require('jj-nvim').refresh()
+    if commit then
+      local success, change_id = actions.edit_commit(commit)
+      if success then
+        require('jj-nvim').refresh(change_id)
+      end
     end
   end, opts)
 
@@ -407,8 +410,9 @@ M.setup_control_keymaps = function(buf_id, win_id, state, actions, navigation, m
         options.message = description
       end
 
-      if actions.new_child(commit, options) then
-        require('jj-nvim').refresh()
+      local success, change_id = actions.new_child(commit, options)
+      if success then
+        require('jj-nvim').refresh(change_id)
       end
     end)
   end, opts)
