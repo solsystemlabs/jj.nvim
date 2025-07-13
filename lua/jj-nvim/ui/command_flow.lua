@@ -45,8 +45,8 @@ M.state = {
   parent_win_id = nil,     -- Window to return focus to
 }
 
--- Generate dynamic remote targets for git push
-local function generate_git_push_targets()
+-- Generate dynamic remote targets for git commands
+local function generate_git_remote_targets(operation)
   local remotes = commands.get_git_remotes()
   local targets = {}
   
@@ -60,7 +60,7 @@ local function generate_git_push_targets()
     
     table.insert(targets, {
       key = key,
-      description = "Push to remote '" .. remote_name .. "'",
+      description = operation .. " to remote '" .. remote_name .. "'",
       value = { remote = remote_name }
     })
   end
@@ -69,7 +69,7 @@ local function generate_git_push_targets()
   if #remotes > 1 then
     table.insert(targets, {
       key = "a",
-      description = "Push to all remotes",
+      description = operation .. " to all remotes",
       value = { remote = "all" }
     })
   end
@@ -77,36 +77,55 @@ local function generate_git_push_targets()
   return targets
 end
 
--- Generate dynamic remote targets for git fetch
+-- Generate git push targets
+local function generate_git_push_targets()
+  return generate_git_remote_targets("Push")
+end
+
+-- Generate git fetch targets  
 local function generate_git_fetch_targets()
-  local remotes = commands.get_git_remotes()
-  local targets = {}
-  
-  -- Generate targets for each remote
-  for i, remote_name in ipairs(remotes) do
-    local key = string.sub(remote_name, 1, 1)  -- Use first letter as key
-    -- Handle key conflicts by using numbers
-    while vim.tbl_contains(vim.tbl_map(function(t) return t.key end, targets), key) do
-      key = tostring(i)
+  return generate_git_remote_targets("Fetch from")
+end
+
+-- Common success/failure callback helper
+local function create_async_callback(operation_name)
+  return function(result, error_msg)
+    if result then
+      vim.notify(operation_name .. " completed successfully", vim.log.levels.INFO)
+      vim.schedule(function()
+        require('jj-nvim').refresh()
+      end)
+    else
+      vim.notify(operation_name .. " failed: " .. (error_msg or "Unknown error"), vim.log.levels.ERROR)
     end
-    
-    table.insert(targets, {
-      key = key,
-      description = "Fetch from remote '" .. remote_name .. "'",
-      value = { remote = remote_name }
-    })
   end
-  
-  -- Add "all remotes" option if there are multiple remotes
-  if #remotes > 1 then
-    table.insert(targets, {
-      key = "a",
-      description = "Fetch from all remotes",
-      value = { remote = "all" }
-    })
+end
+
+local function create_interactive_callbacks(operation_name)
+  return {
+    on_success = function()
+      vim.notify("Interactive " .. operation_name .. " completed successfully", vim.log.levels.INFO)
+      vim.schedule(function()
+        require('jj-nvim').refresh()
+      end)
+    end,
+    on_error = function(exit_code)
+      vim.notify("Interactive " .. operation_name .. " failed", vim.log.levels.ERROR)
+    end,
+    on_cancel = function()
+      vim.notify("Interactive " .. operation_name .. " cancelled", vim.log.levels.INFO)
+    end
+  }
+end
+
+-- Common git remote handling
+local function add_git_remote_args(cmd_args, remote)
+  if remote == "all" then
+    table.insert(cmd_args, "--all-remotes")
+  elseif remote then
+    table.insert(cmd_args, "--remote")
+    table.insert(cmd_args, remote)
   end
-  
-  return targets
 end
 
 -- Command flow definitions
@@ -285,6 +304,7 @@ local function build_command_preview()
         elseif value == "destination" and M.state.base_options.destination then
           table.insert(parts, "-d " .. M.state.base_options.destination)
         end
+        -- Always add interactive for splits (consistent with execution)
         table.insert(parts, "--interactive")
       end
     end
@@ -800,13 +820,7 @@ M.execute_command = function()
     table.insert(cmd_args, "push")
     
     -- Add remote
-    local remote = base_options.remote
-    if remote == "all" then
-      table.insert(cmd_args, "--all-remotes")
-    elseif remote then
-      table.insert(cmd_args, "--remote")
-      table.insert(cmd_args, remote)
-    end
+    add_git_remote_args(cmd_args, base_options.remote)
     
     -- Add flags
     if flags.f then  -- force-with-lease
@@ -822,29 +836,13 @@ M.execute_command = function()
     
     -- Execute the command
     vim.notify("Executing: " .. final_command, vim.log.levels.INFO)
-    commands.execute_async(cmd_args, {}, function(result, error_msg)
-      if result then
-        vim.notify("Git push completed successfully", vim.log.levels.INFO)
-        -- Refresh the jj log
-        vim.schedule(function()
-          require('jj-nvim').refresh()
-        end)
-      else
-        vim.notify("Git push failed: " .. (error_msg or "Unknown error"), vim.log.levels.ERROR)
-      end
-    end)
+    commands.execute_async(cmd_args, {}, create_async_callback("Git push"))
   elseif command_type == "git_fetch" then
     table.insert(cmd_args, "git")
     table.insert(cmd_args, "fetch")
     
     -- Add remote
-    local remote = base_options.remote
-    if remote == "all" then
-      table.insert(cmd_args, "--all-remotes")
-    elseif remote then
-      table.insert(cmd_args, "--remote")
-      table.insert(cmd_args, remote)
-    end
+    add_git_remote_args(cmd_args, base_options.remote)
     
     -- Add flags
     if flags.b and flags.b ~= "" then  -- specific branch
@@ -854,17 +852,7 @@ M.execute_command = function()
     
     -- Execute the command
     vim.notify("Executing: " .. final_command, vim.log.levels.INFO)
-    commands.execute_async(cmd_args, {}, function(result, error_msg)
-      if result then
-        vim.notify("Git fetch completed successfully", vim.log.levels.INFO)
-        -- Refresh the jj log
-        vim.schedule(function()
-          require('jj-nvim').refresh()
-        end)
-      else
-        vim.notify("Git fetch failed: " .. (error_msg or "Unknown error"), vim.log.levels.ERROR)
-      end
-    end)
+    commands.execute_async(cmd_args, {}, create_async_callback("Git fetch"))
   elseif command_type == "rebase" then
     table.insert(cmd_args, "rebase")
     
@@ -888,29 +876,28 @@ M.execute_command = function()
     end
     
     -- Add flags
-    if flags.skip_emptied then
+    if flags.e then  -- skip-emptied (using key from flag definition)
       table.insert(cmd_args, "--skip-emptied")
     end
-    if flags.keep_divergent then
+    if flags.k then  -- keep-divergent
       table.insert(cmd_args, "--keep-divergent")
     end
-    if flags.interactive then
+    if flags.i then  -- interactive
       table.insert(cmd_args, "--interactive")
     end
     
     -- Execute the command
     vim.notify("Executing: " .. final_command, vim.log.levels.INFO)
-    commands.execute_async(cmd_args, {}, function(result, error_msg)
-      if result then
-        vim.notify("Rebase completed successfully", vim.log.levels.INFO)
-        -- Refresh the jj log
-        vim.schedule(function()
-          require('jj-nvim').refresh()
-        end)
-      else
-        vim.notify("Rebase failed: " .. (error_msg or "Unknown error"), vim.log.levels.ERROR)
+    
+    -- Use interactive execution if interactive flag is set
+    if flags.i then
+      local success = commands.execute_interactive_with_immutable_prompt(cmd_args, create_interactive_callbacks("rebase"))
+      if not success then
+        vim.notify("Failed to start interactive rebase", vim.log.levels.ERROR)
       end
-    end)
+    else
+      commands.execute_async(cmd_args, {}, create_async_callback("Rebase"))
+    end
   elseif command_type == "squash" then
     table.insert(cmd_args, "squash")
     
@@ -947,36 +934,12 @@ M.execute_command = function()
     
     -- Use interactive execution if interactive flag is set
     if flags.i then
-      local success = commands.execute_interactive_with_immutable_prompt(cmd_args, {
-        on_success = function()
-          vim.notify("Interactive squash completed successfully", vim.log.levels.INFO)
-          -- Refresh the jj log
-          vim.schedule(function()
-            require('jj-nvim').refresh()
-          end)
-        end,
-        on_error = function(exit_code)
-          vim.notify("Interactive squash failed", vim.log.levels.ERROR)
-        end,
-        on_cancel = function()
-          vim.notify("Interactive squash cancelled", vim.log.levels.INFO)
-        end
-      })
+      local success = commands.execute_interactive_with_immutable_prompt(cmd_args, create_interactive_callbacks("squash"))
       if not success then
         vim.notify("Failed to start interactive squash", vim.log.levels.ERROR)
       end
     else
-      commands.execute_async(cmd_args, {}, function(result, error_msg)
-        if result then
-          vim.notify("Squash completed successfully", vim.log.levels.INFO)
-          -- Refresh the jj log
-          vim.schedule(function()
-            require('jj-nvim').refresh()
-          end)
-        else
-          vim.notify("Squash failed: " .. (error_msg or "Unknown error"), vim.log.levels.ERROR)
-        end
-      end)
+      commands.execute_async(cmd_args, {}, create_async_callback("Squash"))
     end
   elseif command_type == "split" then
     table.insert(cmd_args, "split")
@@ -1018,21 +981,7 @@ M.execute_command = function()
     -- Execute the command
     vim.notify("Executing: " .. final_command, vim.log.levels.INFO)
     
-    local success = commands.execute_interactive_with_immutable_prompt(cmd_args, {
-      on_success = function()
-        vim.notify("Split completed successfully", vim.log.levels.INFO)
-        -- Refresh the jj log
-        vim.schedule(function()
-          require('jj-nvim').refresh()
-        end)
-      end,
-      on_error = function(exit_code)
-        vim.notify("Split failed", vim.log.levels.ERROR)
-      end,
-      on_cancel = function()
-        vim.notify("Split cancelled", vim.log.levels.INFO)
-      end
-    })
+    local success = commands.execute_interactive_with_immutable_prompt(cmd_args, create_interactive_callbacks("split"))
     if not success then
       vim.notify("Failed to start split", vim.log.levels.ERROR)
     end
