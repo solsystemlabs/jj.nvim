@@ -664,6 +664,36 @@ M.enter_target_selection_mode = function(action_type, source_commit)
   end
 end
 
+-- Generic target selection with callbacks (proper architecture)
+M.enter_generic_target_selection = function(options)
+  if not M.is_open() then
+    vim.notify("JJ window is not open", vim.log.levels.WARN)
+    return
+  end
+  
+  options = options or {}
+  
+  -- Store current cursor position to return to if cancelled
+  local current_line = vim.api.nvim_win_get_cursor(state.win_id)[1]
+  local mode_data = {
+    action = "generic",
+    original_line = current_line,
+    callbacks = {
+      on_confirm = options.on_confirm,
+      on_cancel = options.on_cancel
+    }
+  }
+  
+  M.set_mode(MODES.TARGET_SELECT, mode_data)
+  -- Enable view toggling for target selection mode
+  M.enable_view_toggle()
+  -- Update keymaps for target selection
+  M.setup_target_selection_keymaps()
+  -- Show status message
+  local title = options.title or "Select target"
+  vim.notify(title .. " (Enter to confirm, b for bookmark, Esc to cancel)", vim.log.levels.INFO)
+end
+
 -- Enter rebase multi-select mode for revisions
 M.enter_rebase_multi_select_mode = function(initial_commit)
   if not M.is_open() then
@@ -997,6 +1027,22 @@ M.confirm_target_selection = function()
 
     -- Show squash options menu with source commit information
     actions.show_squash_options_menu(target_commit, "commit", state.win_id, source_commit)
+  elseif action_type == "generic" then
+    -- Generic target selection with custom callbacks
+    local callbacks = mode_data.callbacks
+    M.reset_mode()
+    M.disable_view_toggle() -- Disable view toggling
+    M.setup_keymaps() -- Restore normal keymaps
+    
+    if callbacks and callbacks.on_confirm then
+      -- Determine target type
+      local target_type = "commit"
+      if target_commit.content_type == "bookmark" then
+        target_type = "bookmark"
+      end
+      
+      callbacks.on_confirm(target_commit, target_type)
+    end
   elseif action_type == "split_insert_after" then
     -- Execute split with insert-after
     local source_commit = mode_data.source_commit
@@ -1208,12 +1254,19 @@ M.cancel_target_selection = function()
     vim.api.nvim_win_set_cursor(state.win_id, { mode_data.original_line, 0 })
   end
 
+  -- Call cancel callback for generic target selection
+  if mode_data.action == "generic" and mode_data.callbacks and mode_data.callbacks.on_cancel then
+    mode_data.callbacks.on_cancel()
+  end
+
   -- Return to normal mode
   M.reset_mode()
   M.disable_view_toggle() -- Disable view toggling
   M.setup_keymaps() -- Restore normal keymaps
 
-  vim.notify("Target selection cancelled", vim.log.levels.INFO)
+  if mode_data.action ~= "generic" then
+    vim.notify("Target selection cancelled", vim.log.levels.INFO)
+  end
 end
 
 -- Show new change creation menu

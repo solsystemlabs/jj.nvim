@@ -269,7 +269,11 @@ local function handle_menu_selection(item, win_id)
       vim.notify("Cannot split the root commit", vim.log.levels.WARN)
       return
     end
-    actions.show_split_options_menu(item.commit, win_id)
+    local command_flow = require('jj-nvim.ui.command_flow')
+    -- Add a small delay to ensure the action menu is fully closed before showing command flow menu
+    vim.schedule(function()
+      command_flow.start_flow("split", win_id)
+    end)
   elseif item.action == "rebase_commit" then
     if item.commit.root then
       vim.notify("Cannot rebase the root commit", vim.log.levels.WARN)

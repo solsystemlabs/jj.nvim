@@ -202,6 +202,37 @@ M.flows = {
         }
       }
     }
+  },
+  
+  split = {
+    type = "sequential",
+    command_base = "jj split",
+    steps = {
+      {
+        type = "option_menu",
+        title = "Split Method",
+        options = {
+          { key = "i", description = "Interactive", value = { split_method = "interactive" } },
+          { key = "p", description = "Parallel", value = { split_method = "parallel" } },
+          { key = "a", description = "Insert after", value = { split_method = "insert_after" } },
+          { key = "b", description = "Insert before", value = { split_method = "insert_before" } },
+          { key = "d", description = "Choose destination", value = { split_method = "destination" } },
+        }
+      },
+      {
+        type = "target_selection",
+        title = "Choose target",
+        -- Only shown for insert_after, insert_before, destination methods
+      },
+      {
+        type = "flag_menu",
+        title = "Split Flags",
+        flags = {
+          { key = "m", flag = "-m", type = "input", description = "Message", default = "" },
+          { key = "t", flag = "--tool", type = "input", description = "Tool", default = "" },
+        }
+      }
+    }
   }
 }
 
@@ -240,6 +271,21 @@ local function build_command_preview()
       -- For squash into target selection, show the destination
       if M.state.flow_config.command_base:find("squash") then
         table.insert(parts, "--from @ --into " .. M.state.base_options.destination)
+      end
+    elseif key == "split_method" then
+      -- For split methods, show the appropriate flags
+      if M.state.flow_config.command_base:find("split") then
+        table.insert(parts, "-r @")
+        if value == "parallel" then
+          table.insert(parts, "--parallel")
+        elseif value == "insert_after" and M.state.base_options.destination then
+          table.insert(parts, "-A " .. M.state.base_options.destination)
+        elseif value == "insert_before" and M.state.base_options.destination then
+          table.insert(parts, "-B " .. M.state.base_options.destination)
+        elseif value == "destination" and M.state.base_options.destination then
+          table.insert(parts, "-d " .. M.state.base_options.destination)
+        end
+        table.insert(parts, "--interactive")
       end
     end
   end
@@ -293,8 +339,7 @@ M.start_flow = function(command_name, parent_win_id)
   
   local flow_config = M.flows[command_name]
   if not flow_config then
-    local available_flows = vim.tbl_keys(M.flows or {})
-    vim.notify("Unknown command flow: " .. command_name .. ". Available flows: " .. table.concat(available_flows, ", "), vim.log.levels.ERROR)
+    vim.notify("Unknown command flow: " .. command_name, vim.log.levels.ERROR)
     return false
   end
   
@@ -545,17 +590,18 @@ end
 
 -- Show target selection step - uses window target selection mode
 M.show_target_selection_step = function(step_config)
-  -- Close the command flow temporarily and enter target selection mode
+  -- Create a proper generic target selection that doesn't hardcode operations
   local window_module = require('jj-nvim.ui.window')
   
-  -- Store command flow state for later resumption
+  -- Store command flow state for resumption
   local flow_state = vim.deepcopy(M.state)
   
   -- Close the current flow
   M.close()
   
-  -- Enter target selection mode with custom callbacks
-  window_module.enter_target_selection_mode("squash", nil, {
+  -- Enter generic target selection mode with callbacks
+  window_module.enter_generic_target_selection({
+    title = step_config.title or "Choose target",
     on_confirm = function(target, target_type)
       -- Restore command flow state
       M.state = flow_state
@@ -575,12 +621,11 @@ M.show_target_selection_step = function(step_config)
         M.state.base_options.destination = target.name
       end
       
-      -- Advance to next step (flags menu)
+      -- Advance to next step
       M.advance_step()
     end,
     on_cancel = function()
-      -- Command flow was cancelled
-      vim.notify("Squash cancelled", vim.log.levels.INFO)
+      vim.notify(string.format("%s cancelled", flow_state.command:gsub("^%l", string.upper)), vim.log.levels.INFO)
     end
   })
 end
@@ -717,6 +762,14 @@ M.advance_step = function()
   -- Skip target selection step for squash if target is parent
   if M.state.command == "squash" and M.state.step == 2 and M.state.base_options.target_type == "parent" then
     M.state.step = M.state.step + 1  -- Skip target selection step, go to flags
+  end
+  
+  -- Skip target selection step for split if method doesn't need target
+  if M.state.command == "split" and M.state.step == 2 then
+    local split_method = M.state.base_options.split_method
+    if split_method == "interactive" or split_method == "parallel" then
+      M.state.step = M.state.step + 1  -- Skip target selection step, go to flags
+    end
   end
   
   if M.state.step > #M.state.flow_config.steps then
@@ -925,6 +978,64 @@ M.execute_command = function()
         end
       end)
     end
+  elseif command_type == "split" then
+    table.insert(cmd_args, "split")
+    
+    -- Add revision (always current commit @)
+    table.insert(cmd_args, "-r")
+    table.insert(cmd_args, "@")
+    
+    -- Add split method specific options
+    local split_method = base_options.split_method
+    if split_method == "parallel" then
+      table.insert(cmd_args, "--parallel")
+    elseif split_method == "insert_after" and base_options.destination then
+      table.insert(cmd_args, "-A")
+      table.insert(cmd_args, base_options.destination)
+    elseif split_method == "insert_before" and base_options.destination then
+      table.insert(cmd_args, "-B")
+      table.insert(cmd_args, base_options.destination)
+    elseif split_method == "destination" and base_options.destination then
+      table.insert(cmd_args, "-d")
+      table.insert(cmd_args, base_options.destination)
+    end
+    
+    -- Add message if provided
+    if flags.m and flags.m ~= "" then
+      table.insert(cmd_args, "-m")
+      table.insert(cmd_args, flags.m)
+    end
+    
+    -- Add tool if provided
+    if flags.t and flags.t ~= "" then
+      table.insert(cmd_args, "--tool")
+      table.insert(cmd_args, flags.t)
+    end
+    
+    -- Always use interactive mode for splits
+    table.insert(cmd_args, "--interactive")
+    
+    -- Execute the command
+    vim.notify("Executing: " .. final_command, vim.log.levels.INFO)
+    
+    local success = commands.execute_interactive_with_immutable_prompt(cmd_args, {
+      on_success = function()
+        vim.notify("Split completed successfully", vim.log.levels.INFO)
+        -- Refresh the jj log
+        vim.schedule(function()
+          require('jj-nvim').refresh()
+        end)
+      end,
+      on_error = function(exit_code)
+        vim.notify("Split failed", vim.log.levels.ERROR)
+      end,
+      on_cancel = function()
+        vim.notify("Split cancelled", vim.log.levels.INFO)
+      end
+    })
+    if not success then
+      vim.notify("Failed to start split", vim.log.levels.ERROR)
+    end
   else
     -- Fallback for other commands not yet implemented
     vim.notify("Command not yet implemented: " .. final_command, vim.log.levels.WARN)
@@ -959,6 +1070,7 @@ end
 M.is_active = function()
   return M.state.active
 end
+
 
 -- Get current state (for debugging)
 M.get_state = function()

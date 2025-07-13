@@ -338,18 +338,12 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
   local split_key = config.get_first_keybind('keybinds.log_window.actions.split') or 
                     config.get('keymaps.split') or 's'
   vim.keymap.set('n', split_key, function()
-    local commit = get_target_commit(win_id, state.selected_commits, navigation)
-    if not commit then
-      vim.notify("No commit to split", vim.log.levels.WARN)
-      return
-    end
-
-    if commit.root then
-      vim.notify("Cannot split the root commit", vim.log.levels.WARN)
-      return
-    end
-
-    actions.show_split_options_menu(commit, win_id)
+    local command_flow = require('jj-nvim.ui.command_flow')
+    local current_win = vim.api.nvim_get_current_win()
+    -- Add a small delay to ensure any existing menus are closed
+    vim.schedule(function()
+      command_flow.start_flow("split", current_win)
+    end)
   end, opts)
 
   -- Rebase commit - use configured key (with backward compatibility)
