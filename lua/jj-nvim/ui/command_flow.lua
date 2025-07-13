@@ -173,6 +173,35 @@ M.flows = {
         }
       }
     }
+  },
+  
+  squash = {
+    type = "sequential",
+    command_base = "jj squash",
+    steps = {
+      {
+        type = "option_menu",
+        title = "Squash Target",
+        options = {
+          { key = "p", description = "Into parent", value = { target_type = "parent" } },
+          { key = "i", description = "Choose target", value = { target_type = "target_selection" } },
+        }
+      },
+      {
+        type = "target_selection",
+        title = "Choose destination",
+        -- Uses window target selection mode with log/bookmark toggle
+      },
+      {
+        type = "flag_menu",
+        title = "Squash Flags",
+        flags = {
+          { key = "k", flag = "--keep-emptied", type = "toggle", description = "Keep emptied", default = false },
+          { key = "m", flag = "--use-destination-message", type = "toggle", description = "Use dest message", default = false },
+          { key = "i", flag = "--interactive", type = "toggle", description = "Interactive", default = false },
+        }
+      }
+    }
   }
 }
 
@@ -202,6 +231,16 @@ local function build_command_preview()
       table.insert(parts, "-r")
     elseif key == "destination" then
       table.insert(parts, "-d " .. value)
+    elseif key == "target_type" and value == "parent" then
+      -- For squash into parent, show the target
+      if M.state.flow_config.command_base:find("squash") then
+        table.insert(parts, "--from @ --into @-")
+      end
+    elseif key == "target_type" and value == "target_selection" and M.state.base_options.destination then
+      -- For squash into target selection, show the destination
+      if M.state.flow_config.command_base:find("squash") then
+        table.insert(parts, "--from @ --into " .. M.state.base_options.destination)
+      end
     end
   end
   
@@ -254,7 +293,8 @@ M.start_flow = function(command_name, parent_win_id)
   
   local flow_config = M.flows[command_name]
   if not flow_config then
-    vim.notify("Unknown command flow: " .. command_name, vim.log.levels.ERROR)
+    local available_flows = vim.tbl_keys(M.flows or {})
+    vim.notify("Unknown command flow: " .. command_name .. ". Available flows: " .. table.concat(available_flows, ", "), vim.log.levels.ERROR)
     return false
   end
   
@@ -320,6 +360,8 @@ M.show_current_step = function()
     M.show_flag_menu(step_config)
   elseif step_config.type == "selection" then
     M.show_selection_step(step_config)
+  elseif step_config.type == "target_selection" then
+    M.show_target_selection_step(step_config)
   else
     vim.notify("Unknown step type: " .. step_config.type, vim.log.levels.ERROR)
     return false
@@ -501,6 +543,48 @@ M.show_selection_step = function(step_config)
   })
 end
 
+-- Show target selection step - uses window target selection mode
+M.show_target_selection_step = function(step_config)
+  -- Close the command flow temporarily and enter target selection mode
+  local window_module = require('jj-nvim.ui.window')
+  
+  -- Store command flow state for later resumption
+  local flow_state = vim.deepcopy(M.state)
+  
+  -- Close the current flow
+  M.close()
+  
+  -- Enter target selection mode with custom callbacks
+  window_module.enter_target_selection_mode("squash", nil, {
+    on_confirm = function(target, target_type)
+      -- Restore command flow state
+      M.state = flow_state
+      M.state.active = true
+      
+      -- Store the selected target
+      if target_type == "commit" then
+        local command_utils = require('jj-nvim.jj.command_utils')
+        local target_id, err = command_utils.get_change_id(target)
+        if target_id then
+          M.state.base_options.destination = target_id
+        else
+          vim.notify("Failed to get target commit ID: " .. (err or "Unknown error"), vim.log.levels.ERROR)
+          return
+        end
+      elseif target_type == "bookmark" then
+        M.state.base_options.destination = target.name
+      end
+      
+      -- Advance to next step (flags menu)
+      M.advance_step()
+    end,
+    on_cancel = function()
+      -- Command flow was cancelled
+      vim.notify("Squash cancelled", vim.log.levels.INFO)
+    end
+  })
+end
+
 -- Handle menu selection
 M.handle_menu_selection = function(item)
   if item.action == "select_target" then
@@ -629,6 +713,11 @@ end
 -- Advance to next step
 M.advance_step = function()
   M.state.step = M.state.step + 1
+  
+  -- Skip target selection step for squash if target is parent
+  if M.state.command == "squash" and M.state.step == 2 and M.state.base_options.target_type == "parent" then
+    M.state.step = M.state.step + 1  -- Skip target selection step, go to flags
+  end
   
   if M.state.step > #M.state.flow_config.steps then
     -- No more steps, execute command
@@ -769,6 +858,73 @@ M.execute_command = function()
         vim.notify("Rebase failed: " .. (error_msg or "Unknown error"), vim.log.levels.ERROR)
       end
     end)
+  elseif command_type == "squash" then
+    table.insert(cmd_args, "squash")
+    
+    -- Add source (always current commit @)
+    table.insert(cmd_args, "--from")
+    table.insert(cmd_args, "@")
+    
+    -- Add destination based on target type
+    local target_type = base_options.target_type
+    if target_type == "parent" then
+      table.insert(cmd_args, "--into")
+      table.insert(cmd_args, "@-")  -- Parent of current commit
+    elseif target_type == "target_selection" and base_options.destination then
+      table.insert(cmd_args, "--into")
+      table.insert(cmd_args, base_options.destination)
+    else
+      vim.notify("Invalid squash target configuration", vim.log.levels.ERROR)
+      return
+    end
+    
+    -- Add flags
+    if flags.k then  -- keep-emptied (using key from flag definition)
+      table.insert(cmd_args, "--keep-emptied")
+    end
+    if flags.m then  -- use-destination-message
+      table.insert(cmd_args, "--use-destination-message")
+    end
+    if flags.i then  -- interactive
+      table.insert(cmd_args, "--interactive")
+    end
+    
+    -- Execute the command
+    vim.notify("Executing: " .. final_command, vim.log.levels.INFO)
+    
+    -- Use interactive execution if interactive flag is set
+    if flags.i then
+      local success = commands.execute_interactive_with_immutable_prompt(cmd_args, {
+        on_success = function()
+          vim.notify("Interactive squash completed successfully", vim.log.levels.INFO)
+          -- Refresh the jj log
+          vim.schedule(function()
+            require('jj-nvim').refresh()
+          end)
+        end,
+        on_error = function(exit_code)
+          vim.notify("Interactive squash failed", vim.log.levels.ERROR)
+        end,
+        on_cancel = function()
+          vim.notify("Interactive squash cancelled", vim.log.levels.INFO)
+        end
+      })
+      if not success then
+        vim.notify("Failed to start interactive squash", vim.log.levels.ERROR)
+      end
+    else
+      commands.execute_async(cmd_args, {}, function(result, error_msg)
+        if result then
+          vim.notify("Squash completed successfully", vim.log.levels.INFO)
+          -- Refresh the jj log
+          vim.schedule(function()
+            require('jj-nvim').refresh()
+          end)
+        else
+          vim.notify("Squash failed: " .. (error_msg or "Unknown error"), vim.log.levels.ERROR)
+        end
+      end)
+    end
   else
     -- Fallback for other commands not yet implemented
     vim.notify("Command not yet implemented: " .. final_command, vim.log.levels.WARN)

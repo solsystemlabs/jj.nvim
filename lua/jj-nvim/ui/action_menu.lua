@@ -217,7 +217,11 @@ local function handle_menu_selection(item, win_id)
       vim.notify("Cannot squash the root commit", vim.log.levels.WARN)
       return
     end
-    window_module.enter_target_selection_mode("squash", item.commit)
+    local command_flow = require('jj-nvim.ui.command_flow')
+    -- Add a small delay to ensure the action menu is fully closed before showing command flow menu
+    vim.schedule(function()
+      command_flow.start_flow("squash", win_id)
+    end)
   elseif item.action == "squash_into_parent" then
     if item.commit.root then
       vim.notify("Cannot squash the root commit", vim.log.levels.WARN)

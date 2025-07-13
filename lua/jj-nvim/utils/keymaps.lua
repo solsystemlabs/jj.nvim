@@ -326,19 +326,12 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
   local squash_key = config.get_first_keybind('keybinds.log_window.actions.squash') or 
                      config.get('keymaps.squash') or 'x'
   vim.keymap.set('n', squash_key, function()
-    local commit = get_target_commit(win_id, state.selected_commits, navigation)
-    if not commit then
-      vim.notify("No commit to squash", vim.log.levels.WARN)
-      return
-    end
-
-    if commit.root then
-      vim.notify("Cannot squash the root commit", vim.log.levels.WARN)
-      return
-    end
-
-    local actions = require('jj-nvim.jj.actions')
-    actions.show_squash_options_menu(commit, "commit", win_id)
+    local command_flow = require('jj-nvim.ui.command_flow')
+    local current_win = vim.api.nvim_get_current_win()
+    -- Add a small delay to ensure any existing menus are closed
+    vim.schedule(function()
+      command_flow.start_flow("squash", current_win)
+    end)
   end, opts)
 
   -- Split commit - use configured key (with backward compatibility)
