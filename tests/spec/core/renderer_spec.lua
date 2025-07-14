@@ -402,4 +402,169 @@ describe('renderer', function()
       -- Should handle gracefully without crashing
     end)
   end)
+
+  describe('graph wrapping bug fix', function()
+    it('should use lookahead to reduce vertical bars in wrapped lines', function()
+      local commit_module = require('jj-nvim.core.commit')
+      
+      -- Create test commits that demonstrate the bug fix
+      local commits = {
+        -- First commit: has 2 graph columns with long description that will wrap
+        commit_module.from_template_data({
+          change_id = "test1",
+          commit_id = "test1",
+          short_change_id = "test1",
+          short_commit_id = "test1",
+          author = {
+            name = "Test",
+            email = "test@example.com",
+            timestamp = "2025-01-01T10:00:00Z"
+          },
+          description = "This is a very long description that should definitely wrap because it exceeds the window width significantly",
+          full_description = "This is a very long description that should definitely wrap because it exceeds the window width significantly",
+          current_working_copy = false,
+          empty = false,
+          mine = true,
+          root = false,
+          conflict = false,
+          bookmarks = {},
+          parents = {},
+          symbol = "○",
+          graph_prefix = "│ ○  ",
+          graph_suffix = "",
+          description_graph = "│ │  " -- 2 columns
+        }),
+        -- Second commit: has only 1 graph column
+        commit_module.from_template_data({
+          change_id = "test2",
+          commit_id = "test2",
+          short_change_id = "test2",
+          short_commit_id = "test2",
+          author = {
+            name = "Test",
+            email = "test@example.com",
+            timestamp = "2025-01-01T10:00:00Z"
+          },
+          description = "Short description",
+          full_description = "Short description",
+          current_working_copy = false,
+          empty = false,
+          mine = true,
+          root = false,
+          conflict = false,
+          bookmarks = {},
+          parents = {},
+          symbol = "○",
+          graph_prefix = "○  ",
+          graph_suffix = "",
+          description_graph = "│  " -- 1 column
+        })
+      }
+      
+      -- Test with narrow width to force wrapping
+      local window_width = 60
+      local highlighted_lines, raw_lines = renderer.render_with_highlights(commits, 'comfortable', window_width)
+      
+      -- Should have wrapped lines
+      assert.is_true(#raw_lines > 2, "Should have wrapped lines")
+      
+      -- Find the wrapped lines (lines that contain part of the description but not the first line)
+      local wrapped_lines = {}
+      for i, line in ipairs(raw_lines) do
+        if line:find("wrap because") or line:find("significantly") then
+          table.insert(wrapped_lines, line)
+        end
+      end
+      
+      -- Should have found wrapped lines
+      assert.is_true(#wrapped_lines > 0, "Should find wrapped lines")
+      
+      -- Wrapped lines should have the correct structure based on next commit's pattern
+      for _, line in ipairs(wrapped_lines) do
+        -- Should start with appropriate vertical bar pattern from next commit
+        -- Should not start with complex graph characters like "├─╯"
+        assert.is_false(line:match("^├"), "Wrapped line should not start with complex graph characters: " .. line)
+        -- Should have proper indentation (starts with "│" and has spaces for alignment)
+        assert.is_true(line:match("^│"), "Wrapped line should start with vertical bar: " .. line)
+        -- Should have sufficient spacing for proper alignment
+        assert.is_true(#line > 5, "Wrapped line should have sufficient length for content: " .. line)
+      end
+    end)
+    
+    it('should handle different column reduction scenarios', function()
+      local commit_module = require('jj-nvim.core.commit')
+      
+      -- Test 3 columns -> 2 columns
+      local commits = {
+        commit_module.from_template_data({
+          change_id = "test3col",
+          commit_id = "test3col",
+          short_change_id = "test3col",
+          short_commit_id = "test3col",
+          author = {
+            name = "Test",
+            email = "test@example.com",
+            timestamp = "2025-01-01T10:00:00Z"
+          },
+          description = "Another very long description that should wrap and demonstrate the lookahead functionality",
+          full_description = "Another very long description that should wrap and demonstrate the lookahead functionality",
+          current_working_copy = false,
+          empty = false,
+          mine = true,
+          root = false,
+          conflict = false,
+          bookmarks = {},
+          parents = {},
+          symbol = "○",
+          graph_prefix = "│ │ ○  ",
+          graph_suffix = "",
+          description_graph = "│ │ │  " -- 3 columns
+        }),
+        commit_module.from_template_data({
+          change_id = "test2col",
+          commit_id = "test2col",
+          short_change_id = "test2col",
+          short_commit_id = "test2col",
+          author = {
+            name = "Test",
+            email = "test@example.com",
+            timestamp = "2025-01-01T10:00:00Z"
+          },
+          description = "Short description",
+          full_description = "Short description",
+          current_working_copy = false,
+          empty = false,
+          mine = true,
+          root = false,
+          conflict = false,
+          bookmarks = {},
+          parents = {},
+          symbol = "○",
+          graph_prefix = "│ ○  ",
+          graph_suffix = "",
+          description_graph = "│ │  " -- 2 columns
+        })
+      }
+      
+      local window_width = 60
+      local highlighted_lines, raw_lines = renderer.render_with_highlights(commits, 'comfortable', window_width)
+      
+      -- Find wrapped lines
+      local wrapped_lines = {}
+      for i, line in ipairs(raw_lines) do
+        if line:find("demonstrate") or line:find("functionality") then
+          table.insert(wrapped_lines, line)
+        end
+      end
+      
+      -- Should have wrapped lines
+      assert.is_true(#wrapped_lines > 0, "Should find wrapped lines")
+      
+      -- Wrapped lines should have only 2 vertical bars (not 3)
+      for _, line in ipairs(wrapped_lines) do
+        -- Should start with "│ │ " (2 bars) not "│ │ │ " (3 bars)
+        assert.is_true(line:match("^│ │ [^│]"), "Wrapped line should have only 2 vertical bars: " .. line)
+      end
+    end)
+  end)
 end)

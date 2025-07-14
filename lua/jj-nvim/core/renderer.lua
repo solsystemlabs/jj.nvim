@@ -210,8 +210,128 @@ local function get_continuation_graph_from_commit(source_line)
 end
 
 
+-- Helper function to generate continuation graph with lookahead to next commit
+local function get_continuation_graph_with_lookahead(current_commit, next_commit)
+  if not current_commit or not current_commit.description_graph then
+    return ""
+  end
+  
+  local current_graph = current_commit.description_graph
+  
+  -- If no next commit, use the current commit's graph structure
+  if not next_commit or not next_commit.description_graph then
+    return get_continuation_graph_from_commit(current_graph)
+  end
+  
+  local next_graph = next_commit.description_graph
+  
+  -- Strip ANSI codes to get clean structure for analysis
+  local clean_current = ansi.strip_ansi(current_graph)
+  local clean_next = ansi.strip_ansi(next_graph)
+  
+  -- Get the total width of the current commit's graph section
+  local current_graph_width = 0
+  for char in string.gmatch(clean_current, "[%z\1-\127\194-\244][\128-\191]*") do
+    if char == "│" or char == " " or char:match("[├┤╭╰╮╯─]") then
+      current_graph_width = current_graph_width + 1
+    else
+      -- Hit description text, stop counting
+      break
+    end
+  end
+  
+  -- Analyze the next commit's graph to understand the vertical flow pattern
+  -- We need to understand how many vertical lines are flowing through each position
+  local next_graph_pattern = {}
+  local chars = {}
+  
+  -- First, collect all graph characters
+  for char in string.gmatch(clean_next, "[%z\1-\127\194-\244][\128-\191]*") do
+    if char == "│" or char == " " or char:match("[├┤╭╰╮╯─]") then
+      table.insert(chars, char)
+    else
+      -- Hit description text, stop counting
+      break
+    end
+  end
+  
+  -- Now analyze the pattern to determine vertical flow
+  local i = 1
+  while i <= #chars do
+    local char = chars[i]
+    
+    if char == "│" then
+      -- Simple vertical bar
+      table.insert(next_graph_pattern, "│")
+      i = i + 1
+    elseif char == " " then
+      -- Space
+      table.insert(next_graph_pattern, " ")
+      i = i + 1
+    elseif char == "├" then
+      -- Branch point - look ahead to see the pattern
+      if i + 1 <= #chars and chars[i + 1] == "─" then
+        if i + 2 <= #chars and chars[i + 2] == "╮" then
+          -- ├─╮ pattern: 1 line branches into 2, so this position has 1 vertical flow
+          table.insert(next_graph_pattern, "│")
+          table.insert(next_graph_pattern, " ")
+          table.insert(next_graph_pattern, " ")
+          i = i + 3
+        elseif i + 2 <= #chars and chars[i + 2] == "╯" then
+          -- ├─╯ pattern: 2 lines merge into 1, so this represents vertical flows at positions 1 and 3
+          table.insert(next_graph_pattern, "│")
+          table.insert(next_graph_pattern, " ")
+          table.insert(next_graph_pattern, "│")
+          i = i + 3
+        else
+          -- Just ├─, treat as single vertical flow
+          table.insert(next_graph_pattern, "│")
+          table.insert(next_graph_pattern, " ")
+          i = i + 2
+        end
+      else
+        -- Just ├, treat as vertical flow
+        table.insert(next_graph_pattern, "│")
+        i = i + 1
+      end
+    else
+      -- Other complex characters, treat as vertical flow for now
+      table.insert(next_graph_pattern, "│")
+      i = i + 1
+    end
+  end
+  
+  -- Build result: use next commit's vertical bar pattern, but pad to current commit's width
+  local result = ""
+  local pattern_pos = 1
+  
+  for i = 1, current_graph_width do
+    if pattern_pos <= #next_graph_pattern then
+      local next_char = next_graph_pattern[pattern_pos]
+      if next_char == "│" then
+        result = result .. "│"
+        pattern_pos = pattern_pos + 1
+      elseif next_char == " " then
+        result = result .. " "
+        pattern_pos = pattern_pos + 1
+      end
+    else
+      -- Pad with spaces to reach the current commit's graph width
+      result = result .. " "
+    end
+  end
+  
+  -- Ensure we have proper spacing after the graph for text indentation
+  if not result:match("%s%s$") then
+    result = result .. "  "
+  end
+  
+  return result
+end
+
+
 -- Render a single commit according to the specified mode
-local function render_commit(commit, mode_config, window_width)
+local function render_commit(commit, mode_config, window_width, next_commit)
   -- Default window width if not provided
   window_width = window_width or 80
   local lines = {}
@@ -295,8 +415,8 @@ local function render_commit(commit, mode_config, window_width)
 
       -- Use the captured description_graph with proper symbol coloring and wrapping
       local desc_graph = apply_symbol_colors(commit.description_graph or "", commit)
-      -- Use the description graph structure for continuation
-      local continuation_graph = get_continuation_graph_from_commit(commit.description_graph)
+      -- Use the description graph structure for continuation with lookahead
+      local continuation_graph = get_continuation_graph_with_lookahead(commit, next_commit)
 
       -- Process each description line
       for i, description in ipairs(descriptions) do
@@ -428,7 +548,7 @@ local function render_commit(commit, mode_config, window_width)
     local parents_str = table.concat(commit.parents, ", ")
     local parent_graph = apply_symbol_colors(commit.description_graph or "", commit)
     local parent_content = "parents: " .. parents_str
-    local continuation_graph = get_continuation_graph_from_commit(parent_graph)
+    local continuation_graph = get_continuation_graph_with_lookahead(commit, next_commit)
 
     -- Use word-based wrapping for parent information
     local wrapped_lines = wrap_text_by_words(parent_content, parent_graph, continuation_graph, window_width)
@@ -525,8 +645,17 @@ M.render_commits = function(mixed_entries, mode, window_width)
       -- Mark as commit type for interface compatibility
       commit.content_type = "commit"
 
-      -- Render the commit with window width for wrapping
-      local commit_lines = render_commit(commit, mode_config, window_width)
+      -- Find the next commit for graph lookahead
+      local next_commit = nil
+      for j = _ + 1, #mixed_entries do
+        if mixed_entries[j].type == nil or mixed_entries[j].type == "commit" then
+          next_commit = mixed_entries[j]
+          break
+        end
+      end
+      
+      -- Render the commit with window width for wrapping and next commit for lookahead
+      local commit_lines = render_commit(commit, mode_config, window_width, next_commit)
 
       -- Add lines to the overall display
       for _, line in ipairs(commit_lines) do
