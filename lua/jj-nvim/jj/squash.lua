@@ -316,8 +316,10 @@ M.handle_squash_options_selection = function(selected_item, target, target_type,
 
   -- Execute squash based on selection type
   if options.quick_squash then
-    -- For quick squash, squash current commit (@) into its parent (@-)
-    local result, exec_err = M.squash("@-", { from_revision = "@" })
+    -- For quick squash, use the simple command: jj squash -t @- -u
+    -- This is always @ -> @- regardless of cursor position, as it's a specific working copy operation
+    local commands = require('jj-nvim.jj.commands')
+    local result, exec_err = commands.execute({ 'squash', '-t', '@-', '-u' })
     if not result then
       local error_msg = exec_err or "Unknown error"
       if error_msg:find("No such revision") then
