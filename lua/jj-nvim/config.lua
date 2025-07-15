@@ -35,6 +35,7 @@ M.defaults = {
         multi_abandon = 'A',
         rebase = 'r',
         squash = 'x',
+        squash_menu = 'X',
         split = 's',
         undo = 'u',
         clear_selections = '<Esc>',

@@ -91,15 +91,15 @@ local function generate_menu_items(win_id, current_commit, selected_commits)
       
       table.insert(items, {
         key = "x",
-        description = "Squash commit",
-        action = "squash_commit",
+        description = "Quick squash (cursor commit into parent)",
+        action = "quick_squash",
         commit = target_commit
       })
       
       table.insert(items, {
         key = "X",
-        description = "Squash into parent",
-        action = "squash_into_parent",
+        description = "Squash menu (select target)",
+        action = "squash_commit",
         commit = target_commit
       })
       
@@ -212,6 +212,34 @@ local function handle_menu_selection(item, win_id)
     actions.abandon_multiple_commits_async(item.commit_ids, function()
       -- Clear selections will be handled by the window module
       require('jj-nvim').refresh()
+    end)
+  elseif item.action == "quick_squash" then
+    -- Quick squash: squash cursor commit into its parent
+    local commands = require('jj-nvim.jj.commands')
+    local source_commit = item.commit.change_id or item.commit.commit_id
+    local target_commit = source_commit .. "-"
+    
+    vim.schedule(function()
+      vim.notify("Executing quick squash: jj squash -f " .. source_commit .. " -t " .. target_commit .. " -u", vim.log.levels.INFO)
+      commands.execute_async({ 'squash', '-f', source_commit, '-t', target_commit, '-u' }, {}, function(success, result, error)
+        if success then
+          vim.notify("Quick squash completed", vim.log.levels.INFO)
+          -- Refresh the log view
+          vim.schedule(function()
+            require('jj-nvim').refresh()
+          end)
+        else
+          local error_msg = error or "Unknown error"
+          if error_msg:find("No such revision") then
+            error_msg = "Parent commit not found"
+          elseif error_msg:find("would create a cycle") then
+            error_msg = "Cannot squash - would create a cycle in commit graph"
+          elseif error_msg:find("not in workspace") then
+            error_msg = "Not in a jj workspace"
+          end
+          vim.notify(string.format("Failed to quick squash: %s", error_msg), vim.log.levels.ERROR)
+        end
+      end)
     end)
   elseif item.action == "squash_commit" then
     if item.commit.root then

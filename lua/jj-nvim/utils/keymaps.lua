@@ -315,10 +315,48 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
     window_module.enter_abandon_select_mode()
   end, opts)
 
-  -- Squash commit - use configured key (with backward compatibility)
+  -- Quick squash - squash cursor commit into its parent
   local squash_key = config.get_first_keybind('keybinds.log_window.actions.squash') or 
                      config.get('keymaps.squash') or 'x'
   vim.keymap.set('n', squash_key, function()
+    local commands = require('jj-nvim.jj.commands')
+    local current_commit = navigation.get_current_commit(win_id)
+    
+    if not current_commit then
+      vim.notify("No commit under cursor", vim.log.levels.WARN)
+      return
+    end
+    
+    local source_commit = current_commit.change_id or current_commit.commit_id
+    local target_commit = source_commit .. "-"
+    
+    vim.schedule(function()
+      vim.notify("Executing quick squash: jj squash -f " .. source_commit .. " -t " .. target_commit .. " -u", vim.log.levels.INFO)
+      commands.execute_async({ 'squash', '-f', source_commit, '-t', target_commit, '-u' }, {}, function(success, result, error)
+        if success then
+          vim.notify("Quick squash completed", vim.log.levels.INFO)
+          -- Refresh the log view
+          vim.schedule(function()
+            require('jj-nvim').refresh()
+          end)
+        else
+          local error_msg = error or "Unknown error"
+          if error_msg:find("No such revision") then
+            error_msg = "Parent commit not found"
+          elseif error_msg:find("would create a cycle") then
+            error_msg = "Cannot squash - would create a cycle in commit graph"
+          elseif error_msg:find("not in workspace") then
+            error_msg = "Not in a jj workspace"
+          end
+          vim.notify(string.format("Failed to quick squash: %s", error_msg), vim.log.levels.ERROR)
+        end
+      end)
+    end)
+  end, opts)
+
+  -- Advanced squash menu - use configured key
+  local squash_menu_key = config.get_first_keybind('keybinds.log_window.actions.squash_menu') or 'X'
+  vim.keymap.set('n', squash_menu_key, function()
     local command_flow = require('jj-nvim.ui.command_flow')
     local current_win = vim.api.nvim_get_current_win()
     -- Add a small delay to ensure any existing menus are closed

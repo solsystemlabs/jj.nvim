@@ -1006,8 +1006,6 @@ M.execute_command = function()
   end
 end
 
--- doof
-
 -- Close the command flow
 M.close = function()
   if not M.state.active then
