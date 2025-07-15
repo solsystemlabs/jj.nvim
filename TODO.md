@@ -13,6 +13,7 @@
 
 - remove 'v' duplicate command; it isn't needed
 - change V keybind to something else
+- I think that we should always allow toggling the window between log view and bookmark view in selection mode, but currently we have to call a function every time to enable toggling. Check that this is necessary or if we can remove this step and do it more centrally.
 
 ### File-Level Diff Navigation
 

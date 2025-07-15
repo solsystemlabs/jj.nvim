@@ -899,15 +899,18 @@ M.enter_target_selection_mode = function(command_type, target_type, source_data)
   local current_line = vim.api.nvim_win_get_cursor(state.win_id)[1]
 
   -- Build mode data based on command type
-  local action_prefix = command_type
-  if command_type == "rebase" and source_data.selected_commits then
-    action_prefix = "rebase_multi"
-  end
-  
   local mode_data = {
-    action = action_prefix .. "_" .. target_type,
     original_line = current_line
   }
+  
+  -- Set action based on command type
+  if command_type == "generic" then
+    mode_data.action = "generic"
+  elseif command_type == "rebase" and source_data.selected_commits then
+    mode_data.action = "rebase_multi_" .. target_type
+  else
+    mode_data.action = command_type .. "_" .. target_type
+  end
 
   -- Add command-specific data
   if command_type == "rebase" then
@@ -931,6 +934,9 @@ M.enter_target_selection_mode = function(command_type, target_type, source_data)
   end
 
   M.set_mode(MODES.TARGET_SELECT, mode_data)
+
+  -- Enable view toggling for target selection mode
+  M.enable_view_toggle()
 
   -- Update keymaps for target selection
   M.setup_target_selection_keymaps()
