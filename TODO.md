@@ -9,6 +9,11 @@
 - Rebase uses custom bookmark menu for choosing target commit instead of using log window selection method
 - Rebasing uses a bookmark menu that shows every bookmark including remotes; this should only show local bookmarks since rebasing onto a tracked bookmark makes no sense
 
+### Misc
+
+- remove 'v' duplicate command; it isn't needed
+- change V keybind to something else
+
 ### File-Level Diff Navigation
 
 - Navigate between changed files within a diff view

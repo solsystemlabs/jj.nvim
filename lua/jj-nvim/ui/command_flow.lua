@@ -171,17 +171,25 @@ M.flows = {
     steps = {
       {
         type = "option_menu",
-        title = "Rebase Source",
+        title = "Rebase Target",
         options = {
-          { key = "b", description = "Rebase branch (current selection)", value = { source_type = "branch" } },
-          { key = "s", description = "Rebase source commits",             value = { source_type = "source" } },
-          { key = "r", description = "Rebase specific revisions",         value = { source_type = "revisions" } },
+          { key = "t", description = "Choose target (commit/bookmark)", value = { target_selection_type = "choose" } },
+          { key = "b", description = "Rebase onto bookmark",             value = { target_selection_type = "bookmark" } },
         }
       },
       {
-        type = "selection",
+        type = "target_selection",
         title = "Choose destination commit/bookmark",
-        -- This will be handled by existing selection logic
+        condition = function(state)
+          return state.base_options.target_selection_type == "choose"
+        end
+      },
+      {
+        type = "selection",
+        title = "Choose bookmark destination",
+        condition = function(state)
+          return state.base_options.target_selection_type == "bookmark"
+        end
       },
       {
         type = "flag_menu",
@@ -218,7 +226,7 @@ M.flows = {
         }
       },
       {
-        type = "selection",
+        type = "target_selection",
         title = "Choose target commit/bookmark",
         condition = function(state)
           return state.base_options.target_type ~= "none"
@@ -655,7 +663,6 @@ end
 
 -- Show target selection step - uses window target selection mode
 M.show_target_selection_step = function(step_config)
-  -- Create a proper generic target selection that doesn't hardcode operations
   local window_module = require('jj-nvim.ui.window')
 
   -- Store command flow state for resumption
@@ -664,35 +671,39 @@ M.show_target_selection_step = function(step_config)
   -- Close the current flow
   M.close()
 
-  -- Enter generic target selection mode with callbacks
-  window_module.enter_generic_target_selection({
-    title = step_config.title or "Choose target",
-    on_confirm = function(target, target_type)
-      -- Restore command flow state
-      M.state = flow_state
-      M.state.active = true
+  -- Use generic target selection mode with custom callbacks
+  local source_data = {
+    callbacks = {
+      on_confirm = function(target, target_type)
+        -- Restore command flow state
+        M.state = flow_state
+        M.state.active = true
 
-      -- Store the selected target
-      if target_type == "commit" then
-        local command_utils = require('jj-nvim.jj.command_utils')
-        local target_id, err = command_utils.get_change_id(target)
-        if target_id then
-          M.state.base_options.destination = target_id
-        else
-          vim.notify("Failed to get target commit ID: " .. (err or "Unknown error"), vim.log.levels.ERROR)
-          return
+        -- Store the selected target
+        if target_type == "commit" then
+          local command_utils = require('jj-nvim.jj.command_utils')
+          local target_id, err = command_utils.get_change_id(target)
+          if target_id then
+            M.state.base_options.destination = target_id
+          else
+            vim.notify("Failed to get target commit ID: " .. (err or "Unknown error"), vim.log.levels.ERROR)
+            return
+          end
+        elseif target_type == "bookmark" then
+          M.state.base_options.destination = target.name
         end
-      elseif target_type == "bookmark" then
-        M.state.base_options.destination = target.name
-      end
 
-      -- Advance to next step
-      M.advance_step()
-    end,
-    on_cancel = function()
-      vim.notify(string.format("%s cancelled", flow_state.command:gsub("^%l", string.upper)), vim.log.levels.INFO)
-    end
-  })
+        -- Advance to next step
+        M.advance_step()
+      end,
+      on_cancel = function()
+        vim.notify(string.format("%s cancelled", flow_state.command:gsub("^%l", string.upper)), vim.log.levels.INFO)
+      end
+    }
+  }
+
+  -- Enter target selection mode with the generic handler
+  window_module.enter_target_selection_mode("generic", "destination", source_data)
 end
 
 -- Handle menu selection

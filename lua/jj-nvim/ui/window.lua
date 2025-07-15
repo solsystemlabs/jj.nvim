@@ -882,37 +882,14 @@ end
 
 -- Enter target selection mode for multi-commit rebase
 M.enter_rebase_multi_target_selection_mode = function(target_type, selected_commits)
-  if not M.is_open() then
-    vim.notify("JJ window is not open", vim.log.levels.WARN)
-    return
-  end
-
-  local current_line = vim.api.nvim_win_get_cursor(state.win_id)[1]
-
-  local mode_data = {
-    action = "rebase_multi_" .. target_type,
-    target_type = target_type,
+  M.enter_target_selection_mode("rebase", target_type, {
     selected_commits = selected_commits,
-    original_line = current_line
-  }
-
-  M.set_mode(MODES.TARGET_SELECT, mode_data)
-  M.setup_target_selection_keymaps()
-
-  local action_desc
-  if target_type == "destination" then
-    action_desc = "select destination to rebase onto"
-  elseif target_type == "insert_after" then
-    action_desc = "select target to insert after"
-  elseif target_type == "insert_before" then
-    action_desc = "select target to insert before"
-  end
-
-  vim.notify(string.format("Multi-commit rebase: %s (Enter to confirm, Esc to cancel)", action_desc), vim.log.levels.INFO)
+    rebase_mode = "multi"
+  })
 end
 
--- Enter rebase target selection mode
-M.enter_rebase_target_selection_mode = function(rebase_target_type, source_commit, rebase_mode)
+-- Generic target selection mode entry function
+M.enter_target_selection_mode = function(command_type, target_type, source_data)
   if not M.is_open() then
     vim.notify("JJ window is not open", vim.log.levels.WARN)
     return
@@ -921,13 +898,37 @@ M.enter_rebase_target_selection_mode = function(rebase_target_type, source_commi
   -- Store current cursor position to return to if cancelled
   local current_line = vim.api.nvim_win_get_cursor(state.win_id)[1]
 
+  -- Build mode data based on command type
+  local action_prefix = command_type
+  if command_type == "rebase" and source_data.selected_commits then
+    action_prefix = "rebase_multi"
+  end
+  
   local mode_data = {
-    action = "rebase_" .. rebase_target_type, -- "rebase_destination", "rebase_insert_after", "rebase_insert_before"
-    rebase_target_type = rebase_target_type, -- "destination", "insert_after", "insert_before"
-    rebase_mode = rebase_mode or "branch", -- "branch", "source", "revisions"
-    source_commit = source_commit,
+    action = action_prefix .. "_" .. target_type,
     original_line = current_line
   }
+
+  -- Add command-specific data
+  if command_type == "rebase" then
+    mode_data.rebase_target_type = target_type
+    mode_data.rebase_mode = source_data.rebase_mode or "branch"
+    mode_data.source_commit = source_data.source_commit
+    if source_data.selected_commits then
+      mode_data.selected_commits = source_data.selected_commits
+    end
+  elseif command_type == "duplicate" then
+    mode_data.duplicate_target_type = target_type
+    mode_data.source_commit = source_data.source_commit
+  elseif command_type == "split" then
+    mode_data.split_action = target_type
+    mode_data.source_commit = source_data.source_commit
+  elseif command_type == "generic" then
+    -- For generic command flow integration
+    if source_data.callbacks then
+      mode_data.callbacks = source_data.callbacks
+    end
+  end
 
   M.set_mode(MODES.TARGET_SELECT, mode_data)
 
@@ -935,96 +936,346 @@ M.enter_rebase_target_selection_mode = function(rebase_target_type, source_commi
   M.setup_target_selection_keymaps()
 
   -- Show appropriate status message
-  local action_desc
-  if rebase_target_type == "destination" then
-    action_desc = "select destination to rebase onto"
-  elseif rebase_target_type == "insert_after" then
-    action_desc = "select target to insert after"
-  elseif rebase_target_type == "insert_before" then
-    action_desc = "select target to insert before"
-  end
+  local action_descriptions = {
+    destination = {
+      rebase = "select destination to rebase onto",
+      duplicate = "select destination to duplicate onto", 
+      split = "select destination to rebase split result onto"
+    },
+    insert_after = {
+      rebase = "select target to insert after",
+      duplicate = "select target to duplicate after",
+      split = "select target to insert split result after"
+    },
+    insert_before = {
+      rebase = "select target to insert before", 
+      duplicate = "select target to duplicate before",
+      split = "select target to insert split result before"
+    }
+  }
 
+  local action_desc = action_descriptions[target_type] and action_descriptions[target_type][command_type] or "select target"
+  
+  -- Add mode description for rebase
   local mode_desc = ""
-  if rebase_mode == "branch" then
-    mode_desc = " (branch mode)"
-  elseif rebase_mode == "source" then
-    mode_desc = " (source mode)"
-  elseif rebase_mode == "revisions" then
-    mode_desc = " (revisions mode)"
+  if command_type == "rebase" and source_data.rebase_mode then
+    if source_data.rebase_mode == "branch" then
+      mode_desc = " (branch mode)"
+    elseif source_data.rebase_mode == "source" then
+      mode_desc = " (source mode)"
+    elseif source_data.rebase_mode == "revisions" then
+      mode_desc = " (revisions mode)"
+    end
   end
 
-  vim.notify(string.format("Rebase mode: %s%s (Enter to confirm, Esc to cancel)", action_desc, mode_desc), vim.log.levels.INFO)
+  if command_type ~= "generic" then
+    local command_display = command_type:gsub("^%l", string.upper)
+    local prefix = ""
+    if command_type == "rebase" and source_data.selected_commits then
+      prefix = "Multi-commit "
+    end
+    vim.notify(string.format("%s%s mode: %s%s (Enter to confirm, Esc to cancel)", prefix, command_display, action_desc, mode_desc), vim.log.levels.INFO)
+  else
+    -- For generic target selection, let the callback handle messaging
+    vim.notify(string.format("Target selection: %s (Enter to confirm, Esc to cancel)", action_desc), vim.log.levels.INFO)
+  end
 end
 
--- Enter duplicate target selection mode
+-- Legacy function for backward compatibility
+M.enter_rebase_target_selection_mode = function(rebase_target_type, source_commit, rebase_mode)
+  M.enter_target_selection_mode("rebase", rebase_target_type, {
+    source_commit = source_commit,
+    rebase_mode = rebase_mode
+  })
+end
+
+-- Legacy function for backward compatibility  
 M.enter_duplicate_target_selection_mode = function(duplicate_target_type, source_commit)
-  if not M.is_open() then
-    vim.notify("JJ window is not open", vim.log.levels.WARN)
-    return
-  end
-
-  -- Store current cursor position to return to if cancelled
-  local current_line = vim.api.nvim_win_get_cursor(state.win_id)[1]
-
-  local mode_data = {
-    action = "duplicate_" .. duplicate_target_type, -- "duplicate_destination", "duplicate_insert_after", "duplicate_insert_before"
-    duplicate_target_type = duplicate_target_type, -- "destination", "insert_after", "insert_before"
-    source_commit = source_commit,
-    original_line = current_line
-  }
-
-  M.set_mode(MODES.TARGET_SELECT, mode_data)
-
-  -- Update keymaps for target selection
-  M.setup_target_selection_keymaps()
-
-  -- Show appropriate status message
-  local action_desc
-  if duplicate_target_type == "destination" then
-    action_desc = "select destination to duplicate onto"
-  elseif duplicate_target_type == "insert_after" then
-    action_desc = "select target to duplicate after"
-  elseif duplicate_target_type == "insert_before" then
-    action_desc = "select target to duplicate before"
-  end
-
-  vim.notify(string.format("Duplicate mode: %s (Enter to confirm, Esc to cancel)", action_desc), vim.log.levels.INFO)
+  M.enter_target_selection_mode("duplicate", duplicate_target_type, {
+    source_commit = source_commit
+  })
 end
 
--- Enter split target selection mode
+-- Legacy function for backward compatibility
 M.enter_split_target_selection_mode = function(split_action, source_commit)
-  if not M.is_open() then
-    vim.notify("JJ window is not open", vim.log.levels.WARN)
-    return
-  end
-
-  -- Store current cursor position to return to if cancelled
-  local current_line = vim.api.nvim_win_get_cursor(state.win_id)[1]
-
-  local mode_data = {
-    action = "split_" .. split_action, -- "split_insert_after", "split_insert_before", "split_destination"
-    split_action = split_action, -- "insert_after", "insert_before", "destination"
-    source_commit = source_commit,
-    original_line = current_line
-  }
-
-  M.set_mode(MODES.TARGET_SELECT, mode_data)
-
-  -- Update keymaps for target selection
-  M.setup_target_selection_keymaps()
-
-  -- Show appropriate status message
-  local action_desc
-  if split_action == "insert_after" then
-    action_desc = "select target to insert split result after"
-  elseif split_action == "insert_before" then
-    action_desc = "select target to insert split result before"
-  elseif split_action == "destination" then
-    action_desc = "select destination to rebase split result onto"
-  end
-
-  vim.notify(string.format("Split mode: %s (Enter to confirm, Esc to cancel)", action_desc), vim.log.levels.INFO)
+  M.enter_target_selection_mode("split", split_action, {
+    source_commit = source_commit
+  })
 end
+
+-- Action handlers for target selection confirmation
+local target_selection_handlers = {
+  after = function(target_commit, mode_data)
+    local success, change_id = actions.new_after(target_commit)
+    if success then
+      require('jj-nvim').refresh(change_id)
+    end
+    return success
+  end,
+
+  before = function(target_commit, mode_data)
+    local success, change_id = actions.new_before(target_commit)
+    if success then
+      require('jj-nvim').refresh(change_id)
+    end
+    return success
+  end,
+
+  squash = function(target_commit, mode_data)
+    -- For squash, don't execute immediately - show options menu first
+    local source_commit = mode_data.source_commit
+    actions.show_squash_options_menu(target_commit, "commit", state.win_id, source_commit)
+    return true -- Always return true since we're showing a menu, not executing
+  end,
+
+  generic = function(target_commit, mode_data)
+    -- Generic target selection with custom callbacks
+    local callbacks = mode_data.callbacks
+    if callbacks and callbacks.on_confirm then
+      -- Determine target type
+      local target_type = "commit"
+      if target_commit.content_type == "bookmark" then
+        target_type = "bookmark"
+      end
+      callbacks.on_confirm(target_commit, target_type)
+    end
+    return true
+  end,
+
+  split_insert_after = function(target_commit, mode_data)
+    local source_commit = mode_data.source_commit
+    local target_change_id = commit_utils.get_id(target_commit)
+    if not target_change_id or target_change_id == "" then
+      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
+      return false
+    end
+
+    local options = {
+      insert_after = { target_change_id },
+      interactive = true
+    }
+    
+    local success = actions.split_commit(source_commit, options)
+    if success then
+      require('jj-nvim').refresh()
+    end
+    return success
+  end,
+
+  split_insert_before = function(target_commit, mode_data)
+    local source_commit = mode_data.source_commit
+    local target_change_id = commit_utils.get_id(target_commit)
+    if not target_change_id or target_change_id == "" then
+      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
+      return false
+    end
+
+    local options = {
+      insert_before = { target_change_id },
+      interactive = true
+    }
+    
+    local success = actions.split_commit(source_commit, options)
+    if success then
+      require('jj-nvim').refresh()
+    end
+    return success
+  end,
+
+  split_destination = function(target_commit, mode_data)
+    local source_commit = mode_data.source_commit
+    local target_change_id = commit_utils.get_id(target_commit)
+    if not target_change_id or target_change_id == "" then
+      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
+      return false
+    end
+
+    local options = {
+      destination = { target_change_id },
+      interactive = true
+    }
+    
+    local success = actions.split_commit(source_commit, options)
+    if success then
+      require('jj-nvim').refresh()
+    end
+    return success
+  end,
+
+  rebase_destination = function(target_commit, mode_data)
+    local source_commit = mode_data.source_commit
+    local target_change_id = commit_utils.get_id(target_commit)
+    if not target_change_id or target_change_id == "" then
+      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
+      return false
+    end
+
+    local options = {
+      mode = mode_data.rebase_mode,
+      destination = target_change_id
+    }
+    
+    local success = actions.rebase_commit(source_commit, options)
+    if success then
+      require('jj-nvim').refresh()
+    end
+    return success
+  end,
+
+  rebase_insert_after = function(target_commit, mode_data)
+    local source_commit = mode_data.source_commit
+    local target_change_id = commit_utils.get_id(target_commit)
+    if not target_change_id or target_change_id == "" then
+      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
+      return false
+    end
+
+    local options = {
+      mode = mode_data.rebase_mode,
+      insert_after = target_change_id
+    }
+    
+    local success = actions.rebase_commit(source_commit, options)
+    if success then
+      require('jj-nvim').refresh()
+    end
+    return success
+  end,
+
+  rebase_insert_before = function(target_commit, mode_data)
+    local source_commit = mode_data.source_commit
+    local target_change_id = commit_utils.get_id(target_commit)
+    if not target_change_id or target_change_id == "" then
+      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
+      return false
+    end
+
+    local options = {
+      mode = mode_data.rebase_mode,
+      insert_before = target_change_id
+    }
+    
+    local success = actions.rebase_commit(source_commit, options)
+    if success then
+      require('jj-nvim').refresh()
+    end
+    return success
+  end,
+
+  rebase_multi_destination = function(target_commit, mode_data)
+    local selected_commits = mode_data.selected_commits
+    local target_change_id = commit_utils.get_id(target_commit)
+    if not target_change_id or target_change_id == "" then
+      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
+      return false
+    end
+
+    local options = {
+      destination = target_change_id
+    }
+    
+    local success = actions.rebase_multiple_commits(selected_commits, options)
+    if success then
+      require('jj-nvim').refresh()
+    end
+    return success
+  end,
+
+  rebase_multi_insert_after = function(target_commit, mode_data)
+    local selected_commits = mode_data.selected_commits
+    local target_change_id = commit_utils.get_id(target_commit)
+    if not target_change_id or target_change_id == "" then
+      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
+      return false
+    end
+
+    local options = {
+      insert_after = target_change_id
+    }
+    
+    local success = actions.rebase_multiple_commits(selected_commits, options)
+    if success then
+      require('jj-nvim').refresh()
+    end
+    return success
+  end,
+
+  rebase_multi_insert_before = function(target_commit, mode_data)
+    local selected_commits = mode_data.selected_commits
+    local target_change_id = commit_utils.get_id(target_commit)
+    if not target_change_id or target_change_id == "" then
+      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
+      return false
+    end
+
+    local options = {
+      insert_before = target_change_id
+    }
+    
+    local success = actions.rebase_multiple_commits(selected_commits, options)
+    if success then
+      require('jj-nvim').refresh()
+    end
+    return success
+  end,
+
+  duplicate_destination = function(target_commit, mode_data)
+    local source_commit = mode_data.source_commit
+    local target_change_id = commit_utils.get_id(target_commit)
+    if not target_change_id or target_change_id == "" then
+      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
+      return false
+    end
+
+    local options = {
+      destination = target_change_id
+    }
+    
+    local success = actions.duplicate_commit(source_commit, options)
+    if success then
+      require('jj-nvim').refresh()
+    end
+    return success
+  end,
+
+  duplicate_insert_after = function(target_commit, mode_data)
+    local source_commit = mode_data.source_commit
+    local target_change_id = commit_utils.get_id(target_commit)
+    if not target_change_id or target_change_id == "" then
+      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
+      return false
+    end
+
+    local options = {
+      insert_after = target_change_id
+    }
+    
+    local success = actions.duplicate_commit(source_commit, options)
+    if success then
+      require('jj-nvim').refresh()
+    end
+    return success
+  end,
+
+  duplicate_insert_before = function(target_commit, mode_data)
+    local source_commit = mode_data.source_commit
+    local target_change_id = commit_utils.get_id(target_commit)
+    if not target_change_id or target_change_id == "" then
+      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
+      return false
+    end
+
+    local options = {
+      insert_before = target_change_id
+    }
+    
+    local success = actions.duplicate_commit(source_commit, options)
+    if success then
+      require('jj-nvim').refresh()
+    end
+    return success
+  end,
+}
 
 -- Confirm target selection and execute action
 M.confirm_target_selection = function()
@@ -1041,311 +1292,22 @@ M.confirm_target_selection = function()
   end
 
   local action_type = mode_data.action
-  local success = false
-  local change_id
-
-  if action_type == "after" then
-    success, change_id = actions.new_after(target_commit)
-    if success then
-      require('jj-nvim').refresh(change_id)
-    end
-    -- Return to normal mode
-    M.reset_mode()
-    M.disable_view_toggle() -- Disable view toggling
-    M.setup_keymaps() -- Restore normal keymaps
-  elseif action_type == "before" then
-    success, change_id = actions.new_before(target_commit)
-    if success then
-      require('jj-nvim').refresh(change_id)
-    end
-    -- Return to normal mode
-    M.reset_mode()
-    M.disable_view_toggle() -- Disable view toggling
-    M.setup_keymaps() -- Restore normal keymaps
-  elseif action_type == "squash" then
-    -- For squash, don't execute immediately - show options menu first
-    local source_commit = mode_data.source_commit
-    M.reset_mode()
-    M.disable_view_toggle() -- Disable view toggling
-    M.setup_keymaps() -- Restore normal keymaps
-
-    -- Show squash options menu with source commit information
-    actions.show_squash_options_menu(target_commit, "commit", state.win_id, source_commit)
-  elseif action_type == "generic" then
-    -- Generic target selection with custom callbacks
-    local callbacks = mode_data.callbacks
-    M.reset_mode()
-    M.disable_view_toggle() -- Disable view toggling
-    M.setup_keymaps() -- Restore normal keymaps
-    
-    if callbacks and callbacks.on_confirm then
-      -- Determine target type
-      local target_type = "commit"
-      if target_commit.content_type == "bookmark" then
-        target_type = "bookmark"
-      end
-      
-      callbacks.on_confirm(target_commit, target_type)
-    end
-  elseif action_type == "split_insert_after" then
-    -- Execute split with insert-after
-    local source_commit = mode_data.source_commit
-    local target_change_id = commit_utils.get_id(target_commit)
-    if not target_change_id or target_change_id == "" then
-      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
-      return
-    end
-
-    local options = {
-      insert_after = { target_change_id },
-      interactive = true
-    }
-    
-    success = actions.split_commit(source_commit, options)
-    if success then
-      require('jj-nvim').refresh()
-    end
-    
-    -- Return to normal mode
-    M.reset_mode()
-    M.setup_keymaps()
-  elseif action_type == "split_insert_before" then
-    -- Execute split with insert-before
-    local source_commit = mode_data.source_commit
-    local target_change_id = commit_utils.get_id(target_commit)
-    if not target_change_id or target_change_id == "" then
-      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
-      return
-    end
-
-    local options = {
-      insert_before = { target_change_id },
-      interactive = true
-    }
-    
-    success = actions.split_commit(source_commit, options)
-    if success then
-      require('jj-nvim').refresh()
-    end
-    
-    -- Return to normal mode
-    M.reset_mode()
-    M.setup_keymaps()
-  elseif action_type == "split_destination" then
-    -- Execute split with destination
-    local source_commit = mode_data.source_commit
-    local target_change_id = commit_utils.get_id(target_commit)
-    if not target_change_id or target_change_id == "" then
-      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
-      return
-    end
-
-    local options = {
-      destination = { target_change_id },
-      interactive = true
-    }
-    
-    success = actions.split_commit(source_commit, options)
-    if success then
-      require('jj-nvim').refresh()
-    end
-    
-    -- Return to normal mode
-    M.reset_mode()
-    M.setup_keymaps()
-  elseif action_type == "rebase_destination" then
-    -- Execute rebase to destination
-    local source_commit = mode_data.source_commit
-    local target_change_id = commit_utils.get_id(target_commit)
-    if not target_change_id or target_change_id == "" then
-      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
-      return
-    end
-
-    local options = {
-      mode = mode_data.rebase_mode,
-      destination = target_change_id
-    }
-    
-    success = actions.rebase_commit(source_commit, options)
-    if success then
-      require('jj-nvim').refresh()
-    end
-    
-    -- Return to normal mode
-    M.reset_mode()
-    M.setup_keymaps()
-  elseif action_type == "rebase_insert_after" then
-    -- Execute rebase with insert-after
-    local source_commit = mode_data.source_commit
-    local target_change_id = commit_utils.get_id(target_commit)
-    if not target_change_id or target_change_id == "" then
-      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
-      return
-    end
-
-    local options = {
-      mode = mode_data.rebase_mode,
-      insert_after = target_change_id
-    }
-    
-    success = actions.rebase_commit(source_commit, options)
-    if success then
-      require('jj-nvim').refresh()
-    end
-    
-    -- Return to normal mode
-    M.reset_mode()
-    M.setup_keymaps()
-  elseif action_type == "rebase_insert_before" then
-    -- Execute rebase with insert-before
-    local source_commit = mode_data.source_commit
-    local target_change_id = commit_utils.get_id(target_commit)
-    if not target_change_id or target_change_id == "" then
-      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
-      return
-    end
-
-    local options = {
-      mode = mode_data.rebase_mode,
-      insert_before = target_change_id
-    }
-    
-    success = actions.rebase_commit(source_commit, options)
-    if success then
-      require('jj-nvim').refresh()
-    end
-    
-    -- Return to normal mode
-    M.reset_mode()
-    M.setup_keymaps()
-  elseif action_type == "rebase_multi_destination" then
-    -- Execute multi-commit rebase to destination
-    local selected_commits = mode_data.selected_commits
-    local target_change_id = commit_utils.get_id(target_commit)
-    if not target_change_id or target_change_id == "" then
-      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
-      return
-    end
-
-    local options = {
-      destination = target_change_id
-    }
-    
-    success = actions.rebase_multiple_commits(selected_commits, options)
-    if success then
-      require('jj-nvim').refresh()
-    end
-    
-    -- Return to normal mode
-    M.reset_mode()
-    M.setup_keymaps()
-  elseif action_type == "rebase_multi_insert_after" then
-    -- Execute multi-commit rebase with insert-after
-    local selected_commits = mode_data.selected_commits
-    local target_change_id = commit_utils.get_id(target_commit)
-    if not target_change_id or target_change_id == "" then
-      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
-      return
-    end
-
-    local options = {
-      insert_after = target_change_id
-    }
-    
-    success = actions.rebase_multiple_commits(selected_commits, options)
-    if success then
-      require('jj-nvim').refresh()
-    end
-    
-    -- Return to normal mode
-    M.reset_mode()
-    M.setup_keymaps()
-  elseif action_type == "rebase_multi_insert_before" then
-    -- Execute multi-commit rebase with insert-before
-    local selected_commits = mode_data.selected_commits
-    local target_change_id = commit_utils.get_id(target_commit)
-    if not target_change_id or target_change_id == "" then
-      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
-      return
-    end
-
-    local options = {
-      insert_before = target_change_id
-    }
-    
-    success = actions.rebase_multiple_commits(selected_commits, options)
-    if success then
-      require('jj-nvim').refresh()
-    end
-    
-    -- Return to normal mode
-    M.reset_mode()
-    M.setup_keymaps()
-  elseif action_type == "duplicate_destination" then
-    -- Execute duplicate to destination
-    local source_commit = mode_data.source_commit
-    local target_change_id = commit_utils.get_id(target_commit)
-    if not target_change_id or target_change_id == "" then
-      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
-      return
-    end
-
-    local options = {
-      destination = target_change_id
-    }
-    
-    success = actions.duplicate_commit(source_commit, options)
-    if success then
-      require('jj-nvim').refresh()
-    end
-    
-    -- Return to normal mode
-    M.reset_mode()
-    M.setup_keymaps()
-  elseif action_type == "duplicate_insert_after" then
-    -- Execute duplicate with insert-after
-    local source_commit = mode_data.source_commit
-    local target_change_id = commit_utils.get_id(target_commit)
-    if not target_change_id or target_change_id == "" then
-      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
-      return
-    end
-
-    local options = {
-      insert_after = target_change_id
-    }
-    
-    success = actions.duplicate_commit(source_commit, options)
-    if success then
-      require('jj-nvim').refresh()
-    end
-    
-    -- Return to normal mode
-    M.reset_mode()
-    M.setup_keymaps()
-  elseif action_type == "duplicate_insert_before" then
-    -- Execute duplicate with insert-before
-    local source_commit = mode_data.source_commit
-    local target_change_id = commit_utils.get_id(target_commit)
-    if not target_change_id or target_change_id == "" then
-      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
-      return
-    end
-
-    local options = {
-      insert_before = target_change_id
-    }
-    
-    success = actions.duplicate_commit(source_commit, options)
-    if success then
-      require('jj-nvim').refresh()
-    end
-    
-    -- Return to normal mode
-    M.reset_mode()
-    M.setup_keymaps()
+  local handler = target_selection_handlers[action_type]
+  
+  if not handler then
+    vim.notify("Unknown action type: " .. tostring(action_type), vim.log.levels.ERROR)
+    return
   end
+
+  -- Execute the handler
+  local success = handler(target_commit, mode_data)
+  
+  -- Return to normal mode (except for special cases like squash and generic)
+  M.reset_mode()
+  if action_type ~= "generic" then
+    M.disable_view_toggle() -- Disable view toggling
+  end
+  M.setup_keymaps() -- Restore normal keymaps
 end
 
 -- Cancel target selection and return to normal mode
