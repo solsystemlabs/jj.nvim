@@ -26,7 +26,6 @@ M.abandon_commit = function(commit, on_success)
     if confirmed then
       local result, exec_err = command_utils.execute_with_error_handling({ 'abandon', change_id }, "abandon commit")
       if result then
-        command_utils.notify_operation_result("Abandoned", true, 1, display_id)
         if on_success then on_success() end
         return true
       end
@@ -39,10 +38,10 @@ end
 M.abandon_multiple_commits = function(selected_commit_ids, on_success)
   -- Validate multiple commits
   local valid_commits, invalid_commits, err = command_utils.validate_multiple_commits(
-    selected_commit_ids, 
+    selected_commit_ids,
     { allow_root = false }
   )
-  
+
   if err then
     vim.notify(err, vim.log.levels.WARN)
     return false
@@ -89,7 +88,6 @@ M.abandon_multiple_commits = function(selected_commit_ids, on_success)
 
       local result, exec_err = command_utils.execute_with_error_handling(cmd_args, "abandon commits")
       if result then
-        command_utils.notify_operation_result("Abandoned", true, #change_ids)
         if on_success then on_success() end
         return true
       end
@@ -111,7 +109,7 @@ M.abandon_multiple_commits_async = function(selected_commit_ids, on_success)
   end
 
   local confirm_msg = string.format("Abandon %d commit(s)?", #change_ids)
-  
+
   command_utils.confirm_operation(confirm_msg, function(confirmed)
     if confirmed then
       local cmd_args = { 'abandon' }
@@ -123,7 +121,7 @@ M.abandon_multiple_commits_async = function(selected_commit_ids, on_success)
       local timer = vim.loop.new_timer()
       local dots = ""
       local dot_count = 0
-      
+
       timer:start(0, 1000, vim.schedule_wrap(function()
         dot_count = (dot_count + 1) % 4
         dots = string.rep(".", dot_count)
@@ -133,9 +131,8 @@ M.abandon_multiple_commits_async = function(selected_commit_ids, on_success)
       command_utils.execute_with_error_handling_async(cmd_args, "abandon commits", {}, function(result, err)
         timer:stop()
         timer:close()
-        
+
         if result then
-          command_utils.notify_operation_result("Abandoned", true, #change_ids)
           if on_success then on_success() end
         end
       end)
@@ -144,3 +141,4 @@ M.abandon_multiple_commits_async = function(selected_commit_ids, on_success)
 end
 
 return M
+

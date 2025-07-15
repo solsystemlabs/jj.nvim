@@ -28,7 +28,7 @@ end
 -- Extracted and standardized from abandon.lua, edit.lua, and others
 M.execute_with_error_handling = function(cmd_args, error_context, options)
   options = options or {}
-  
+
   local result, err
   if options.interactive then
     result, err = commands.execute_interactive_with_immutable_prompt(cmd_args, options)
@@ -38,7 +38,7 @@ M.execute_with_error_handling = function(cmd_args, error_context, options)
 
   if not result then
     local error_msg = err or "Unknown error"
-    
+
     -- Common error pattern mapping
     if error_msg:find("No such revision") then
       error_msg = "Commit not found - it may have been abandoned or modified"
@@ -69,9 +69,9 @@ end
 M.execute_with_error_handling_async = function(cmd_args, error_context, options, callback)
   options = options or {}
   callback = callback or function() end
-  
+
   local commands = require('jj-nvim.jj.commands')
-  
+
   -- Handle interactive commands (these can't be async)
   if options.interactive then
     -- For interactive commands, we still need to use the sync version
@@ -82,12 +82,12 @@ M.execute_with_error_handling_async = function(cmd_args, error_context, options,
     end)
     return
   end
-  
+
   -- For non-interactive commands, use async execution
   commands.execute_async(cmd_args, { ignore_immutable = options.ignore_immutable }, function(result, err)
     if not result then
       local error_msg = err or "Unknown error"
-      
+
       -- Apply common error pattern mapping
       if error_msg:find("Commit .* is immutable") then
         error_msg = "Cannot modify immutable commit (try --ignore-immutable flag)"
@@ -98,14 +98,14 @@ M.execute_with_error_handling_async = function(cmd_args, error_context, options,
       elseif error_msg:find("No such revision") then
         error_msg = "Commit not found or invalid revision"
       end
-      
+
       if not options.silent then
         vim.notify(string.format("Failed to %s: %s", error_context, error_msg), vim.log.levels.ERROR)
       end
       callback(false, error_msg)
       return
     end
-    
+
     callback(result, nil)
   end)
 end
@@ -114,7 +114,7 @@ end
 -- Consolidates validation logic scattered across command modules
 M.validate_commit = function(commit, options)
   options = options or {}
-  
+
   if not commit then
     return false, "No commit provided"
   end
@@ -126,7 +126,7 @@ M.validate_commit = function(commit, options)
 
   -- Check if current working copy (most operations allow this, so default to true)
   local allow_current = options.allow_current
-  if allow_current == nil then allow_current = true end  -- Default to allowing current
+  if allow_current == nil then allow_current = true end -- Default to allowing current
   if not allow_current and commit:is_current() then
     return false, "Cannot perform operation on current working copy"
   end
@@ -186,7 +186,7 @@ M.find_commit_by_id = function(commit_id, commits)
       return commit, nil
     end
   end
-  
+
   return nil, "Commit not found: " .. (commit_id or "unknown")
 end
 
@@ -194,7 +194,7 @@ end
 -- Used in abandon_multiple_commits and similar functions
 M.validate_multiple_commits = function(commit_ids, validation_options)
   validation_options = validation_options or {}
-  
+
   if not commit_ids or #commit_ids == 0 then
     return nil, nil, "No commits selected"
   end
@@ -209,7 +209,7 @@ M.validate_multiple_commits = function(commit_ids, validation_options)
 
   for _, commit_id in ipairs(commit_ids) do
     local commit, find_err = M.find_commit_by_id(commit_id, all_commits)
-    
+
     if commit then
       local is_valid, validation_err = M.validate_commit(commit, validation_options)
       if is_valid then
@@ -231,7 +231,7 @@ end
 M.build_commit_summaries = function(commits, max_display)
   max_display = max_display or 5
   local commit_summaries = {}
-  
+
   for _, commit in ipairs(commits) do
     local display_id = M.get_short_display_id(commit)
     local desc = commit:get_short_description()
@@ -247,24 +247,6 @@ M.build_commit_summaries = function(commits, max_display)
     end
     table.insert(visible_summaries, string.format("  ... and %d more", #commit_summaries - (max_display - 1)))
     return table.concat(visible_summaries, "\n")
-  end
-end
-
--- Helper function to show operation notifications
--- Standardizes success/failure messaging
-M.notify_operation_result = function(operation_name, success, commit_count, display_id)
-  if success then
-    if commit_count and commit_count > 1 then
-      vim.notify(
-        string.format("%s %d commits", operation_name, commit_count), 
-        vim.log.levels.INFO
-      )
-    else
-      vim.notify(
-        string.format("%s commit %s", operation_name, display_id or ""), 
-        vim.log.levels.INFO
-      )
-    end
   end
 end
 
@@ -298,14 +280,14 @@ M.prompt_for_input = function(config)
       if config.on_cancel then config.on_cancel() end
       return
     end
-    
+
     if config.validator and not config.validator(input) then
       local error_msg = config.validation_error or "Invalid input"
       vim.notify(error_msg, vim.log.levels.ERROR)
       if config.on_cancel then config.on_cancel() end
       return
     end
-    
+
     if config.on_success then config.on_success(input) end
   end)
 end
@@ -326,42 +308,43 @@ end
 -- Consolidates command building patterns from split.lua, squash.lua, rebase.lua
 M.build_command_args = function(base_command, common_options, specific_options)
   local cmd_args = { base_command }
-  
+
   -- Add common options
   if common_options then
     if common_options.interactive then
       table.insert(cmd_args, '--interactive')
     end
-    
+
     if common_options.tool then
       table.insert(cmd_args, '--tool')
       table.insert(cmd_args, common_options.tool)
     end
-    
+
     if common_options.message then
       table.insert(cmd_args, '--message')
       table.insert(cmd_args, common_options.message)
     end
-    
+
     if common_options.revision then
       table.insert(cmd_args, '--revision')
       table.insert(cmd_args, common_options.revision)
     end
-    
+
     if common_options.destination then
       table.insert(cmd_args, '--destination')
       table.insert(cmd_args, common_options.destination)
     end
   end
-  
+
   -- Add specific options
   if specific_options then
     for _, arg in ipairs(specific_options) do
       table.insert(cmd_args, arg)
     end
   end
-  
+
   return cmd_args
 end
 
 return M
+
