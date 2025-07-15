@@ -2,6 +2,13 @@
 
 ## High Priority Features
 
+### Bugs
+
+- Pushing to remote. message is duplicated and one of them never dismisses
+- Improve detection of immutable commit updates; we need a system that checks the output of jj commands and responds in certain cases like immutable commit errors and allow new errors when pushing. All command flows should hook into this check and display proper prompts to allow the user to seamlessly adjust and rerun the command on the fly
+- Rebase uses custom bookmark menu for choosing target commit instead of using log window selection method
+- Rebasing uses a bookmark menu that shows every bookmark including remotes; this should only show local bookmarks since rebasing onto a tracked bookmark makes no sense
+
 ### File-Level Diff Navigation
 
 - Navigate between changed files within a diff view
@@ -73,15 +80,6 @@
 
 ## Misc
 
-- Add support for rebase/new/etc commands based off of bookmarks instead of selected commits
-- Fix graph render issue with wrapped descriptions where unnecessary | is added underneath branch above a commit without a second graph column like:
-
-│ ○ │ │ ├─╯ │ │ ○  
-│  
-│  
-│  
-○
-
 ## Completed Features ✓
 
 - Multi-commit selection and operations
@@ -91,4 +89,3 @@
 - Conflict indicator display
 - In-window status display
 - Comprehensive refactoring and code cleanup
-
