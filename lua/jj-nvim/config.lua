@@ -37,6 +37,8 @@ M.defaults = {
         squash = 'x',
         squash_menu = 'X',
         split = 's',
+        duplicate = 'v',
+        duplicate_menu = 'V',
         undo = 'u',
         clear_selections = '<Esc>',
         toggle_description = '<Tab>',
@@ -141,6 +143,12 @@ M.defaults = {
         insert_after = 'a',
         insert_before = 'f',
         skip_emptied = 'e',
+      },
+      duplicate = {
+        quick = 'q',
+        destination = 'd',
+        insert_after = 'a',
+        insert_before = 'b',
       },
       bookmark = {
         create = 'c',

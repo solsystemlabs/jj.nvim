@@ -116,6 +116,13 @@ local function generate_menu_items(win_id, current_commit, selected_commits)
         action = "rebase_commit",
         commit = target_commit
       })
+      
+      table.insert(items, {
+        key = "v",
+        description = "Duplicate commit",
+        action = "duplicate_menu",
+        commit = target_commit
+      })
     end
     
     -- New change operations
@@ -142,6 +149,7 @@ local function generate_menu_items(win_id, current_commit, selected_commits)
       action = "rebase_multiple",
       commit_ids = selected_commits
     })
+    
   end
   
   -- Selection management
@@ -313,6 +321,12 @@ local function handle_menu_selection(item, win_id)
     actions.rebase_multiple_commits(item.commit_ids, function()
       -- Clear selections will be handled by the window module
       require('jj-nvim').refresh()
+    end)
+  elseif item.action == "duplicate_menu" then
+    local command_flow = require('jj-nvim.ui.command_flow')
+    -- Add a small delay to ensure the action menu is fully closed before showing command flow menu
+    vim.schedule(function()
+      command_flow.start_flow("duplicate", win_id)
     end)
   elseif item.action == "new_child" then
     vim.ui.input({ prompt = "Change description (Enter for none): " }, function(description)

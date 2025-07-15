@@ -956,6 +956,41 @@ M.enter_rebase_target_selection_mode = function(rebase_target_type, source_commi
   vim.notify(string.format("Rebase mode: %s%s (Enter to confirm, Esc to cancel)", action_desc, mode_desc), vim.log.levels.INFO)
 end
 
+-- Enter duplicate target selection mode
+M.enter_duplicate_target_selection_mode = function(duplicate_target_type, source_commit)
+  if not M.is_open() then
+    vim.notify("JJ window is not open", vim.log.levels.WARN)
+    return
+  end
+
+  -- Store current cursor position to return to if cancelled
+  local current_line = vim.api.nvim_win_get_cursor(state.win_id)[1]
+
+  local mode_data = {
+    action = "duplicate_" .. duplicate_target_type, -- "duplicate_destination", "duplicate_insert_after", "duplicate_insert_before"
+    duplicate_target_type = duplicate_target_type, -- "destination", "insert_after", "insert_before"
+    source_commit = source_commit,
+    original_line = current_line
+  }
+
+  M.set_mode(MODES.TARGET_SELECT, mode_data)
+
+  -- Update keymaps for target selection
+  M.setup_target_selection_keymaps()
+
+  -- Show appropriate status message
+  local action_desc
+  if duplicate_target_type == "destination" then
+    action_desc = "select destination to duplicate onto"
+  elseif duplicate_target_type == "insert_after" then
+    action_desc = "select target to duplicate after"
+  elseif duplicate_target_type == "insert_before" then
+    action_desc = "select target to duplicate before"
+  end
+
+  vim.notify(string.format("Duplicate mode: %s (Enter to confirm, Esc to cancel)", action_desc), vim.log.levels.INFO)
+end
+
 -- Enter split target selection mode
 M.enter_split_target_selection_mode = function(split_action, source_commit)
   if not M.is_open() then
@@ -1247,6 +1282,69 @@ M.confirm_target_selection = function()
     -- Return to normal mode
     M.reset_mode()
     M.setup_keymaps()
+  elseif action_type == "duplicate_destination" then
+    -- Execute duplicate to destination
+    local source_commit = mode_data.source_commit
+    local target_change_id = commit_utils.get_id(target_commit)
+    if not target_change_id or target_change_id == "" then
+      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
+      return
+    end
+
+    local options = {
+      destination = target_change_id
+    }
+    
+    success = actions.duplicate_commit(source_commit, options)
+    if success then
+      require('jj-nvim').refresh()
+    end
+    
+    -- Return to normal mode
+    M.reset_mode()
+    M.setup_keymaps()
+  elseif action_type == "duplicate_insert_after" then
+    -- Execute duplicate with insert-after
+    local source_commit = mode_data.source_commit
+    local target_change_id = commit_utils.get_id(target_commit)
+    if not target_change_id or target_change_id == "" then
+      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
+      return
+    end
+
+    local options = {
+      insert_after = target_change_id
+    }
+    
+    success = actions.duplicate_commit(source_commit, options)
+    if success then
+      require('jj-nvim').refresh()
+    end
+    
+    -- Return to normal mode
+    M.reset_mode()
+    M.setup_keymaps()
+  elseif action_type == "duplicate_insert_before" then
+    -- Execute duplicate with insert-before
+    local source_commit = mode_data.source_commit
+    local target_change_id = commit_utils.get_id(target_commit)
+    if not target_change_id or target_change_id == "" then
+      vim.notify("Failed to get target commit ID", vim.log.levels.ERROR)
+      return
+    end
+
+    local options = {
+      insert_before = target_change_id
+    }
+    
+    success = actions.duplicate_commit(source_commit, options)
+    if success then
+      require('jj-nvim').refresh()
+    end
+    
+    -- Return to normal mode
+    M.reset_mode()
+    M.setup_keymaps()
   end
 end
 
@@ -1399,6 +1497,34 @@ M.enter_multi_select_mode = function()
   vim.notify("Multi-select mode: Use Space to toggle selection, Enter to confirm, Esc to cancel", vim.log.levels.INFO)
 end
 
+-- Enter multi-select mode for duplicate workflow
+M.enter_duplicate_multi_select_mode = function()
+  if not M.is_open() then
+    vim.notify("JJ window is not open", vim.log.levels.WARN)
+    return
+  end
+
+  -- Store current cursor position
+  local current_line = vim.api.nvim_win_get_cursor(state.win_id)[1]
+
+  M.set_mode(MODES.MULTI_SELECT, {
+    action = "duplicate_multi_select",
+    original_line = current_line
+  })
+
+  -- Initialize selection state
+  state.selected_commits = {}
+
+  -- Update keymaps for multi-select
+  M.setup_multi_select_keymaps()
+
+  -- Refresh buffer to show selection highlighting
+  M.refresh_buffer()
+
+  -- Show status message
+  vim.notify("Select commits to duplicate: Use Space to toggle selection, Enter to confirm, Esc to cancel", vim.log.levels.INFO)
+end
+
 -- Enter multi-select mode specifically for abandon workflow
 M.enter_abandon_select_mode = function()
   if not M.is_open() then
@@ -1456,11 +1582,14 @@ M.update_multi_select_display = function()
   M.highlight_current_commit()
 end
 
--- Confirm multi-selection and create merge commit
+-- Confirm multi-selection and execute appropriate action
 M.confirm_multi_selection = function()
   if not M.is_mode(MODES.MULTI_SELECT) then
     return
   end
+
+  local mode_data = select(2, M.get_mode())
+  local action = mode_data.action
 
   local mixed_entries = buffer.get_commits(state.buf_id)
   if not mixed_entries then
@@ -1468,10 +1597,19 @@ M.confirm_multi_selection = function()
     return
   end
 
-  -- Simple validation: just check we have at least 2 commits selected
-  if not state.selected_commits or #state.selected_commits < 2 then
-    vim.notify("At least 2 commits must be selected for a multi-parent change", vim.log.levels.WARN)
-    return
+  -- Validation based on action type
+  if action == "duplicate_multi_select" then
+    -- For duplicate, we need at least 1 commit selected
+    if not state.selected_commits or #state.selected_commits < 1 then
+      vim.notify("At least 1 commit must be selected for duplication", vim.log.levels.WARN)
+      return
+    end
+  else
+    -- For merge commits, we need at least 2 commits selected
+    if not state.selected_commits or #state.selected_commits < 2 then
+      vim.notify("At least 2 commits must be selected for a multi-parent change", vim.log.levels.WARN)
+      return
+    end
   end
 
   -- Show selection summary and confirm (show short version of IDs for readability)
@@ -1480,28 +1618,49 @@ M.confirm_multi_selection = function()
     table.insert(short_ids, change_id:sub(1, 8))
   end
   local commit_summary = table.concat(short_ids, ", ")
-  local confirm_msg = string.format("Create merge commit with %d parents: %s?", #state.selected_commits, commit_summary)
+  
+  local confirm_msg
+  if action == "duplicate_multi_select" then
+    confirm_msg = string.format("Duplicate %d commit(s): %s?", #state.selected_commits, commit_summary)
+  else
+    confirm_msg = string.format("Create merge commit with %d parents: %s?", #state.selected_commits, commit_summary)
+  end
 
-  -- Use vim.ui.select for better confirmation
-  vim.ui.select({ 'Yes', 'No' }, {
-    prompt = confirm_msg,
-  }, function(choice)
-    if choice == 'Yes' then
-      -- Create the merge commit directly using the selected change IDs
-      local success, change_id = actions.new_with_change_ids(state.selected_commits)
+  if action == "duplicate_multi_select" then
+    -- For duplicate, skip confirmation and go directly to duplicate options menu
+    local command_flow = require('jj-nvim.ui.command_flow')
+    
+    -- Store selected commits in a temporary variable
+    local selected_for_duplicate = vim.deepcopy(state.selected_commits)
+    
+    -- Return to normal mode first
+    M.reset_mode()
+    M.setup_keymaps()
+    
+    -- Start duplicate flow with pre-selected commits
+    command_flow.start_duplicate_flow_with_commits(selected_for_duplicate, state.win_id)
+  else
+    -- For merge commits, use confirmation dialog
+    vim.ui.select({ 'Yes', 'No' }, {
+      prompt = confirm_msg,
+    }, function(choice)
+      if choice == 'Yes' then
+        -- Create the merge commit directly using the selected change IDs
+        local success, change_id = actions.new_with_change_ids(state.selected_commits)
 
-      if success then
-        require('jj-nvim').refresh(change_id)
+        if success then
+          require('jj-nvim').refresh(change_id)
+        end
+
+        -- Return to normal mode
+        M.reset_mode()
+        M.disable_view_toggle() -- Disable view toggling
+        M.setup_keymaps() -- Restore normal keymaps
+      else
+        vim.notify("Merge commit creation cancelled", vim.log.levels.INFO)
       end
-
-      -- Return to normal mode
-      M.reset_mode()
-      M.disable_view_toggle() -- Disable view toggling
-      M.setup_keymaps() -- Restore normal keymaps
-    else
-      vim.notify("Merge commit creation cancelled", vim.log.levels.INFO)
-    end
-  end)
+    end)
+  end
 end
 
 -- Confirm abandon selection and show abandon options

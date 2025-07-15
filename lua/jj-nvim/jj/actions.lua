@@ -13,6 +13,7 @@ local abandon = require('jj-nvim.jj.abandon')
 local new = require('jj-nvim.jj.new')
 local describe = require('jj-nvim.jj.describe')
 local undo = require('jj-nvim.jj.undo')
+local duplicate = require('jj-nvim.jj.duplicate')
 
 -- Common utilities
 local buffer = require('jj-nvim.ui.buffer')
@@ -498,6 +499,25 @@ M.show_rebase_options_menu = rebase.show_rebase_options_menu
 
 -- Handle rebase options menu selection
 M.handle_rebase_options_selection = rebase.handle_rebase_options_selection
+
+-- ============================================================================
+-- Duplicate Operations
+-- ============================================================================
+
+-- Duplicate the specified commit
+M.duplicate_commit = duplicate.duplicate_commit
+
+-- Duplicate multiple commits
+M.duplicate_multiple_commits = duplicate.duplicate_multiple_commits
+
+-- Duplicate multiple commits asynchronously
+M.duplicate_multiple_commits_async = duplicate.duplicate_multiple_commits_async
+
+-- Show duplicate options menu
+M.show_duplicate_options_menu = duplicate.show_duplicate_options_menu
+
+-- Handle duplicate options menu selection
+M.handle_duplicate_options_selection = duplicate.handle_duplicate_options_selection
 
 -- ============================================================================
 -- Undo Operations

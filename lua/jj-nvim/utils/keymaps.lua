@@ -365,6 +365,33 @@ M.setup_action_keymaps = function(buf_id, win_id, state, actions, navigation, op
     end)
   end, opts)
 
+  -- Quick duplicate - duplicate current commit in place
+  local duplicate_key = config.get_first_keybind('keybinds.log_window.actions.duplicate') or 'v'
+  vim.keymap.set('n', duplicate_key, function()
+    local commit = navigation.get_current_commit(win_id)
+    if not commit then
+      vim.notify("No commit under cursor", vim.log.levels.WARN)
+      return
+    end
+    
+    -- Quick duplicate current commit in place (no target selection)
+    local success = actions.duplicate_commit(commit, {})
+    if success then
+      require('jj-nvim').refresh()
+    end
+  end, opts)
+
+  -- Advanced duplicate menu - use command flow for advanced options
+  local duplicate_menu_key = config.get_first_keybind('keybinds.log_window.actions.duplicate_menu') or 'V'
+  vim.keymap.set('n', duplicate_menu_key, function()
+    local command_flow = require('jj-nvim.ui.command_flow')
+    local current_win = vim.api.nvim_get_current_win()
+    -- Add a small delay to ensure any existing menus are closed
+    vim.schedule(function()
+      command_flow.start_flow("duplicate", current_win)
+    end)
+  end, opts)
+
   -- Split commit - use configured key (with backward compatibility)
   local split_key = config.get_first_keybind('keybinds.log_window.actions.split') or 
                     config.get('keymaps.split') or 's'

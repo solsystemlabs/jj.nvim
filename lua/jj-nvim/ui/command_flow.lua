@@ -195,6 +195,38 @@ M.flows = {
     }
   },
 
+  duplicate = {
+    type = "sequential",
+    command_base = "jj duplicate",
+    steps = {
+      {
+        type = "option_menu",
+        title = "Duplicate Source",
+        options = {
+          { key = "c", description = "Duplicate current commit", value = { source_type = "current" } },
+          { key = "m", description = "Select multiple commits", value = { source_type = "multiple" } },
+        }
+      },
+      {
+        type = "option_menu",
+        title = "Duplicate Options",
+        options = {
+          { key = "q", description = "Quick duplicate (in place)", value = { target_type = "none" } },
+          { key = "d", description = "Duplicate to destination", value = { target_type = "destination" } },
+          { key = "a", description = "Duplicate after target", value = { target_type = "insert_after" } },
+          { key = "b", description = "Duplicate before target", value = { target_type = "insert_before" } },
+        }
+      },
+      {
+        type = "selection",
+        title = "Choose target commit/bookmark",
+        condition = function(state)
+          return state.base_options.target_type ~= "none"
+        end
+      }
+    }
+  },
+
   squash = {
     type = "sequential",
     command_base = "jj squash",
@@ -803,6 +835,13 @@ M.advance_step = function()
       M.state.step = M.state.step + 1 -- Skip target selection step, go to flags
     end
   end
+  
+  -- Handle duplicate multi-select: if user selected multiple commits, enter multi-select mode
+  if M.state.command == "duplicate" and M.state.step == 2 and M.state.base_options.source_type == "multiple" then
+    local window_module = require('jj-nvim.ui.window')
+    window_module.enter_duplicate_multi_select_mode()
+    return -- Don't advance to next step, wait for multi-select completion
+  end
 
   if M.state.step > #M.state.flow_config.steps then
     -- No more steps, execute command
@@ -820,6 +859,8 @@ M.execute_command = function()
   local command_type = M.state.command
   local base_options = vim.deepcopy(M.state.base_options)
   local flags = vim.deepcopy(M.state.flags)
+  local selected_commits = M.state.selected_commits and vim.deepcopy(M.state.selected_commits) or nil
+  local cursor_commit = M.state.cursor_commit
 
   -- Close the flow
   M.close()
@@ -870,7 +911,7 @@ M.execute_command = function()
 
     -- Add source type and revset
     local source_type = base_options.source_type
-    local source_commit = M.state.cursor_commit or "@"
+    local source_commit = cursor_commit or "@"
     if source_type == "branch" then
       table.insert(cmd_args, "-b")
       table.insert(cmd_args, source_commit) -- Rebase cursor commit/branch
@@ -916,7 +957,7 @@ M.execute_command = function()
 
     -- Add source (cursor commit)
     table.insert(cmd_args, "--from")
-    local source_commit = M.state.cursor_commit or "@"
+    local source_commit = cursor_commit or "@"
     table.insert(cmd_args, source_commit)
 
     -- Add destination based on target type
@@ -960,7 +1001,7 @@ M.execute_command = function()
 
     -- Add revision (cursor commit)
     table.insert(cmd_args, "-r")
-    local source_commit = M.state.cursor_commit or "@"
+    local source_commit = cursor_commit or "@"
     table.insert(cmd_args, source_commit)
 
     -- Add split method specific options
@@ -1000,10 +1041,75 @@ M.execute_command = function()
     if not success then
       vim.notify("Failed to start split", vim.log.levels.ERROR)
     end
+  elseif command_type == "duplicate" then
+    table.insert(cmd_args, "duplicate")
+
+    -- Add source commits (pre-selected commits or cursor commit)
+    if selected_commits and #selected_commits > 0 then
+      -- Use pre-selected commits from multi-select
+      vim.notify(string.format("DEBUG: Using %d pre-selected commits: %s", #selected_commits, table.concat(selected_commits, ", ")), vim.log.levels.INFO)
+      for _, commit_id in ipairs(selected_commits) do
+        table.insert(cmd_args, commit_id)
+      end
+    else
+      -- Use cursor commit when flow started
+      local source_commit = cursor_commit or "@"
+      vim.notify(string.format("DEBUG: Using cursor commit: %s", source_commit), vim.log.levels.INFO)
+      table.insert(cmd_args, source_commit)
+    end
+
+    -- Add target options based on user selection
+    local target_type = base_options.target_type
+    if target_type == "destination" and base_options.destination then
+      table.insert(cmd_args, "--destination")
+      table.insert(cmd_args, base_options.destination)
+    elseif target_type == "insert_after" and base_options.destination then
+      table.insert(cmd_args, "--insert-after")
+      table.insert(cmd_args, base_options.destination)
+    elseif target_type == "insert_before" and base_options.destination then
+      table.insert(cmd_args, "--insert-before")
+      table.insert(cmd_args, base_options.destination)
+    end
+    -- If target_type is "none", no target arguments are added (quick duplicate)
+
+    -- Execute the command
+    vim.notify("Executing: " .. final_command, vim.log.levels.INFO)
+    commands.execute_async(cmd_args, {}, create_async_callback("Duplicate"))
   else
     -- Fallback for other commands not yet implemented
     vim.notify("Command not yet implemented: " .. final_command, vim.log.levels.WARN)
   end
+end
+
+-- Start duplicate flow with pre-selected commits
+M.start_duplicate_flow_with_commits = function(selected_commits, parent_win_id)
+  vim.notify(string.format("DEBUG: Starting duplicate flow with %d commits: %s", #selected_commits, table.concat(selected_commits, ", ")), vim.log.levels.INFO)
+  
+  -- Start the duplicate flow normally (this will show step 1)
+  if not M.start_flow("duplicate", parent_win_id) then
+    vim.notify("Failed to start duplicate flow", vim.log.levels.ERROR)
+    return
+  end
+  
+  -- Store the selected commits in the state
+  M.state.selected_commits = selected_commits
+  vim.notify(string.format("DEBUG: Stored %d commits in flow state: %s", #M.state.selected_commits, table.concat(M.state.selected_commits, ", ")), vim.log.levels.INFO)
+  
+  -- Set base options to indicate we already selected multiple sources
+  M.state.base_options.source_type = "multiple"
+  
+  -- Close the current menu (step 1) and advance to step 2
+  if inline_menu.is_active() then
+    inline_menu.close()
+  end
+  
+  -- Skip to step 2 (duplicate options)
+  M.state.step = 2
+  
+  -- Show step 2 (duplicate options menu)
+  vim.schedule(function()
+    M.show_current_step()
+  end)
 end
 
 -- Close the command flow
