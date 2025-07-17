@@ -1,25 +1,25 @@
 local M = {}
 
 -- Import all command modules
-local commit = require('jj-nvim.jj.commit')
-local squash = require('jj-nvim.jj.squash')
-local split = require('jj-nvim.jj.split')
-local rebase = require('jj-nvim.jj.rebase')
-local diff = require('jj-nvim.jj.diff')
-local status = require('jj-nvim.jj.status')
-local git = require('jj-nvim.jj.git')
-local edit = require('jj-nvim.jj.edit')
-local abandon = require('jj-nvim.jj.abandon')
-local new = require('jj-nvim.jj.new')
-local describe = require('jj-nvim.jj.describe')
-local undo = require('jj-nvim.jj.undo')
-local duplicate = require('jj-nvim.jj.duplicate')
+local commit = require("jj-nvim.jj.commit")
+local squash = require("jj-nvim.jj.squash")
+local split = require("jj-nvim.jj.split")
+local rebase = require("jj-nvim.jj.rebase")
+local diff = require("jj-nvim.jj.diff")
+local status = require("jj-nvim.jj.status")
+local git = require("jj-nvim.jj.git")
+local edit = require("jj-nvim.jj.edit")
+local abandon = require("jj-nvim.jj.abandon")
+local new = require("jj-nvim.jj.new")
+local describe = require("jj-nvim.jj.describe")
+local undo = require("jj-nvim.jj.undo")
+local duplicate = require("jj-nvim.jj.duplicate")
 
 -- Common utilities
-local buffer = require('jj-nvim.ui.buffer')
-local config = require('jj-nvim.config')
-local command_utils = require('jj-nvim.jj.command_utils')
-local buffer_utils = require('jj-nvim.jj.buffer_utils')
+local buffer = require("jj-nvim.ui.buffer")
+local config = require("jj-nvim.config")
+local command_utils = require("jj-nvim.jj.command_utils")
+local buffer_utils = require("jj-nvim.jj.buffer_utils")
 
 -- ============================================================================
 -- Edit Operations
@@ -72,92 +72,92 @@ M.new_simple = new.new_simple
 
 -- Create a diff buffer and display diff content
 local function create_diff_buffer(content, commit_id, diff_type)
-  return buffer_utils.create_diff_buffer(content, commit_id, diff_type)
+	return buffer_utils.create_diff_buffer(content, commit_id, diff_type)
 end
 
 -- Create floating window configuration
 local function create_float_config(config_key)
-  return buffer_utils.create_float_config(config_key)
+	return buffer_utils.create_float_config(config_key)
 end
 
 -- Display diff buffer based on configuration
 local function display_diff_buffer(buf_id, display_mode, split_direction)
-  return buffer_utils.display_diff_buffer(buf_id, display_mode, split_direction)
+	return buffer_utils.display_diff_buffer(buf_id, display_mode, split_direction)
 end
 
 -- Show diff for the specified commit
 M.show_diff = function(commit, format, options)
-  -- Validate commit
-  local is_valid, err = command_utils.validate_commit(commit, { allow_root = false })
-  if not is_valid then
-    vim.notify(err, vim.log.levels.WARN)
-    return false
-  end
+	-- Validate commit
+	local is_valid, err = command_utils.validate_commit(commit, { allow_root = false })
+	if not is_valid then
+		vim.notify(err, vim.log.levels.WARN)
+		return false
+	end
 
-  local change_id, change_err = command_utils.get_change_id(commit)
-  if not change_id then
-    vim.notify(change_err, vim.log.levels.ERROR)
-    return false
-  end
+	local change_id, change_err = command_utils.get_change_id(commit)
+	if not change_id then
+		vim.notify(change_err, vim.log.levels.ERROR)
+		return false
+	end
 
-  local display_id = command_utils.get_short_display_id(commit)
+	local display_id = command_utils.get_short_display_id(commit)
 
-  -- Get diff format from config if not specified
-  format = format or config.get('diff.format') or 'git'
-  options = options or {}
+	-- Get diff format from config if not specified
+	format = format or config.get("diff.format") or "git"
+	options = options or {}
 
-  -- Set diff options based on format
-  local diff_options = { silent = true }
-  if format == 'git' then
-    diff_options.git = true
-  elseif format == 'stat' then
-    diff_options.stat = true
-  elseif format == 'color-words' then
-    diff_options.color_words = true
-  elseif format == 'name-only' then
-    diff_options.name_only = true
-  end
+	-- Set diff options based on format
+	local diff_options = { silent = true }
+	if format == "git" then
+		diff_options.git = true
+	elseif format == "stat" then
+		diff_options.stat = true
+	elseif format == "color-words" then
+		diff_options.color_words = true
+	elseif format == "name-only" then
+		diff_options.name_only = true
+	end
 
-  -- Get the diff content
-  local diff_content, diff_err = diff.get_diff(change_id, diff_options)
-  if not diff_content then
-    local error_msg = diff_err or "Unknown error"
+	-- Get the diff content
+	local diff_content, diff_err = diff.get_diff(change_id, diff_options)
+	if not diff_content then
+		local error_msg = diff_err or "Unknown error"
 
-    -- Handle common error cases
-    if error_msg:find("No such revision") then
-      error_msg = "Commit not found - it may have been abandoned or modified"
-    elseif error_msg:find("not in workspace") then
-      error_msg = "Not in a jj workspace"
-    elseif error_msg:find("ambiguous") then
-      error_msg = "Ambiguous commit ID - please specify more characters"
-    end
+		-- Handle common error cases
+		if error_msg:find("No such revision") then
+			error_msg = "Commit not found - it may have been abandoned or modified"
+		elseif error_msg:find("not in workspace") then
+			error_msg = "Not in a jj workspace"
+		elseif error_msg:find("ambiguous") then
+			error_msg = "Ambiguous commit ID - please specify more characters"
+		end
 
-    vim.notify(string.format("Failed to get diff: %s", error_msg), vim.log.levels.ERROR)
-    return false
-  end
+		vim.notify(string.format("Failed to get diff: %s", error_msg), vim.log.levels.ERROR)
+		return false
+	end
 
-  -- Check if diff is empty (common for empty commits or root)
-  if diff_content:match("^%s*$") then
-    if commit.empty then
-      vim.notify(string.format("Commit %s is empty (no changes)", display_id), vim.log.levels.INFO)
-    else
-      vim.notify(string.format("No changes in commit %s", display_id), vim.log.levels.INFO)
-    end
-    return true
-  end
+	-- Check if diff is empty (common for empty commits or root)
+	if diff_content:match("^%s*$") then
+		if commit.empty then
+			vim.notify(string.format("Commit %s is empty (no changes)", display_id), vim.log.levels.INFO)
+		else
+			vim.notify(string.format("No changes in commit %s", display_id), vim.log.levels.INFO)
+		end
+		return true
+	end
 
-  -- Create and display diff buffer
-  local buf_id = create_diff_buffer(diff_content, display_id, format)
-  local display_mode = config.get('diff.display') or 'split'
-  local split_direction = config.get('diff.split') or 'horizontal'
-  local diff_win = display_diff_buffer(buf_id, display_mode, split_direction)
+	-- Create and display diff buffer
+	local buf_id = create_diff_buffer(diff_content, display_id, format)
+	local display_mode = config.get("diff.display") or "split"
+	local split_direction = config.get("diff.split") or "horizontal"
+	local diff_win = display_diff_buffer(buf_id, display_mode, split_direction)
 
-  return true
+	return true
 end
 
 -- Show diff summary (--stat) for the specified commit
 M.show_diff_summary = function(commit, options)
-  return M.show_diff(commit, 'stat', options)
+	return M.show_diff(commit, "stat", options)
 end
 
 -- ============================================================================
@@ -166,178 +166,245 @@ end
 
 -- Git fetch operation
 M.git_fetch = function(options)
-  options = options or {}
+	options = options or {}
 
-  vim.notify("Fetching from remote...", vim.log.levels.INFO)
+	vim.notify("Fetching from remote...", vim.log.levels.INFO)
 
-  local result, err = git.git_fetch(options)
-  if not result then
-    local error_msg = err or "Unknown error"
+	local result, err = git.git_fetch(options)
+	if not result then
+		local error_msg = err or "Unknown error"
 
-    -- Handle common git fetch errors
-    if error_msg:find("Could not resolve hostname") then
-      error_msg = "Network error: could not resolve hostname"
-    elseif error_msg:find("Permission denied") then
-      error_msg = "Permission denied: check your SSH keys or credentials"
-    elseif error_msg:find("not found") then
-      error_msg = "Repository not found or access denied"
-    elseif error_msg:find("timeout") then
-      error_msg = "Connection timeout"
-    end
+		-- Handle common git fetch errors
+		if error_msg:find("Could not resolve hostname") then
+			error_msg = "Network error: could not resolve hostname"
+		elseif error_msg:find("Permission denied") then
+			error_msg = "Permission denied: check your SSH keys or credentials"
+		elseif error_msg:find("not found") then
+			error_msg = "Repository not found or access denied"
+		elseif error_msg:find("timeout") then
+			error_msg = "Connection timeout"
+		end
 
-    vim.notify(string.format("Failed to fetch: %s", error_msg), vim.log.levels.ERROR)
-    return false
-  end
+		vim.notify(string.format("Failed to fetch: %s", error_msg), vim.log.levels.ERROR)
+		return false
+	end
 
-  -- Check if fetch actually got new commits
-  if result:match("^%s*$") then
-    vim.notify("Fetch completed - repository is up to date", vim.log.levels.INFO)
-  else
-    vim.notify("Fetch completed successfully", vim.log.levels.INFO)
-  end
+	-- Check if fetch actually got new commits
+	if result:match("^%s*$") then
+		vim.notify("Fetch completed - repository is up to date", vim.log.levels.INFO)
+	else
+		vim.notify("Fetch completed successfully", vim.log.levels.INFO)
+	end
 
-  return true
+	return true
 end
 
 -- Async git fetch operation with progress indication
 M.git_fetch_async = function(options, callback)
-  options = options or {}
-  callback = callback or function() end
+	options = options or {}
+	callback = callback or function() end
 
-  -- Create a timer for progress indication
-  local timer = vim.loop.new_timer()
-  local dots = ""
-  local dot_count = 0
-  
-  -- Start progress indicator immediately
-  timer:start(0, 1000, vim.schedule_wrap(function()
-    dot_count = (dot_count + 1) % 4
-    dots = string.rep(".", dot_count)
-    vim.notify("Fetching from remote" .. dots, vim.log.levels.INFO, { replace = true })
-  end))
+	-- Try to use nvim-notify async pattern, fallback to simple notifications
+	local has_plenary, async = pcall(require, "plenary.async")
+	local has_notify, notify_module = pcall(require, "notify")
 
-  git.git_fetch_async(options, function(result, err)
-    -- Stop progress indicator
-    timer:stop()
-    timer:close()
-    
-    if not result then
-      local error_msg = err or "Unknown error"
+	if has_plenary and has_notify and notify_module.async then
+		-- Use proper async pattern with nvim-notify
+		async.run(function()
+			local notify = notify_module.async
+			local progress_notif = notify("Fetching from remote...", vim.log.levels.INFO)
 
-      -- Handle common git fetch errors
-      if error_msg:find("Could not resolve hostname") then
-        error_msg = "Network error: could not resolve hostname"
-      elseif error_msg:find("Permission denied") then
-        error_msg = "Permission denied: check your SSH keys or credentials"
-      elseif error_msg:find("not found") then
-        error_msg = "Repository not found or access denied"
-      elseif error_msg:find("timeout") then
-        error_msg = "Connection timeout"
-      end
+			git.git_fetch_async(options, function(result, err)
+				-- Close the progress notification
+				progress_notif.events.close()
 
-      vim.notify(string.format("Failed to fetch: %s", error_msg), vim.log.levels.ERROR)
-      callback(false, error_msg)
-      return
-    end
+				if not result then
+					local error_msg = err or "Unknown error"
 
-    -- Check if fetch actually got new commits
-    if result:match("^%s*$") then
-      vim.notify("Fetch completed - repository is up to date", vim.log.levels.INFO)
-    else
-      vim.notify("Fetch completed successfully", vim.log.levels.INFO)
-    end
+					-- Handle common git fetch errors
+					if error_msg:find("Could not resolve hostname") then
+						error_msg = "Network error: could not resolve hostname"
+					elseif error_msg:find("Permission denied") then
+						error_msg = "Permission denied: check your SSH keys or credentials"
+					elseif error_msg:find("not found") then
+						error_msg = "Repository not found or access denied"
+					elseif error_msg:find("timeout") then
+						error_msg = "Connection timeout"
+					end
 
-    callback(true, result)
-  end)
+					vim.schedule(function()
+						vim.notify(string.format("Failed to fetch: %s", error_msg), vim.log.levels.ERROR)
+						callback(false, error_msg)
+					end)
+					return
+				end
+
+				vim.schedule(function()
+					-- Check if fetch actually got new commits
+					if result:match("^%s*$") then
+						vim.notify("Fetch completed - repository is up to date", vim.log.levels.INFO)
+					else
+						vim.notify("Fetch completed successfully", vim.log.levels.INFO)
+					end
+					callback(true, result)
+				end)
+			end)
+		end, function() end)
+	else
+		-- Fallback to simple notification without progress animation
+		vim.notify("Fetching from remote...", vim.log.levels.INFO)
+
+		git.git_fetch_async(options, function(result, err)
+			if not result then
+				local error_msg = err or "Unknown error"
+
+				-- Handle common git fetch errors
+				if error_msg:find("Could not resolve hostname") then
+					error_msg = "Network error: could not resolve hostname"
+				elseif error_msg:find("Permission denied") then
+					error_msg = "Permission denied: check your SSH keys or credentials"
+				elseif error_msg:find("not found") then
+					error_msg = "Repository not found or access denied"
+				elseif error_msg:find("timeout") then
+					error_msg = "Connection timeout"
+				end
+
+				vim.notify(string.format("Failed to fetch: %s", error_msg), vim.log.levels.ERROR)
+				callback(false, error_msg)
+				return
+			end
+
+			-- Check if fetch actually got new commits
+			if result:match("^%s*$") then
+				vim.notify("Fetch completed - repository is up to date", vim.log.levels.INFO)
+			else
+				vim.notify("Fetch completed successfully", vim.log.levels.INFO)
+			end
+
+			callback(true, result)
+		end)
+	end
 end
 
 -- Git push operation
 M.git_push = function(options)
-  options = options or {}
+	options = options or {}
 
-  -- Get current branch for display
-  local commands = require('jj-nvim.jj.commands')
-  local current_branch = commands.get_current_branch()
-  local branch_info = current_branch and string.format(" (%s)", current_branch) or ""
+	-- Get current branch for display
+	local commands = require("jj-nvim.jj.commands")
+	local current_branch = commands.get_current_branch()
+	local branch_info = current_branch and string.format(" (%s)", current_branch) or ""
 
-  vim.notify(string.format("Pushing to remote%s...", branch_info), vim.log.levels.INFO)
+	vim.notify(string.format("Pushing to remote%s...", branch_info), vim.log.levels.INFO)
 
-  local result, err = git.git_push(options)
-  if not result then
-    local error_msg = err or "Unknown error"
+	local result, err = git.git_push(options)
+	if not result then
+		local error_msg = err or "Unknown error"
 
-    -- Handle common git push errors
-    if error_msg:find("rejected") then
-      error_msg = "Push rejected: remote has newer commits (try fetching first)"
-    elseif error_msg:find("Permission denied") then
-      error_msg = "Permission denied: check your SSH keys or credentials"
-    elseif error_msg:find("not found") then
-      error_msg = "Repository not found or access denied"
-    elseif error_msg:find("timeout") then
-      error_msg = "Connection timeout"
-    elseif error_msg:find("non-fast-forward") then
-      error_msg = "Push rejected: would not be a fast-forward (use force push if intended)"
-    end
+		-- Handle common git push errors
+		if error_msg:find("rejected") then
+			error_msg = "Push rejected: remote has newer commits (try fetching first)"
+		elseif error_msg:find("Permission denied") then
+			error_msg = "Permission denied: check your SSH keys or credentials"
+		elseif error_msg:find("not found") then
+			error_msg = "Repository not found or access denied"
+		elseif error_msg:find("timeout") then
+			error_msg = "Connection timeout"
+		elseif error_msg:find("non-fast-forward") then
+			error_msg = "Push rejected: would not be a fast-forward (use force push if intended)"
+		end
 
-    vim.notify(string.format("Failed to push: %s", error_msg), vim.log.levels.ERROR)
-    return false
-  end
+		vim.notify(string.format("Failed to push: %s", error_msg), vim.log.levels.ERROR)
+		return false
+	end
 
-  vim.notify(string.format("Push completed successfully%s", branch_info), vim.log.levels.INFO)
-  return true
+	vim.notify(string.format("Push completed successfully%s", branch_info), vim.log.levels.INFO)
+	return true
 end
 
 -- Async git push operation with progress indication
 M.git_push_async = function(options, callback)
-  options = options or {}
-  callback = callback or function() end
+	options = options or {}
+	callback = callback or function() end
 
-  -- Get current branch for display
-  local commands = require('jj-nvim.jj.commands')
-  local current_branch = commands.get_current_branch()
-  local branch_info = current_branch and string.format(" (%s)", current_branch) or ""
+	-- Get current branch for display
+	local commands = require("jj-nvim.jj.commands")
+	local current_branch = commands.get_current_branch()
+	local branch_info = current_branch and string.format(" (%s)", current_branch) or ""
 
-  -- Create a timer for progress indication
-  local timer = vim.loop.new_timer()
-  local dots = ""
-  local dot_count = 0
-  
-  -- Start progress indicator immediately
-  timer:start(0, 1000, vim.schedule_wrap(function()
-    dot_count = (dot_count + 1) % 4
-    dots = string.rep(".", dot_count)
-    vim.notify(string.format("Pushing to remote%s%s", branch_info, dots), vim.log.levels.INFO, { replace = true })
-  end))
+	-- Try to use nvim-notify async pattern, fallback to simple notifications
+	local has_plenary, async = pcall(require, "plenary.async")
+	local has_notify, notify_module = pcall(require, "notify")
 
-  git.git_push_async(options, function(result, err)
-    -- Stop progress indicator
-    timer:stop()
-    timer:close()
-    
-    if not result then
-      local error_msg = err or "Unknown error"
+	if has_plenary and has_notify and notify_module.async then
+		-- Use proper async pattern with nvim-notify
+		async.run(function()
+			local notify = notify_module.async
+			local progress_notif = notify(string.format("Pushing to remote%s...", branch_info), vim.log.levels.INFO)
 
-      -- Handle common git push errors
-      if error_msg:find("rejected") then
-        error_msg = "Push rejected: remote has newer commits (try fetching first)"
-      elseif error_msg:find("Permission denied") then
-        error_msg = "Permission denied: check your SSH keys or credentials"
-      elseif error_msg:find("not found") then
-        error_msg = "Repository not found or access denied"
-      elseif error_msg:find("timeout") then
-        error_msg = "Connection timeout"
-      elseif error_msg:find("non-fast-forward") then
-        error_msg = "Push rejected: would not be a fast-forward (use force push if intended)"
-      end
+			git.git_push_async(options, function(result, err)
+				-- Close the progress notification
+				progress_notif.events.close()
 
-      vim.notify(string.format("Failed to push: %s", error_msg), vim.log.levels.ERROR)
-      callback(false, error_msg)
-      return
-    end
+				if not result then
+					local error_msg = err or "Unknown error"
 
-    vim.notify(string.format("Push completed successfully%s", branch_info), vim.log.levels.INFO)
-    callback(true, result)
-  end)
+					-- Handle common git push errors
+					if error_msg:find("rejected") then
+						error_msg = "Push rejected: remote has newer commits (try fetching first)"
+					elseif error_msg:find("Permission denied") then
+						error_msg = "Permission denied: check your SSH keys or credentials"
+					elseif error_msg:find("not found") then
+						error_msg = "Repository not found or access denied"
+					elseif error_msg:find("timeout") then
+						error_msg = "Connection timeout"
+					elseif error_msg:find("non-fast-forward") then
+						error_msg = "Push rejected: would not be a fast-forward (use force push if intended)"
+					end
+
+					vim.schedule(function()
+						vim.notify(string.format("Failed to push: %s", error_msg), vim.log.levels.ERROR)
+						callback(false, error_msg)
+					end)
+					return
+				end
+
+				vim.schedule(function()
+					vim.notify(string.format("Push completed successfully%s", branch_info), vim.log.levels.INFO)
+					callback(true, result)
+				end)
+			end)
+		end, function() end)
+	else
+		-- Fallback to simple notification without progress animation
+		vim.notify(string.format("Pushing to remote%s...", branch_info), vim.log.levels.INFO)
+
+		git.git_push_async(options, function(result, err)
+			if not result then
+				local error_msg = err or "Unknown error"
+
+				-- Handle common git push errors
+				if error_msg:find("rejected") then
+					error_msg = "Push rejected: remote has newer commits (try fetching first)"
+				elseif error_msg:find("Permission denied") then
+					error_msg = "Permission denied: check your SSH keys or credentials"
+				elseif error_msg:find("not found") then
+					error_msg = "Repository not found or access denied"
+				elseif error_msg:find("timeout") then
+					error_msg = "Connection timeout"
+				elseif error_msg:find("non-fast-forward") then
+					error_msg = "Push rejected: would not be a fast-forward (use force push if intended)"
+				end
+
+				vim.notify(string.format("Failed to push: %s", error_msg), vim.log.levels.ERROR)
+				callback(false, error_msg)
+				return
+			end
+
+			vim.notify(string.format("Push completed successfully%s", branch_info), vim.log.levels.INFO)
+			callback(true, result)
+		end)
+	end
 end
 
 -- ============================================================================
@@ -346,40 +413,40 @@ end
 
 -- Create a status buffer and display status content
 local function create_status_buffer(content)
-  return buffer_utils.create_status_buffer(content)
+	return buffer_utils.create_status_buffer(content)
 end
 
 -- Display status buffer based on configuration
 local function display_status_buffer(buf_id, display_mode, split_direction)
-  return buffer_utils.display_status_buffer(buf_id, display_mode, split_direction)
+	return buffer_utils.display_status_buffer(buf_id, display_mode, split_direction)
 end
 
 -- Show repository status
 M.show_status = function(options)
-  options = options or {}
+	options = options or {}
 
-  local status_content, err = status.get_status(options)
-  if not status_content then
-    local error_msg = err or "Unknown error"
+	local status_content, err = status.get_status(options)
+	if not status_content then
+		local error_msg = err or "Unknown error"
 
-    -- Handle common status errors
-    if error_msg:find("not in workspace") then
-      error_msg = "Not in a jj workspace"
-    elseif error_msg:find("No such file") then
-      error_msg = "Specified path not found"
-    end
+		-- Handle common status errors
+		if error_msg:find("not in workspace") then
+			error_msg = "Not in a jj workspace"
+		elseif error_msg:find("No such file") then
+			error_msg = "Specified path not found"
+		end
 
-    vim.notify(string.format("Failed to get status: %s", error_msg), vim.log.levels.ERROR)
-    return false
-  end
+		vim.notify(string.format("Failed to get status: %s", error_msg), vim.log.levels.ERROR)
+		return false
+	end
 
-  -- Create and display status buffer
-  local buf_id = create_status_buffer(status_content)
-  local display_mode = config.get('status.display') or 'split'
-  local split_direction = config.get('status.split') or 'horizontal'
-  local status_win = display_status_buffer(buf_id, display_mode, split_direction)
+	-- Create and display status buffer
+	local buf_id = create_status_buffer(status_content)
+	local display_mode = config.get("status.display") or "split"
+	local split_direction = config.get("status.split") or "horizontal"
+	local status_win = display_status_buffer(buf_id, display_mode, split_direction)
 
-  return true
+	return true
 end
 
 -- ============================================================================
@@ -388,58 +455,60 @@ end
 
 -- Set description for a commit
 M.set_description = function(commit, on_success)
-  -- Validate commit
-  local is_valid, err = command_utils.validate_commit(commit, { allow_root = false })
-  if not is_valid then
-    vim.notify(err, vim.log.levels.WARN)
-    return false
-  end
+	-- Validate commit
+	local is_valid, err = command_utils.validate_commit(commit, { allow_root = false })
+	if not is_valid then
+		vim.notify(err, vim.log.levels.WARN)
+		return false
+	end
 
-  local change_id, change_err = command_utils.get_change_id(commit)
-  if not change_id then
-    vim.notify(change_err, vim.log.levels.ERROR)
-    return false
-  end
+	local change_id, change_err = command_utils.get_change_id(commit)
+	if not change_id then
+		vim.notify(change_err, vim.log.levels.ERROR)
+		return false
+	end
 
-  local display_id = command_utils.get_short_display_id(commit, change_id)
-  local current_description = commit:get_description_text_only()
+	local display_id = command_utils.get_short_display_id(commit, change_id)
+	local current_description = commit:get_description_text_only()
 
-  -- Show current description if it's not the default
-  local prompt_text = "Enter description for commit " .. display_id .. ":"
-  if current_description and current_description ~= "(no description set)" then
-    prompt_text = prompt_text .. "\nCurrent: " .. current_description
-  end
+	-- Show current description if it's not the default
+	local prompt_text = "Enter description for commit " .. display_id .. ":"
+	if current_description and current_description ~= "(no description set)" then
+		prompt_text = prompt_text .. "\nCurrent: " .. current_description
+	end
 
-  -- Prompt user for new description
-  vim.ui.input({
-    prompt = prompt_text,
-    default = current_description ~= "(no description set)" and current_description or "",
-  }, function(new_description)
-    if not new_description then
-      vim.notify("Description cancelled", vim.log.levels.INFO)
-      return false
-    end
+	-- Prompt user for new description
+	vim.ui.input({
+		prompt = prompt_text,
+		default = current_description ~= "(no description set)" and current_description or "",
+	}, function(new_description)
+		if not new_description then
+			vim.notify("Description cancelled", vim.log.levels.INFO)
+			return false
+		end
 
-    -- Allow empty description to clear it
+		-- Allow empty description to clear it
 
-    local result, exec_err = describe.describe(change_id, new_description)
+		local result, exec_err = describe.describe(change_id, new_description)
 
-    if not result then
-      local error_msg = exec_err or "Unknown error"
-      if error_msg:find("No such revision") then
-        error_msg = "Commit not found - it may have been abandoned or modified"
-      elseif error_msg:find("not in workspace") then
-        error_msg = "Not in a jj workspace"
-      end
+		if not result then
+			local error_msg = exec_err or "Unknown error"
+			if error_msg:find("No such revision") then
+				error_msg = "Commit not found - it may have been abandoned or modified"
+			elseif error_msg:find("not in workspace") then
+				error_msg = "Not in a jj workspace"
+			end
 
-      vim.notify(string.format("Failed to set description: %s", error_msg), vim.log.levels.ERROR)
-      return false
-    end
+			vim.notify(string.format("Failed to set description: %s", error_msg), vim.log.levels.ERROR)
+			return false
+		end
 
-    vim.notify(string.format("Updated description for commit %s", display_id), vim.log.levels.INFO)
-    if on_success then on_success() end
-    return true
-  end)
+		vim.notify(string.format("Updated description for commit %s", display_id), vim.log.levels.INFO)
+		if on_success then
+			on_success()
+		end
+		return true
+	end)
 end
 
 -- ============================================================================
