@@ -136,7 +136,7 @@ local function apply_symbol_colors(graph_text, commit)
   if is_current then
     result = result:gsub("@", COLORS.current_symbol .. "@" .. COLORS.reset_fg)
   end
-  
+
   -- Color all diamond symbols regardless of commit type
   result = result:gsub("◆", COLORS.root_symbol .. "◆" .. COLORS.reset_fg)
 
@@ -151,35 +151,35 @@ local function get_continuation_graph_from_commit(source_line)
 
   -- Strip ANSI codes to get clean structure for analysis
   local clean_line = ansi.strip_ansi(source_line)
-  
+
   -- Extract graph content by finding where description starts
   local graph_content = ""
   local chars = {}
-  
+
   -- Convert to UTF-8 character array
   for char in string.gmatch(clean_line, "[%z\1-\127\194-\244][\128-\191]*") do
     table.insert(chars, char)
   end
-  
+
   -- Find end of graph section
   for _, char in ipairs(chars) do
-    if char == " " or char == "│" or char == "@" or char == "○" or char == "◆" or char == "×" or 
-       char == "─" or char == "├" or char == "┤" or char == "╭" or char == "╰" or char == "╮" or char == "╯" then
+    if char == " " or char == "│" or char == "@" or char == "○" or char == "◆" or char == "×" or
+        char == "─" or char == "├" or char == "┤" or char == "╭" or char == "╰" or char == "╮" or char == "╯" then
       graph_content = graph_content .. char
     else
       -- Hit description text
       break
     end
   end
-  
+
   -- Build continuation graph preserving original spacing structure
   local result = ""
   local char_count = vim.fn.strchars(graph_content)
-  
+
   -- Process each character in the graph content
   for i = 0, char_count - 1 do
     local char = vim.fn.strcharpart(graph_content, i, 1)
-    
+
     if char == " " then
       -- Preserve spaces exactly as they are
       result = result .. " "
@@ -200,12 +200,12 @@ local function get_continuation_graph_from_commit(source_line)
       result = result .. "│"
     end
   end
-  
+
   -- Ensure we have proper spacing after the graph for text indentation
   if not result:match("%s%s$") then
     result = result .. "  "
   end
-  
+
   return result
 end
 
@@ -215,20 +215,20 @@ local function get_continuation_graph_with_lookahead(current_commit, next_commit
   if not current_commit or not current_commit.description_graph then
     return ""
   end
-  
+
   local current_graph = current_commit.description_graph
-  
+
   -- If no next commit, use the current commit's graph structure
   if not next_commit or not next_commit.description_graph then
     return get_continuation_graph_from_commit(current_graph)
   end
-  
+
   local next_graph = next_commit.description_graph
-  
+
   -- Strip ANSI codes to get clean structure for analysis
   local clean_current = ansi.strip_ansi(current_graph)
   local clean_next = ansi.strip_ansi(next_graph)
-  
+
   -- Get the total width of the current commit's graph section
   local current_graph_width = 0
   for char in string.gmatch(clean_current, "[%z\1-\127\194-\244][\128-\191]*") do
@@ -239,12 +239,12 @@ local function get_continuation_graph_with_lookahead(current_commit, next_commit
       break
     end
   end
-  
+
   -- Analyze the next commit's graph to understand the vertical flow pattern
   -- We need to understand how many vertical lines are flowing through each position
   local next_graph_pattern = {}
   local chars = {}
-  
+
   -- First, collect all graph characters
   for char in string.gmatch(clean_next, "[%z\1-\127\194-\244][\128-\191]*") do
     if char == "│" or char == " " or char:match("[├┤╭╰╮╯─]") then
@@ -254,12 +254,12 @@ local function get_continuation_graph_with_lookahead(current_commit, next_commit
       break
     end
   end
-  
+
   -- Now analyze the pattern to determine vertical flow
   local i = 1
   while i <= #chars do
     local char = chars[i]
-    
+
     if char == "│" then
       -- Simple vertical bar
       table.insert(next_graph_pattern, "│")
@@ -300,11 +300,11 @@ local function get_continuation_graph_with_lookahead(current_commit, next_commit
       i = i + 1
     end
   end
-  
+
   -- Build result: use next commit's vertical bar pattern, but pad to current commit's width
   local result = ""
   local pattern_pos = 1
-  
+
   for i = 1, current_graph_width do
     if pattern_pos <= #next_graph_pattern then
       local next_char = next_graph_pattern[pattern_pos]
@@ -320,12 +320,12 @@ local function get_continuation_graph_with_lookahead(current_commit, next_commit
       result = result .. " "
     end
   end
-  
+
   -- Ensure we have proper spacing after the graph for text indentation
   if not result:match("%s%s$") then
     result = result .. "  "
   end
-  
+
   return result
 end
 
@@ -340,7 +340,7 @@ local function render_commit(commit, mode_config, window_width, next_commit)
   -- Build the main commit line using structured parts
   local main_parts = commit:get_main_line_parts()
   local line_parts = {}
-  
+
   for _, part in ipairs(main_parts) do
     if part:has_content() then
       table.insert(line_parts, part:get_styled_text())
@@ -349,7 +349,7 @@ local function render_commit(commit, mode_config, window_width, next_commit)
 
   -- Handle intelligent wrapping of main commit line
   -- Get the graph part for width calculation and continuation
-  local graph_part = main_parts[1]  -- Graph is always first
+  local graph_part = main_parts[1] -- Graph is always first
   local styled_graph = graph_part:get_styled_text()
   local graph_width = graph_part:get_width()
   local continuation_prefix = get_continuation_graph_from_commit(styled_graph)
@@ -399,10 +399,10 @@ local function render_commit(commit, mode_config, window_width, next_commit)
     else
       local desc_text = commit:get_description_text_only()
       if desc_text and desc_text ~= "" then
-        descriptions = {desc_text}
+        descriptions = { desc_text }
       end
     end
-    
+
     if #descriptions > 0 then
       local desc_color
       if commit:has_real_description() then
@@ -450,18 +450,18 @@ local function render_commit(commit, mode_config, window_width, next_commit)
 
         -- Calculate effective window width for description wrapping
         local effective_window_width = window_width
-        
+
         -- For first description line, account for prefix parts that will be inserted
         if i == 1 then
           local desc_prefix_parts = commit:get_description_prefix_parts()
           local total_prefix_width = 0
-          
+
           for _, prefix_part in ipairs(desc_prefix_parts) do
             if prefix_part:has_content() then
               total_prefix_width = total_prefix_width + prefix_part:get_width()
             end
           end
-          
+
           if total_prefix_width > 0 then
             effective_window_width = window_width - total_prefix_width
           end
@@ -475,32 +475,32 @@ local function render_commit(commit, mode_config, window_width, next_commit)
           if i == 1 and j == 1 then
             -- Insert any prefix parts (like empty indicator) for first description line
             local desc_prefix_parts = commit:get_description_prefix_parts()
-            
+
             for _, prefix_part in ipairs(desc_prefix_parts) do
               if prefix_part:has_content() then
                 -- Insert prefix part after the graph prefix but before the description text
                 local prefix_styled = prefix_part:get_styled_text()
-                
+
                 -- Strip ANSI codes to find the graph structure more reliably
                 local clean_line = ansi.strip_ansi(wrapped_line)
-                
+
                 -- Find where graph ends by looking for the pattern: graph symbols followed by 2+ spaces
                 local graph_end_match = clean_line:match("^(.*[│├─┤╭╰╮╯]  )")
-                
+
                 if graph_end_match then
                   -- We found the graph structure, insert prefix part after it
                   local graph_prefix_len = #graph_end_match
-                  
+
                   -- Find the equivalent position in the original line with ANSI codes
                   local original_pos = 1
                   local clean_pos = 1
                   local target_pos = nil
-                  
+
                   -- Scan through the original line, tracking clean position
                   while original_pos <= #wrapped_line and clean_pos <= graph_prefix_len do
                     -- Check if we're at an ANSI sequence
                     local esc_start, esc_end = wrapped_line:find('\27%[[%d;]*m', original_pos)
-                    
+
                     if esc_start and esc_start == original_pos then
                       -- Skip ANSI sequence in original, don't advance clean position
                       original_pos = esc_end + 1
@@ -514,7 +514,7 @@ local function render_commit(commit, mode_config, window_width, next_commit)
                       end
                     end
                   end
-                  
+
                   if target_pos then
                     -- Insert prefix part at the correct position
                     wrapped_line = wrapped_line:sub(1, target_pos - 1) .. prefix_styled .. wrapped_line:sub(target_pos)
@@ -569,24 +569,24 @@ end
 -- Render elided section using structured parts
 local function render_elided_section(elided_entry)
   local lines = {}
-  
+
   -- Get all line parts for this elided section
   local all_line_parts = elided_entry:get_all_line_parts()
-  
+
   for line_index, line_parts in ipairs(all_line_parts) do
     local rendered_parts = {}
-    
+
     for _, part in ipairs(line_parts) do
       if part:has_content() then
         table.insert(rendered_parts, part:get_styled_text())
       end
     end
-    
+
     -- Combine all parts for this line
     local rendered_line = table.concat(rendered_parts) .. COLORS.reset
     table.insert(lines, rendered_line)
   end
-  
+
   return lines
 end
 
@@ -599,7 +599,7 @@ M.render_commits = function(mixed_entries, mode, window_width)
   if not window_width then
     window_width = config.get('window.width') or 80
   end
-  
+
   -- Note: window_width here should already be the effective width passed from the caller
 
   local all_lines = {}
@@ -653,7 +653,7 @@ M.render_commits = function(mixed_entries, mode, window_width)
           break
         end
       end
-      
+
       -- Render the commit with window width for wrapping and next commit for lookahead
       local commit_lines = render_commit(commit, mode_config, window_width, next_commit)
 
@@ -685,10 +685,10 @@ M.render_with_highlights = function(commits, mode, window_width)
     -- Parse ANSI codes and create highlight segments
     local segments = ansi.parse_ansi_line(line)
     local clean_text = ansi.strip_ansi(line)
-    
+
     -- Add right padding space for visual balance
     clean_text = clean_text .. " "
-    
+
     highlighted_lines[i] = {
       text = clean_text,  -- Plain text for buffer with right padding
       segments = segments -- Highlight information
