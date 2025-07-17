@@ -19,7 +19,7 @@ M.defaults = {
         jump_prev = '<Up>',
         -- Enhanced navigation
         next_commit_centered = 'J',
-        prev_commit_centered = 'K', 
+        prev_commit_centered = 'K',
         goto_first = 'gg',
         goto_last = 'G',
         goto_current = '@',
@@ -89,11 +89,11 @@ M.defaults = {
       jump_next = '<Down>',
       jump_prev = '<Up>',
       select = '<CR>',
-      cancel = {'<Esc>', 'q'}, -- array support for multiple keys
+      cancel = { '<Esc>', 'q' }, -- array support for multiple keys
       back = '<BS>',
     },
     help_navigation = {
-      close = {'<Esc>', 'q', '?'},
+      close = { '<Esc>', 'q', '?' },
       scroll_down = '<Down>',
       scroll_up = '<Up>',
       scroll_down_alt = '<C-j>',
@@ -113,7 +113,7 @@ M.defaults = {
       close_alt = '<Esc>',
     },
     status_window = {
-      close = 'q', 
+      close = 'q',
       close_alt = '<Esc>',
     },
     menus = {
@@ -207,12 +207,12 @@ M.defaults = {
     },
   },
   context_window = {
-    enabled = true,         -- Show context window when selections are made
-    auto_show = true,       -- Automatically show when selections change
-    position = 'bottom',    -- 'top', 'bottom', 'left', 'right'
-    height = 0.25,         -- Height as percentage of log window (for top/bottom)
-    width = 0.35,          -- Width as percentage of log window (for left/right)
-    border = 'rounded',    -- 'none', 'single', 'double', 'rounded', 'solid', 'shadow'
+    enabled = true,      -- Show context window when selections are made
+    auto_show = true,    -- Automatically show when selections change
+    position = 'bottom', -- 'top', 'bottom', 'left', 'right'
+    height = 0.25,       -- Height as percentage of log window (for top/bottom)
+    width = 0.35,        -- Width as percentage of log window (for left/right)
+    border = 'rounded',  -- 'none', 'single', 'double', 'rounded', 'solid', 'shadow'
   },
   interactive = {
     float = {
@@ -288,7 +288,7 @@ M.get_keybinds = function(key)
   if value == nil then
     return {}
   elseif type(value) == "string" then
-    return {value}
+    return { value }
   elseif type(value) == "table" then
     return value
   else
@@ -335,7 +335,7 @@ end
 M.get_window_width = function()
   -- Check persistent settings first
   if M.persistent_settings.window and M.persistent_settings.window.width then
-    return M.persistent_settings.window.width
+    return M.persistent_settings.window.width + 2
   end
 
   -- Default to 70 if no persisted width exists
